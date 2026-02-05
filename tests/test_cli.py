@@ -29,6 +29,12 @@ def runner():
     return CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def disable_config_autoload(monkeypatch):
+    """Disable config auto-loading in all CLI tests."""
+    monkeypatch.setattr("avatar_engine.cli.app.find_config", lambda: None)
+
+
 @pytest.fixture
 def mock_engine():
     """Create mock AvatarEngine."""
