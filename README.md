@@ -320,5 +320,4 @@ This project is a **wrapper** that communicates with external AI CLI tools via t
 - [ACP SDK](https://github.com/agentclientprotocol/python-sdk) — Apache 2.0
 
 ## Author
-
-Antonin Stefanutti ([@raven2cz](https://github.com/raven2cz))
+([@raven2cz](https://github.com/raven2cz))
