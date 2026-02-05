@@ -1,0 +1,454 @@
+"""
+Abstract base bridge for CLI communication.
+
+Two modes:
+1. PERSISTENT — one subprocess stays alive, multi-turn via stdin/stdout JSONL
+   → True warm session: start() warms up, then send() is instant
+   → Claude Code: --input-format stream-json --output-format stream-json
+
+2. ONESHOT — new subprocess per prompt, --resume for context continuity
+   → Cold start every call, but model remembers conversation
+   → Gemini CLI: gemini -p "..." --output-format stream-json
+"""
+
+import asyncio
+import json
+import logging
+import os
+import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+class BridgeState(Enum):
+    DISCONNECTED = "disconnected"
+    WARMING_UP = "warming_up"
+    READY = "ready"
+    BUSY = "busy"
+    ERROR = "error"
+
+
+@dataclass
+class Message:
+    role: str
+    content: str
+    timestamp: float = field(default_factory=time.time)
+    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class BridgeResponse:
+    content: str
+    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
+    raw_events: List[Dict[str, Any]] = field(default_factory=list)
+    duration_ms: int = 0
+    session_id: Optional[str] = None
+    cost_usd: Optional[float] = None
+    token_usage: Optional[Dict[str, Any]] = None
+    success: bool = True
+    error: Optional[str] = None
+
+
+class BaseBridge(ABC):
+    """Abstract base class supporting persistent and oneshot modes."""
+
+    def __init__(
+        self,
+        executable: str,
+        model: str,
+        working_dir: str = "",
+        timeout: int = 120,
+        system_prompt: str = "",
+        env: Optional[Dict[str, str]] = None,
+        mcp_servers: Optional[Dict[str, Any]] = None,
+    ):
+        self.executable = executable
+        self.model = model
+        self.working_dir = working_dir or os.getcwd()
+        self.timeout = timeout
+        self.system_prompt = system_prompt
+        self.env = env or {}
+        self.mcp_servers = mcp_servers or {}
+
+        self.state = BridgeState.DISCONNECTED
+        self.history: List[Message] = []
+        self.session_id: Optional[str] = None
+
+        self._proc: Optional[asyncio.subprocess.Process] = None
+        self._read_lock = asyncio.Lock()
+
+        self._on_output: Optional[Callable[[str], None]] = None
+        self._on_state_change: Optional[Callable[[BridgeState], None]] = None
+        self._on_event: Optional[Callable[[Dict[str, Any]], None]] = None
+
+    # === Abstract interface =============================================
+
+    @property
+    @abstractmethod
+    def provider_name(self) -> str: ...
+
+    @property
+    @abstractmethod
+    def is_persistent(self) -> bool:
+        """True = warm session (one process). False = cold start per call."""
+        ...
+
+    @abstractmethod
+    def _setup_config_files(self) -> None: ...
+
+    @abstractmethod
+    def _parse_session_id(self, events: List[Dict[str, Any]]) -> Optional[str]: ...
+
+    @abstractmethod
+    def _parse_content(self, events: List[Dict[str, Any]]) -> str: ...
+
+    @abstractmethod
+    def _parse_tool_calls(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]: ...
+
+    @abstractmethod
+    def _parse_usage(self, events: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]: ...
+
+    @abstractmethod
+    def _extract_text_delta(self, event: Dict[str, Any]) -> Optional[str]: ...
+
+    @abstractmethod
+    def _is_turn_complete(self, event: Dict[str, Any]) -> bool:
+        """Return True when event signals the model finished its response."""
+        ...
+
+    # Persistent mode
+    @abstractmethod
+    def _build_persistent_command(self) -> List[str]: ...
+
+    @abstractmethod
+    def _format_user_message(self, prompt: str) -> str:
+        """Encode user prompt as a single JSONL line for stdin."""
+        ...
+
+    # Oneshot mode
+    @abstractmethod
+    def _build_oneshot_command(self, prompt: str) -> List[str]: ...
+
+    # === Callbacks ======================================================
+
+    def on_output(self, cb: Callable[[str], None]) -> None:
+        self._on_output = cb
+
+    def on_state_change(self, cb: Callable[[BridgeState], None]) -> None:
+        self._on_state_change = cb
+
+    def on_event(self, cb: Callable[[Dict[str, Any]], None]) -> None:
+        self._on_event = cb
+
+    def _set_state(self, state: BridgeState) -> None:
+        old = self.state
+        self.state = state
+        if self._on_state_change and old != state:
+            self._on_state_change(state)
+
+    # === Lifecycle ======================================================
+
+    async def start(self) -> None:
+        """
+        Initialize bridge.
+
+        For persistent mode: spawns subprocess, waits for init event (warm-up).
+        For oneshot mode: just writes config files, marks READY.
+        """
+        logger.info(f"Starting {self.provider_name} bridge "
+                     f"({'persistent' if self.is_persistent else 'oneshot'})")
+        self._setup_config_files()
+
+        if self.is_persistent:
+            await self._start_persistent()
+        else:
+            self._set_state(BridgeState.READY)
+
+    async def stop(self) -> None:
+        """Shutdown bridge."""
+        if self._proc and self._proc.returncode is None:
+            logger.info("Terminating persistent process")
+            try:
+                self._proc.stdin.close()
+                await asyncio.wait_for(self._proc.wait(), timeout=5)
+            except (asyncio.TimeoutError, ProcessLookupError):
+                self._proc.kill()
+            self._proc = None
+        self.session_id = None
+        self._set_state(BridgeState.DISCONNECTED)
+
+    async def _start_persistent(self) -> None:
+        """Spawn long-running process and wait for warm-up (init event)."""
+        self._set_state(BridgeState.WARMING_UP)
+        cmd = self._build_persistent_command()
+        env = {**os.environ, **self.env}
+
+        logger.info(f"Spawning: {' '.join(cmd[:10])}…")
+        self._proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=self.working_dir,
+            env=env,
+        )
+
+        # Read init/system events until the process is ready
+        try:
+            init_events = await self._read_until_turn_complete()
+            sid = self._parse_session_id(init_events)
+            if sid:
+                self.session_id = sid
+            self._set_state(BridgeState.READY)
+            logger.info(f"Warm-up done. Session: {self.session_id}, "
+                        f"PID: {self._proc.pid}")
+        except Exception as exc:
+            logger.error(f"Warm-up failed: {exc}")
+            self._set_state(BridgeState.ERROR)
+            raise
+
+    # === Core API =======================================================
+
+    async def send(self, prompt: str) -> BridgeResponse:
+        """Send prompt, get complete response."""
+        if self.state == BridgeState.DISCONNECTED:
+            await self.start()
+
+        self._set_state(BridgeState.BUSY)
+        t0 = time.time()
+
+        try:
+            if self.is_persistent:
+                events = await self._send_persistent(prompt)
+            else:
+                events = await self._send_oneshot(prompt)
+
+            elapsed = int((time.time() - t0) * 1000)
+            content = self._parse_content(events)
+            sid = self._parse_session_id(events)
+            tools = self._parse_tool_calls(events)
+            usage = self._parse_usage(events)
+
+            if sid:
+                self.session_id = sid
+            self.history.append(Message(role="user", content=prompt))
+            self.history.append(Message(role="assistant", content=content, tool_calls=tools))
+
+            self._set_state(BridgeState.READY)
+            return BridgeResponse(
+                content=content, tool_calls=tools, raw_events=events,
+                duration_ms=elapsed, session_id=self.session_id,
+                token_usage=usage, success=True,
+            )
+
+        except asyncio.TimeoutError:
+            self._set_state(BridgeState.ERROR)
+            return BridgeResponse(content="", duration_ms=int((time.time() - t0) * 1000),
+                                  success=False, error=f"Timeout ({self.timeout}s)")
+        except Exception as exc:
+            logger.error(f"send: {exc}", exc_info=True)
+            self._set_state(BridgeState.ERROR)
+            return BridgeResponse(content="", duration_ms=int((time.time() - t0) * 1000),
+                                  success=False, error=str(exc))
+
+    async def send_stream(self, prompt: str) -> AsyncIterator[str]:
+        """Send prompt, yield text chunks in real-time."""
+        if self.state == BridgeState.DISCONNECTED:
+            await self.start()
+
+        self._set_state(BridgeState.BUSY)
+        full = ""
+        all_events: List[Dict[str, Any]] = []
+
+        try:
+            if self.is_persistent:
+                gen = self._stream_persistent(prompt)
+            else:
+                gen = self._stream_oneshot(prompt)
+
+            async for event in gen:
+                all_events.append(event)
+                if self._on_event:
+                    self._on_event(event)
+                delta = self._extract_text_delta(event)
+                if delta:
+                    full += delta
+                    if self._on_output:
+                        self._on_output(delta)
+                    yield delta
+
+            sid = self._parse_session_id(all_events)
+            if sid:
+                self.session_id = sid
+            self.history.append(Message(role="user", content=prompt))
+            self.history.append(Message(role="assistant", content=full))
+            self._set_state(BridgeState.READY)
+        except Exception:
+            self._set_state(BridgeState.ERROR)
+            raise
+
+    # === PERSISTENT internals ===========================================
+
+    async def _send_persistent(self, prompt: str) -> List[Dict[str, Any]]:
+        if not self._proc or self._proc.returncode is not None:
+            raise RuntimeError("Persistent process not running")
+        line = self._format_user_message(prompt)
+        logger.debug(f"stdin> {line.strip()}")
+        self._proc.stdin.write((line + "\n").encode())
+        await self._proc.stdin.drain()
+        return await self._read_until_turn_complete()
+
+    async def _stream_persistent(self, prompt: str) -> AsyncIterator[Dict[str, Any]]:
+        if not self._proc or self._proc.returncode is not None:
+            raise RuntimeError("Persistent process not running")
+        line = self._format_user_message(prompt)
+        self._proc.stdin.write((line + "\n").encode())
+        await self._proc.stdin.drain()
+        async for event in self._read_events():
+            yield event
+            if self._is_turn_complete(event):
+                break
+
+    async def _read_until_turn_complete(self) -> List[Dict[str, Any]]:
+        events: List[Dict[str, Any]] = []
+        async with self._read_lock:
+            while True:
+                raw = await asyncio.wait_for(
+                    self._proc.stdout.readline(), timeout=self.timeout,
+                )
+                if not raw:
+                    raise RuntimeError("Process exited unexpectedly")
+                text = raw.decode(errors="replace").strip()
+                if not text:
+                    continue
+                try:
+                    event = json.loads(text)
+                except json.JSONDecodeError:
+                    logger.debug(f"non-json: {text[:200]}")
+                    continue
+                events.append(event)
+                if self._on_event:
+                    self._on_event(event)
+                if self._is_turn_complete(event):
+                    break
+        return events
+
+    async def _read_events(self) -> AsyncIterator[Dict[str, Any]]:
+        async with self._read_lock:
+            while True:
+                raw = await asyncio.wait_for(
+                    self._proc.stdout.readline(), timeout=self.timeout,
+                )
+                if not raw:
+                    raise RuntimeError("Process exited unexpectedly")
+                text = raw.decode(errors="replace").strip()
+                if not text:
+                    continue
+                try:
+                    yield json.loads(text)
+                except json.JSONDecodeError:
+                    logger.debug(f"non-json: {text[:200]}")
+
+    # === ONESHOT internals ==============================================
+
+    async def _send_oneshot(self, prompt: str) -> List[Dict[str, Any]]:
+        cmd = self._build_oneshot_command(prompt)
+        env = {**os.environ, **self.env}
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=self.working_dir, env=env,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self.timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise
+
+        if stderr:
+            logger.debug(f"stderr: {stderr.decode(errors='replace')[:500]}")
+
+        events: List[Dict[str, Any]] = []
+        for line in stdout.decode(errors="replace").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                logger.debug(f"non-json: {line[:200]}")
+
+        if proc.returncode != 0 and not events:
+            raise RuntimeError(f"CLI exit {proc.returncode}: "
+                               f"{stderr.decode(errors='replace')[:500]}")
+        return events
+
+    async def _stream_oneshot(self, prompt: str) -> AsyncIterator[Dict[str, Any]]:
+        cmd = self._build_oneshot_command(prompt)
+        env = {**os.environ, **self.env}
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=self.working_dir, env=env,
+        )
+        try:
+            while True:
+                raw = await asyncio.wait_for(proc.stdout.readline(), timeout=self.timeout)
+                if not raw:
+                    break
+                text = raw.decode(errors="replace").strip()
+                if not text:
+                    continue
+                try:
+                    yield json.loads(text)
+                except json.JSONDecodeError:
+                    logger.debug(f"non-json: {text[:200]}")
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise
+        finally:
+            await proc.wait()
+
+    # === History ========================================================
+
+    def get_history(self) -> List[Message]:
+        return list(self.history)
+
+    def clear_history(self) -> None:
+        self.history.clear()
+        self.session_id = None
+
+    # === Health =========================================================
+
+    def is_healthy(self) -> bool:
+        """Quick health check — is bridge operational?"""
+        if self.state == BridgeState.DISCONNECTED:
+            return False
+        if self.state == BridgeState.ERROR:
+            return False
+        if self.is_persistent and self._proc:
+            if self._proc.returncode is not None:
+                return False  # Process died
+        return True
+
+    def check_health(self) -> Dict[str, Any]:
+        """Detailed health check with diagnostics."""
+        health: Dict[str, Any] = {
+            "healthy": self.is_healthy(),
+            "state": self.state.value,
+            "provider": self.provider_name,
+            "session_id": self.session_id,
+            "history_length": len(self.history),
+        }
+        if self._proc:
+            health["pid"] = self._proc.pid
+            health["returncode"] = self._proc.returncode
+        return health
