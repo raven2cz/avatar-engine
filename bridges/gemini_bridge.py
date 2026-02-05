@@ -216,16 +216,33 @@ class GeminiBridge(BaseBridge):
         logger.debug(f"ACP initialized: {init_resp}")
 
         # Step 2: Authenticate with OAuth (Google Pro account)
+        # Note: Some Gemini CLI versions auto-detect cached credentials without
+        # explicit authenticate() call. PR #9410 fixed credential caching.
+        auth_success = False
         try:
             auth_resp = await asyncio.wait_for(
                 self._acp_conn.authenticate(method_id=self.auth_method),
                 timeout=self.timeout,
             )
+            auth_success = True
             logger.info(f"ACP authenticated via: {self.auth_method}")
+        except asyncio.TimeoutError:
+            # Timeout is a real problem - don't silently continue
+            logger.error(f"ACP authentication timed out after {self.timeout}s")
+            raise RuntimeError(
+                f"ACP authentication timed out. Ensure you have valid credentials "
+                f"cached (run 'gemini' interactively first) or check your network."
+            )
         except Exception as exc:
-            # Some versions auto-detect cached creds without explicit call.
-            # The fix in PR #9410 ensures cached creds are preserved.
-            logger.warning(f"ACP authenticate call issue: {exc} — continuing")
+            # Other errors might be OK (e.g., method not supported, auto-detect)
+            exc_str = str(exc).lower()
+            if "not supported" in exc_str or "not implemented" in exc_str:
+                logger.info(f"ACP authenticate not required (auto-detect mode)")
+            else:
+                logger.warning(
+                    f"ACP authenticate issue: {exc} — continuing with cached creds. "
+                    f"If session fails, run 'gemini' interactively to refresh OAuth."
+                )
 
         # Step 3: Create a new session
         mcp_servers_acp = []
@@ -437,6 +454,13 @@ class GeminiBridge(BaseBridge):
 
         settings: Dict[str, Any] = {}
 
+        # Model name (required for proper model selection)
+        if self.model:
+            settings["model"] = {"name": self.model}
+
+        # Enable preview features (required for Gemini 3 models)
+        settings["previewFeatures"] = True
+
         # MCP servers
         if self.mcp_servers:
             mcp = {}
@@ -451,8 +475,14 @@ class GeminiBridge(BaseBridge):
             # Build generateContentConfig from generation_config
             gen_cfg: Dict[str, Any] = {}
 
-            if "temperature" in self.generation_config:
-                gen_cfg["temperature"] = self.generation_config["temperature"]
+            # Temperature: default 1.0 for Gemini 3 (docs recommend not lowering)
+            gen_cfg["temperature"] = self.generation_config.get("temperature", 1.0)
+
+            # Sampling parameters
+            if "top_p" in self.generation_config:
+                gen_cfg["topP"] = self.generation_config["top_p"]
+            if "top_k" in self.generation_config:
+                gen_cfg["topK"] = self.generation_config["top_k"]
 
             if "max_output_tokens" in self.generation_config:
                 gen_cfg["maxOutputTokens"] = self.generation_config["max_output_tokens"]
@@ -469,7 +499,7 @@ class GeminiBridge(BaseBridge):
             if thinking_cfg:
                 gen_cfg["thinkingConfig"] = thinking_cfg
 
-            # Only add modelConfigs if we have something to configure
+            # Add modelConfigs with customAliases
             if gen_cfg:
                 settings["modelConfigs"] = {
                     "customAliases": {

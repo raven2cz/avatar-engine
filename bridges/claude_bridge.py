@@ -150,6 +150,7 @@ class ClaudeBridge(BaseBridge):
             --input-format stream-json  Accept JSONL user messages on stdin
             --output-format stream-json Emit JSONL events on stdout
             --verbose                   Include all event types
+            --include-partial-messages  Enable streaming text deltas (REQUIRED!)
         """
         cmd = [self.executable, "-p"]
 
@@ -161,7 +162,10 @@ class ClaudeBridge(BaseBridge):
         cmd.extend(["--output-format", "stream-json"])
 
         # Include partial messages for streaming deltas
+        # CRITICAL: Without --include-partial-messages, stream_event with
+        # text_delta won't be emitted, breaking real-time streaming!
         cmd.append("--verbose")
+        cmd.append("--include-partial-messages")
 
         # Tool permissions
         if self.allowed_tools:
