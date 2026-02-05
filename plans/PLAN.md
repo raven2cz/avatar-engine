@@ -670,10 +670,92 @@ class AvatarEngine(EventEmitter):
 
 | Task | Description | Priority | Effort |
 |------|-------------|----------|--------|
-| D1 | Create CLI for testing (`cli/__main__.py`) | MEDIUM | 20 min |
+| D1 | Create CLI for testing (`cli/__main__.py`) | MEDIUM | 2.5h |
 | D2 | Add example scripts | LOW | 30 min |
 | D3 | Write tests | MEDIUM | 60 min |
 | D4 | Update documentation | LOW | 30 min |
+
+### Group E: Production Features (Robustness & Observability)
+
+| Task | Description | Priority | Effort |
+|------|-------------|----------|--------|
+| E1 | **ThinkingEvent emission** — Gemini bridge emituje ThinkingEvent při `include_thoughts=True` | HIGH | 30 min |
+| E2 | **Auto-restart** — Engine automaticky restartuje bridge při pádu (configurable) | HIGH | 45 min |
+| E3 | **Logging configuration** — Nastavení loggingu z YAML configu (level, file, format) | MEDIUM | 20 min |
+| E4 | **Rate limiting** — Ochrana proti přetížení API (requests/min, configurable) | MEDIUM | 30 min |
+| E5 | **Metrics export** — Prometheus/OpenTelemetry metriky pro monitoring | LOW | 45 min |
+| E6 | **Graceful shutdown** — Čisté ukončení při SIGTERM/SIGINT | MEDIUM | 15 min |
+
+#### E1: ThinkingEvent Details
+
+```python
+# V GeminiBridge._handle_acp_update():
+if hasattr(update, "thinking") or "thinking" in str(update):
+    self.emit(ThinkingEvent(
+        provider="gemini",
+        thought=extract_thinking(update),
+    ))
+```
+
+#### E2: Auto-restart Details
+
+```python
+# V AvatarEngine:
+class AvatarEngine:
+    def __init__(self, ..., auto_restart: bool = True, max_restarts: int = 3):
+        self._restart_count = 0
+
+    async def _check_and_restart(self):
+        """Periodicky kontroluje health a restartuje při problému."""
+        if not self._bridge.is_healthy() and self._restart_count < self.max_restarts:
+            logger.warning("Bridge unhealthy, restarting...")
+            await self._bridge.stop()
+            await self._bridge.start()
+            self._restart_count += 1
+```
+
+#### E3: Logging Configuration
+
+```yaml
+# config.yaml
+logging:
+  level: "INFO"           # DEBUG, INFO, WARNING, ERROR
+  file: "avatar.log"      # Optional log file
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  max_bytes: 10485760     # 10MB rotation
+  backup_count: 3
+```
+
+#### E4: Rate Limiting
+
+```python
+# avatar_engine/utils/rate_limit.py
+class RateLimiter:
+    def __init__(self, requests_per_minute: int = 60):
+        self._requests = []
+        self._rpm = requests_per_minute
+
+    async def acquire(self):
+        """Wait if rate limit exceeded."""
+        now = time.time()
+        self._requests = [t for t in self._requests if now - t < 60]
+        if len(self._requests) >= self._rpm:
+            wait_time = 60 - (now - self._requests[0])
+            await asyncio.sleep(wait_time)
+        self._requests.append(time.time())
+```
+
+#### E5: Metrics Export
+
+```python
+# avatar_engine/utils/metrics.py
+from prometheus_client import Counter, Histogram, Gauge
+
+REQUESTS_TOTAL = Counter("avatar_requests_total", "Total requests", ["provider", "status"])
+REQUEST_DURATION = Histogram("avatar_request_duration_seconds", "Request duration")
+ACTIVE_SESSIONS = Gauge("avatar_active_sessions", "Active sessions", ["provider"])
+COST_TOTAL = Counter("avatar_cost_usd_total", "Total cost in USD", ["provider"])
+```
 
 ---
 
@@ -722,10 +804,29 @@ D2 → D3 → D4
 examples → tests → docs
 ```
 
-**Celkem: ~9.5h práce**
+### Phase 8: Production Features (3h) 🚀
+```
+E1 → E2 → E6 → E3 → E4 → E5
+ThinkingEvent → Auto-restart → Graceful shutdown → Logging → Rate limiting → Metrics
+```
+
+**Priority order:**
+1. **E1 ThinkingEvent** — Gemini 3 thinking je důležitá feature
+2. **E2 Auto-restart** — Kritické pro production stability
+3. **E6 Graceful shutdown** — Nutné pro containerized deployments
+4. **E3 Logging** — Debugging v production
+5. **E4 Rate limiting** — Ochrana proti API limits
+6. **E5 Metrics** — Nice to have pro monitoring
+
+---
+
+**Celkem: ~12.5h práce** (původně 9.5h + 3h production features)
 
 > **DŮLEŽITÉ:** Phase 3 (Group C0) obsahuje kritické technické opravy!
 > Bez nich Gemini 3 a Claude streaming nebudou fungovat správně.
+
+> **POZNÁMKA:** Phase 8 (Group E) je pro production-ready deployment.
+> Bez těchto features je library funkční, ale méně robustní.
 
 ---
 
@@ -883,10 +984,26 @@ engine:
   max_restarts: 3
   health_check_interval: 30
 
-# === Logging ===
+# === Logging (E3) ===
 logging:
-  level: "INFO"
-  file: ""
+  level: "INFO"                # DEBUG, INFO, WARNING, ERROR
+  file: "avatar.log"           # Optional log file (empty = stdout only)
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  max_bytes: 10485760          # 10MB rotation
+  backup_count: 3
+
+# === Rate Limiting (E4) ===
+rate_limit:
+  enabled: true
+  requests_per_minute: 60      # Max requests per minute
+  burst: 10                    # Allow short bursts
+
+# === Metrics (E5) ===
+metrics:
+  enabled: false
+  type: "prometheus"           # prometheus | opentelemetry
+  port: 9090                   # Prometheus metrics port
+  endpoint: "/metrics"
 ```
 
 ---
@@ -894,24 +1011,33 @@ logging:
 ## 10. Success Criteria
 
 ### Library Requirements
-- [ ] Installable via `pip install .`
-- [ ] Clean public API (`from avatar_engine import AvatarEngine`)
+- [x] Installable via `pip install .`
+- [x] Clean public API (`from avatar_engine import AvatarEngine`)
 - [ ] Full type hints (mypy --strict passes)
-- [ ] Both async and sync interfaces
-- [ ] Event system working for GUI callbacks
+- [x] Both async and sync interfaces
+- [x] Event system working for GUI callbacks
 
 ### Functional Requirements
-- [ ] Gemini ACP warm session working
-- [ ] Claude stream-json bidirectional working
-- [ ] Streaming shows real-time text
-- [ ] Health checks detect dead processes
-- [ ] Fallback works when primary mode fails
+- [x] Gemini ACP warm session working
+- [x] Claude stream-json bidirectional working
+- [x] Streaming shows real-time text
+- [x] Health checks detect dead processes
+- [x] Fallback works when primary mode fails
 
 ### Quality Requirements
-- [ ] All tests pass
+- [x] Core tests pass (63 tests)
+- [ ] Bridge tests pass (mocks required)
 - [ ] No security vulnerabilities
 - [ ] Documentation complete
 - [ ] Examples work
+
+### Production Requirements (Group E)
+- [ ] ThinkingEvent emitted from Gemini bridge
+- [ ] Auto-restart on bridge failure
+- [ ] Graceful shutdown on SIGTERM/SIGINT
+- [ ] Configurable logging from YAML
+- [ ] Rate limiting protection
+- [ ] Prometheus/OpenTelemetry metrics
 
 ---
 
