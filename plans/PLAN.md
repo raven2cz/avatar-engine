@@ -1025,19 +1025,19 @@ metrics:
 - [x] Fallback works when primary mode fails
 
 ### Quality Requirements
-- [x] Core tests pass (63 tests)
-- [ ] Bridge tests pass (mocks required)
-- [ ] No security vulnerabilities
-- [ ] Documentation complete
-- [ ] Examples work
+- [x] Core tests pass (184 tests)
+- [x] Bridge tests pass (mocks required)
+- [x] No security vulnerabilities
+- [x] Documentation complete
+- [x] Examples work
 
 ### Production Requirements (Group E)
-- [ ] ThinkingEvent emitted from Gemini bridge
-- [ ] Auto-restart on bridge failure
-- [ ] Graceful shutdown on SIGTERM/SIGINT
-- [ ] Configurable logging from YAML
-- [ ] Rate limiting protection
-- [ ] Prometheus/OpenTelemetry metrics
+- [x] ThinkingEvent emitted from Gemini bridge
+- [x] Auto-restart on bridge failure
+- [x] Graceful shutdown on SIGTERM/SIGINT
+- [x] Configurable logging from YAML
+- [x] Rate limiting protection
+- [x] Prometheus/OpenTelemetry metrics (simple + optional)
 
 ---
 
