@@ -55,6 +55,14 @@ packages = ["avatar_engine"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Exclude integration tests from default runs
+addopts = "--ignore=tests/integration"
+markers = [
+    "integration: marks tests as integration tests (require real CLI tools)",
+    "gemini: marks tests as requiring Gemini CLI",
+    "claude: marks tests as requiring Claude CLI",
+    "slow: marks tests as slow (API calls)",
+]
 
 [tool.mypy]
 python_version = "3.10"
