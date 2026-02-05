@@ -243,13 +243,13 @@ def create_mcp_server() -> 'Server':
         return [
             Tool(
                 name="avatar_speak",
-                description="Make the avatar speak text with optional emotion and speed",
+                description="Trigger avatar's text-to-speech and lip-sync animation. Use ONLY when user explicitly requests the avatar to speak aloud, for TTS output, or for voice announcements. Do NOT use for regular text responses.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "text": {
                             "type": "string",
-                            "description": "Text for avatar to speak"
+                            "description": "Text for avatar to speak aloud via TTS"
                         },
                         "emotion": {
                             "type": "string",
@@ -267,13 +267,13 @@ def create_mcp_server() -> 'Server':
             ),
             Tool(
                 name="avatar_emotion",
-                description="Set avatar's emotional expression",
+                description="Change avatar's facial expression/mood. Use when user explicitly asks the avatar to show an emotion or change its visual mood.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "emotion": {
                             "type": "string",
-                            "description": "Emotion to set: neutral, happy, sad, angry, surprised, thinking"
+                            "description": "Emotion to display: neutral, happy, sad, angry, surprised, thinking"
                         }
                     },
                     "required": ["emotion"]
@@ -281,7 +281,7 @@ def create_mcp_server() -> 'Server':
             ),
             Tool(
                 name="avatar_gesture",
-                description="Make avatar perform a gesture",
+                description="Trigger avatar body animation (wave, nod, etc). Use when user explicitly requests a physical gesture or body movement.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -300,7 +300,7 @@ def create_mcp_server() -> 'Server':
             ),
             Tool(
                 name="avatar_status",
-                description="Get current avatar status (emotion, speaking state)",
+                description="Get current avatar state (emotion, speaking status). Use for diagnostics or when user asks about avatar's current state.",
                 inputSchema={
                     "type": "object",
                     "properties": {}
@@ -308,7 +308,7 @@ def create_mcp_server() -> 'Server':
             ),
             Tool(
                 name="avatar_animation",
-                description="Play a predefined animation",
+                description="Play a predefined avatar animation sequence. Use when user requests a specific animation by name.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -322,7 +322,7 @@ def create_mcp_server() -> 'Server':
             ),
             Tool(
                 name="system_time",
-                description="Get current time, date and day of week",
+                description="Get current system time, date and day of week. Use when user asks about current time or date.",
                 inputSchema={
                     "type": "object",
                     "properties": {}
@@ -330,7 +330,7 @@ def create_mcp_server() -> 'Server':
             ),
             Tool(
                 name="system_command",
-                description="Run a safe shell command (ls, pwd, date, whoami, echo, cat only)",
+                description="Run a safe shell command (ls, pwd, date, whoami, echo, cat only). Use only when user explicitly requests to run a system command.",
                 inputSchema={
                     "type": "object",
                     "properties": {
