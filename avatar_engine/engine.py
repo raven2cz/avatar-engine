@@ -117,6 +117,7 @@ class AvatarEngine(EventEmitter):
         self._signal_handlers_installed = False
         self._original_sigterm = None
         self._original_sigint = None
+        self._sync_loop: Optional[asyncio.AbstractEventLoop] = None  # For sync wrappers
 
         # Rate limiter
         if config:
@@ -204,13 +205,28 @@ class AvatarEngine(EventEmitter):
 
     # === Lifecycle (sync wrappers) ===
 
+    def _get_sync_loop(self) -> asyncio.AbstractEventLoop:
+        """Get or create the event loop for sync operations."""
+        if self._sync_loop is None or self._sync_loop.is_closed():
+            self._sync_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._sync_loop)
+        return self._sync_loop
+
     def start_sync(self) -> None:
         """Start the engine (sync wrapper)."""
-        asyncio.run(self.start())
+        loop = self._get_sync_loop()
+        loop.run_until_complete(self.start())
 
     def stop_sync(self) -> None:
         """Stop the engine (sync wrapper)."""
-        asyncio.run(self.stop())
+        if self._sync_loop is None or self._sync_loop.is_closed():
+            return  # Already stopped or never started
+        try:
+            self._sync_loop.run_until_complete(self.stop())
+        finally:
+            if self._sync_loop and not self._sync_loop.is_closed():
+                self._sync_loop.close()
+            self._sync_loop = None
 
     # === Chat API (async) ===
 
@@ -276,7 +292,8 @@ class AvatarEngine(EventEmitter):
 
     def chat_sync(self, message: str) -> BridgeResponse:
         """Send a message (sync wrapper)."""
-        return asyncio.run(self.chat(message))
+        loop = self._get_sync_loop()
+        return loop.run_until_complete(self.chat(message))
 
     def chat_async(
         self,
