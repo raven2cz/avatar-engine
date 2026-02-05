@@ -1,0 +1,79 @@
+# Avatar Engine Configuration Example
+#
+# Copy this file and customize for your application.
+# Usage: engine = AvatarEngine.from_config("config.yaml")
+
+provider: "gemini"  # gemini | claude
+
+# === Gemini Configuration ===
+gemini:
+  executable: "gemini"
+  model: ""  # Empty = use Gemini CLI default
+  timeout: 120
+  approval_mode: "yolo"  # yolo | default | plan
+  auth_method: "oauth-personal"
+  acp_enabled: true
+
+  generation_config:
+    temperature: 1.0
+    top_p: 0.95
+    top_k: 64
+    # thinking_level: "high"  # minimal | low | medium | high
+    # include_thoughts: false
+
+  # MCP servers for Gemini
+  mcp_servers:
+    # example:
+    #   command: "python"
+    #   args: ["mcp_server.py"]
+    #   env:
+    #     DEBUG: "1"
+
+# === Claude Configuration ===
+claude:
+  executable: "claude"
+  model: "claude-sonnet-4-5"
+  timeout: 120
+  permission_mode: "acceptEdits"
+  strict_mcp_config: true
+
+  cost_control:
+    max_turns: 10
+    max_budget_usd: 5.0
+
+  allowed_tools:
+    - "Read"
+    - "Grep"
+    - "Glob"
+    # - "mcp__avatar-tools__*"
+
+  # MCP servers for Claude
+  mcp_servers: {}
+
+# === Engine Settings ===
+engine:
+  working_dir: ""  # Empty = current directory
+  max_history: 100
+  auto_restart: true
+  max_restarts: 3
+  health_check_interval: 30  # seconds, 0 = disabled
+
+# === Logging ===
+logging:
+  level: "INFO"  # DEBUG | INFO | WARNING | ERROR
+  file: ""  # Empty = stdout only
+  format: "%(asctime)s %(name)s %(levelname)s %(message)s"
+  max_bytes: 10485760  # 10MB
+  backup_count: 3
+
+# === Rate Limiting ===
+rate_limit:
+  enabled: true
+  requests_per_minute: 60
+  burst: 10
+
+# === Metrics (optional) ===
+metrics:
+  enabled: false
+  type: "simple"  # simple | prometheus
+  port: 9090

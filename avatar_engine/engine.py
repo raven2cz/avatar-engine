@@ -10,13 +10,18 @@ The engine hides the difference — you always just call chat()/chat_stream().
 """
 
 import asyncio
+import dataclasses
 import logging
+import signal
+import sys
 import time
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
 
 from .bridges import BaseBridge, ClaudeBridge, GeminiBridge
 from .config import AvatarConfig
+from .utils.logging import setup_logging
+from .utils.rate_limit import RateLimiter
 from .events import (
     EventEmitter,
     AvatarEvent,
@@ -25,6 +30,7 @@ from .events import (
     StateEvent,
     ErrorEvent,
     CostEvent,
+    ThinkingEvent,
 )
 from .types import BridgeResponse, BridgeState, HealthStatus, Message, ProviderType
 
@@ -106,16 +112,25 @@ class AvatarEngine(EventEmitter):
         self._started = False
         self._start_time: Optional[float] = None
         self._restart_count = 0
+        self._health_check_task: Optional[asyncio.Task] = None
+        self._shutting_down = False
+        self._signal_handlers_installed = False
+        self._original_sigterm = None
+        self._original_sigint = None
 
-        # Setup logging
+        # Rate limiter
         if config:
-            level = getattr(logging, config.log_level.upper(), logging.INFO)
-            logging.basicConfig(
-                level=level,
-                format="%(asctime)s %(name)s %(levelname)s %(message)s"
+            self._rate_limiter = RateLimiter(
+                requests_per_minute=config.rate_limit_rpm,
+                burst=config.rate_limit_burst,
+                enabled=config.rate_limit_enabled,
             )
-            if config.log_file:
-                logging.getLogger().addHandler(logging.FileHandler(config.log_file))
+        else:
+            self._rate_limiter = RateLimiter(enabled=False)
+
+        # Setup logging from config (with file rotation support)
+        if config:
+            setup_logging(config)
 
     @classmethod
     def from_config(cls, config_path: str) -> "AvatarEngine":
@@ -138,6 +153,7 @@ class AvatarEngine(EventEmitter):
         if self._started:
             return
 
+        self._shutting_down = False
         self._bridge = self._create_bridge()
         self._setup_bridge_callbacks()
 
@@ -150,6 +166,15 @@ class AvatarEngine(EventEmitter):
                 f"({'persistent' if self._bridge.is_persistent else 'oneshot'}) "
                 f"session_id={self._bridge.session_id}"
             )
+
+            # Start background health check if configured
+            interval = self._get_health_check_interval()
+            if interval > 0:
+                self._health_check_task = asyncio.create_task(
+                    self._health_check_loop(interval)
+                )
+                logger.debug(f"Started health check task (interval: {interval}s)")
+
         except Exception as e:
             self.emit(ErrorEvent(
                 provider=self._provider.value,
@@ -160,6 +185,17 @@ class AvatarEngine(EventEmitter):
 
     async def stop(self) -> None:
         """Stop the engine (async)."""
+        self._shutting_down = True
+
+        # Cancel health check task
+        if self._health_check_task and not self._health_check_task.done():
+            self._health_check_task.cancel()
+            try:
+                await self._health_check_task
+            except asyncio.CancelledError:
+                pass
+            self._health_check_task = None
+
         if self._bridge:
             await self._bridge.stop()
         self._started = False
@@ -190,6 +226,11 @@ class AvatarEngine(EventEmitter):
         """
         if not self._started:
             await self.start()
+
+        # Apply rate limiting
+        wait_time = await self._rate_limiter.acquire()
+        if wait_time > 0:
+            logger.debug(f"Rate limited, waited {wait_time:.2f}s")
 
         response = await self._bridge.send(message)
 
@@ -222,6 +263,11 @@ class AvatarEngine(EventEmitter):
         """
         if not self._started:
             await self.start()
+
+        # Apply rate limiting
+        wait_time = await self._rate_limiter.acquire()
+        if wait_time > 0:
+            logger.debug(f"Rate limited, waited {wait_time:.2f}s")
 
         async for chunk in self._bridge.send_stream(message):
             yield chunk
@@ -284,7 +330,10 @@ class AvatarEngine(EventEmitter):
 
         health_dict = self._bridge.check_health()
         health_dict["uptime_seconds"] = time.time() - self._start_time if self._start_time else 0
-        return HealthStatus(**health_dict)
+        # Filter to only valid HealthStatus fields
+        valid_fields = {f.name for f in dataclasses.fields(HealthStatus)}
+        filtered = {k: v for k, v in health_dict.items() if k in valid_fields}
+        return HealthStatus(**filtered)
 
     # === History ===
 
@@ -315,6 +364,23 @@ class AvatarEngine(EventEmitter):
     def is_warm(self) -> bool:
         """True if the bridge is persistent (warm session)."""
         return self._bridge.is_persistent if self._bridge else False
+
+    @property
+    def restart_count(self) -> int:
+        """Get current restart count."""
+        return self._restart_count
+
+    @property
+    def max_restarts(self) -> int:
+        """Get maximum restart attempts."""
+        if self._config:
+            return self._config.max_restarts
+        return 3
+
+    @property
+    def rate_limit_stats(self) -> dict:
+        """Get rate limiter statistics."""
+        return self._rate_limiter.get_stats()
 
     # === Internal ===
 
@@ -359,7 +425,7 @@ class AvatarEngine(EventEmitter):
             pcfg = self._config.gemini_config if self._config else self._kwargs
             return GeminiBridge(
                 executable=pcfg.get("executable", "gemini"),
-                model=self._model or pcfg.get("model", "gemini-3-pro-preview"),
+                model=self._model or pcfg.get("model", ""),  # Empty = Gemini CLI default
                 approval_mode=pcfg.get("approval_mode", "yolo"),
                 auth_method=pcfg.get("auth_method", "oauth-personal"),
                 acp_enabled=pcfg.get("acp_enabled", True),
@@ -392,8 +458,15 @@ class AvatarEngine(EventEmitter):
         """Process raw events from bridge and emit typed events."""
         event_type = event.get("type", "")
 
+        # Thinking events (Gemini 3 with include_thoughts=True)
+        if event_type == "thinking":
+            self.emit(ThinkingEvent(
+                provider=self._provider.value,
+                thought=event.get("thought", ""),
+            ))
+
         # Tool events
-        if event_type == "tool_use":
+        elif event_type == "tool_use":
             self.emit(ToolEvent(
                 provider=self._provider.value,
                 tool_name=event.get("tool_name", event.get("name", "")),
@@ -421,6 +494,198 @@ class AvatarEngine(EventEmitter):
 
     async def _restart(self) -> None:
         """Restart the engine."""
+        if self._shutting_down:
+            return
+
         self._restart_count += 1
-        await self.stop()
-        await self.start()
+        logger.info(f"Restarting engine (attempt {self._restart_count})")
+
+        # Stop bridge but keep health check task management in stop()
+        old_task = self._health_check_task
+        self._health_check_task = None  # Prevent stop() from cancelling it
+
+        if self._bridge:
+            await self._bridge.stop()
+        self._bridge = None
+        self._started = False
+
+        # Restore task reference for proper cleanup on next stop()
+        self._health_check_task = old_task
+
+        # Start fresh bridge
+        self._bridge = self._create_bridge()
+        self._setup_bridge_callbacks()
+
+        try:
+            await self._bridge.start()
+            self._started = True
+            logger.info(f"Engine restarted successfully (session: {self._bridge.session_id})")
+            self.emit(StateEvent(
+                provider=self._provider.value,
+                new_state=BridgeState.READY,
+            ))
+        except Exception as e:
+            logger.error(f"Restart failed: {e}")
+            self.emit(ErrorEvent(
+                provider=self._provider.value,
+                error=f"Restart failed: {e}",
+                recoverable=self._should_restart(),
+            ))
+            raise
+
+    def _get_health_check_interval(self) -> int:
+        """Get health check interval from config."""
+        if self._config:
+            return self._config.health_check_interval
+        return 30  # Default 30 seconds
+
+    async def _health_check_loop(self, interval: int) -> None:
+        """Background task that periodically checks health and triggers restart."""
+        while not self._shutting_down:
+            try:
+                await asyncio.sleep(interval)
+
+                if self._shutting_down or not self._started:
+                    break
+
+                if not self.is_healthy():
+                    logger.warning("Health check failed, bridge unhealthy")
+                    self.emit(ErrorEvent(
+                        provider=self._provider.value,
+                        error="Bridge health check failed",
+                        recoverable=self._should_restart(),
+                    ))
+
+                    if self._should_restart():
+                        try:
+                            await self._restart()
+                        except Exception as e:
+                            logger.error(f"Auto-restart failed: {e}")
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Health check error: {e}")
+
+    def reset_restart_count(self) -> None:
+        """Reset the restart counter (e.g., after successful operation)."""
+        self._restart_count = 0
+
+    # === Signal Handling (Graceful Shutdown) ===
+
+    def install_signal_handlers(self) -> None:
+        """
+        Install SIGTERM and SIGINT handlers for graceful shutdown.
+
+        Call this to enable graceful shutdown when running in containers
+        or as a daemon. The engine will cleanly stop when receiving
+        SIGTERM (Kubernetes pod termination) or SIGINT (Ctrl+C).
+
+        Example:
+            engine = AvatarEngine()
+            engine.install_signal_handlers()
+            engine.start_sync()
+            # ... engine runs until SIGTERM/SIGINT ...
+        """
+        if self._signal_handlers_installed:
+            return
+
+        # Store original handlers so we can restore them
+        self._original_sigterm = signal.getsignal(signal.SIGTERM)
+        self._original_sigint = signal.getsignal(signal.SIGINT)
+
+        def handle_signal(signum: int, frame: Any) -> None:
+            sig_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
+            logger.info(f"Received {sig_name}, initiating graceful shutdown...")
+            self._initiate_shutdown()
+
+        signal.signal(signal.SIGTERM, handle_signal)
+        signal.signal(signal.SIGINT, handle_signal)
+        self._signal_handlers_installed = True
+        logger.debug("Signal handlers installed for graceful shutdown")
+
+    def remove_signal_handlers(self) -> None:
+        """
+        Remove signal handlers and restore original behavior.
+        """
+        if not self._signal_handlers_installed:
+            return
+
+        if self._original_sigterm is not None:
+            signal.signal(signal.SIGTERM, self._original_sigterm)
+        if self._original_sigint is not None:
+            signal.signal(signal.SIGINT, self._original_sigint)
+
+        self._signal_handlers_installed = False
+        logger.debug("Signal handlers removed")
+
+    def _initiate_shutdown(self) -> None:
+        """Initiate graceful shutdown from signal handler."""
+        self._shutting_down = True
+
+        # Try to stop gracefully in an async context
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context, schedule the stop
+            asyncio.create_task(self._graceful_shutdown())
+        except RuntimeError:
+            # No running loop, use sync shutdown
+            try:
+                asyncio.run(self._graceful_shutdown())
+            except Exception as e:
+                logger.error(f"Shutdown error: {e}")
+                # Force exit if graceful shutdown fails
+                sys.exit(1)
+
+    async def _graceful_shutdown(self) -> None:
+        """Perform graceful shutdown."""
+        logger.info("Performing graceful shutdown...")
+
+        try:
+            await self.stop()
+            logger.info("Graceful shutdown complete")
+        except Exception as e:
+            logger.error(f"Error during graceful shutdown: {e}")
+            raise
+
+    async def run_until_signal(self) -> None:
+        """
+        Run the engine until a termination signal is received.
+
+        This is useful for daemon/server mode where the engine should
+        run indefinitely until SIGTERM or SIGINT is received.
+
+        Example:
+            async def main():
+                engine = AvatarEngine()
+                await engine.start()
+                await engine.run_until_signal()
+                # Engine is now stopped
+
+            asyncio.run(main())
+        """
+        if not self._started:
+            await self.start()
+
+        self.install_signal_handlers()
+
+        # Wait until shutdown is initiated
+        try:
+            while not self._shutting_down:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            pass
+
+        # Clean up
+        self.remove_signal_handlers()
+
+    def run_until_signal_sync(self) -> None:
+        """
+        Sync version of run_until_signal.
+
+        Example:
+            engine = AvatarEngine()
+            engine.run_until_signal_sync()
+            # Engine runs until SIGTERM/SIGINT
+        """
+        asyncio.run(self.run_until_signal())

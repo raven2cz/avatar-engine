@@ -26,7 +26,7 @@ classifiers = [
 ]
 dependencies = [
     "pyyaml>=6.0",
-    "acp>=0.1.0",
+    "acp>=0.0.0",
 ]
 
 [project.optional-dependencies]
@@ -37,11 +37,12 @@ dev = [
     "ruff>=0.1",
 ]
 cli = [
+    "click>=8.0",
     "rich>=13.0",
 ]
 
 [project.scripts]
-avatar = "avatar_engine.cli:main"
+avatar = "avatar_engine.cli:cli"
 
 [project.urls]
 Homepage = "https://github.com/raven2cz/avatar-engine"

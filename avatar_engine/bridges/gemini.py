@@ -67,7 +67,7 @@ class GeminiBridge(BaseBridge):
     def __init__(
         self,
         executable: str = "gemini",
-        model: str = "gemini-2.5-pro",
+        model: str = "",  # Empty = use Gemini CLI default
         working_dir: str = "",
         timeout: int = 120,
         system_prompt: str = "",
@@ -283,8 +283,20 @@ class GeminiBridge(BaseBridge):
         self._acp_session_id = None
 
     def _handle_acp_update(self, session_id: str, update: Any) -> None:
-        """Callback for ACP session/update notifications (streaming text)."""
+        """Callback for ACP session/update notifications (streaming text + thinking)."""
         event = {"type": "acp_update", "session_id": session_id, "raw": str(update)}
+
+        # Extract thinking content from update (Gemini 3 with include_thoughts=True)
+        thinking = _extract_thinking_from_update(update)
+        if thinking:
+            thinking_event = {
+                "type": "thinking",
+                "session_id": session_id,
+                "thought": thinking,
+            }
+            self._acp_events.append(thinking_event)
+            if self._on_event:
+                self._on_event(thinking_event)
 
         # Extract text content from update
         text = _extract_text_from_update(update)
@@ -666,6 +678,56 @@ else:
 # ==========================================================================
 # Helpers for extracting text from ACP response objects
 # ==========================================================================
+
+
+def _extract_thinking_from_update(update: Any) -> Optional[str]:
+    """Extract thinking content from an ACP session/update notification (Gemini 3)."""
+    try:
+        # Direct thinking attribute
+        if hasattr(update, "thinking") and update.thinking:
+            if hasattr(update.thinking, "text"):
+                return update.thinking.text
+            if isinstance(update.thinking, str):
+                return update.thinking
+
+        # Thinking in content blocks
+        if hasattr(update, "content"):
+            content = update.content
+            if isinstance(content, list):
+                for block in content:
+                    # Check for thinking content block type
+                    if hasattr(block, "type") and block.type == "thinking":
+                        if hasattr(block, "text"):
+                            return block.text
+                    # Check for thinking attribute on block
+                    if hasattr(block, "thinking"):
+                        return block.thinking
+
+        # ACP update with agent_message containing thinking
+        if hasattr(update, "agent_message"):
+            msg = update.agent_message
+            if hasattr(msg, "thinking") and msg.thinking:
+                return msg.thinking
+            if hasattr(msg, "content") and msg.content:
+                for block in msg.content:
+                    if hasattr(block, "type") and getattr(block, "type", "") == "thinking":
+                        if hasattr(block, "text"):
+                            return block.text
+
+        # Dict-style access
+        if isinstance(update, dict):
+            if "thinking" in update:
+                return update["thinking"]
+            msg = update.get("agentMessage", {})
+            if "thinking" in msg:
+                return msg["thinking"]
+            for block in msg.get("content", []):
+                if isinstance(block, dict) and block.get("type") == "thinking":
+                    return block.get("text")
+
+    except Exception as exc:
+        logger.debug(f"Could not extract thinking from update: {exc}")
+    return None
 
 
 def _extract_text_from_update(update: Any) -> Optional[str]:

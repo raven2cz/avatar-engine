@@ -36,10 +36,24 @@ class AvatarConfig:
     max_history: int = 100
     auto_restart: bool = True
     max_restarts: int = 3
+    health_check_interval: int = 30  # seconds, 0 = disabled
 
     # Logging
     log_level: str = "INFO"
     log_file: str = ""
+    log_format: str = "%(asctime)s %(name)s %(levelname)s %(message)s"
+    log_max_bytes: int = 10485760  # 10MB
+    log_backup_count: int = 3
+
+    # Rate limiting
+    rate_limit_enabled: bool = True
+    rate_limit_rpm: int = 60  # requests per minute
+    rate_limit_burst: int = 10
+
+    # Metrics
+    metrics_enabled: bool = False
+    metrics_type: str = "simple"  # prometheus, opentelemetry, simple
+    metrics_port: int = 9090
 
     @classmethod
     def load(cls, path: str) -> "AvatarConfig":
@@ -86,6 +100,8 @@ class AvatarConfig:
         # Engine settings
         engine_cfg = data.get("engine", data.get("avatar", {}))
         logging_cfg = data.get("logging", {})
+        rate_limit_cfg = data.get("rate_limit", {})
+        metrics_cfg = data.get("metrics", {})
 
         # Build provider kwargs (everything except common fields)
         provider_kwargs = {k: v for k, v in active_cfg.items()
@@ -103,8 +119,18 @@ class AvatarConfig:
             max_history=engine_cfg.get("max_history", 100),
             auto_restart=engine_cfg.get("auto_restart", True),
             max_restarts=engine_cfg.get("max_restarts", 3),
+            health_check_interval=engine_cfg.get("health_check_interval", 30),
             log_level=logging_cfg.get("level", "INFO"),
             log_file=logging_cfg.get("file", ""),
+            log_format=logging_cfg.get("format", "%(asctime)s %(name)s %(levelname)s %(message)s"),
+            log_max_bytes=logging_cfg.get("max_bytes", 10485760),
+            log_backup_count=logging_cfg.get("backup_count", 3),
+            rate_limit_enabled=rate_limit_cfg.get("enabled", True),
+            rate_limit_rpm=rate_limit_cfg.get("requests_per_minute", 60),
+            rate_limit_burst=rate_limit_cfg.get("burst", 10),
+            metrics_enabled=metrics_cfg.get("enabled", False),
+            metrics_type=metrics_cfg.get("type", "simple"),
+            metrics_port=metrics_cfg.get("port", 9090),
         )
 
     def get_provider_config(self) -> Dict[str, Any]:
@@ -145,10 +171,24 @@ class AvatarConfig:
                 "max_history": self.max_history,
                 "auto_restart": self.auto_restart,
                 "max_restarts": self.max_restarts,
+                "health_check_interval": self.health_check_interval,
             },
             "logging": {
                 "level": self.log_level,
                 "file": self.log_file,
+                "format": self.log_format,
+                "max_bytes": self.log_max_bytes,
+                "backup_count": self.log_backup_count,
+            },
+            "rate_limit": {
+                "enabled": self.rate_limit_enabled,
+                "requests_per_minute": self.rate_limit_rpm,
+                "burst": self.rate_limit_burst,
+            },
+            "metrics": {
+                "enabled": self.metrics_enabled,
+                "type": self.metrics_type,
+                "port": self.metrics_port,
             },
         }
 
