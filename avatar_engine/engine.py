@@ -334,11 +334,16 @@ class AvatarEngine(EventEmitter):
 
         if self._provider == ProviderType.CLAUDE:
             pcfg = self._config.claude_config if self._config else self._kwargs
+            # Extract cost_control settings if present
+            cost_cfg = pcfg.get("cost_control", {})
             return ClaudeBridge(
                 executable=pcfg.get("executable", "claude"),
                 model=self._model or pcfg.get("model", "claude-sonnet-4-5"),
                 allowed_tools=pcfg.get("allowed_tools", []),
                 permission_mode=pcfg.get("permission_mode", "acceptEdits"),
+                strict_mcp_config=pcfg.get("strict_mcp_config", False),
+                max_turns=cost_cfg.get("max_turns"),
+                max_budget_usd=cost_cfg.get("max_budget_usd"),
                 **common,
             )
         else:
