@@ -55,6 +55,9 @@ class ClaudeBridge(BaseBridge):
         strict_mcp_config: bool = False,
         max_turns: Optional[int] = None,
         max_budget_usd: Optional[float] = None,
+        json_schema: Optional[Dict[str, Any]] = None,
+        continue_session: bool = False,
+        resume_session_id: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         mcp_servers: Optional[Dict[str, Any]] = None,
     ):
@@ -68,6 +71,9 @@ class ClaudeBridge(BaseBridge):
         self.strict_mcp_config = strict_mcp_config
         self.max_turns = max_turns
         self.max_budget_usd = max_budget_usd
+        self.json_schema = json_schema
+        self.continue_session = continue_session
+        self.resume_session_id = resume_session_id
 
         # Track whether we're in persistent mode (can fall back to oneshot)
         self._persistent_mode = True
@@ -218,6 +224,18 @@ class ClaudeBridge(BaseBridge):
         if self.max_turns:
             cmd.extend(["--max-turns", str(self.max_turns)])
 
+        # Session management
+        if self.continue_session:
+            cmd.append("--continue")
+        elif self.resume_session_id:
+            cmd.extend(["--resume", self.resume_session_id])
+
+        # Structured output (JSON schema)
+        if self.json_schema:
+            schema_path = Path(self.working_dir) / ".claude_schema.json"
+            schema_path.write_text(json.dumps(self.json_schema, indent=2))
+            cmd.extend(["--json-schema", str(schema_path)])
+
         return cmd
 
     def _format_user_message(self, prompt: str) -> str:
@@ -269,6 +287,19 @@ class ClaudeBridge(BaseBridge):
         # Cost control
         if self.max_turns:
             cmd.extend(["--max-turns", str(self.max_turns)])
+
+        # Session management (for oneshot, --resume takes priority over --continue)
+        if not self.session_id:
+            if self.continue_session:
+                cmd.append("--continue")
+            elif self.resume_session_id:
+                cmd.extend(["--resume", self.resume_session_id])
+
+        # Structured output (JSON schema)
+        if self.json_schema:
+            schema_path = Path(self.working_dir) / ".claude_schema.json"
+            schema_path.write_text(json.dumps(self.json_schema, indent=2))
+            cmd.extend(["--json-schema", str(schema_path)])
 
         return cmd
 

@@ -80,10 +80,13 @@ class BaseBridge(ABC):
 
         self._proc: Optional[asyncio.subprocess.Process] = None
         self._read_lock = asyncio.Lock()
+        self._stderr_task: Optional[asyncio.Task] = None
+        self._stderr_buffer: List[str] = []
 
         self._on_output: Optional[Callable[[str], None]] = None
         self._on_state_change: Optional[Callable[[BridgeState], None]] = None
         self._on_event: Optional[Callable[[Dict[str, Any]], None]] = None
+        self._on_stderr: Optional[Callable[[str], None]] = None
 
     # === Abstract interface =============================================
 
@@ -144,6 +147,18 @@ class BaseBridge(ABC):
     def on_event(self, cb: Callable[[Dict[str, Any]], None]) -> None:
         self._on_event = cb
 
+    def on_stderr(self, cb: Callable[[str], None]) -> None:
+        """Register callback for stderr output."""
+        self._on_stderr = cb
+
+    def get_stderr_buffer(self) -> List[str]:
+        """Get accumulated stderr output."""
+        return list(self._stderr_buffer)
+
+    def clear_stderr_buffer(self) -> None:
+        """Clear accumulated stderr output."""
+        self._stderr_buffer.clear()
+
     def _set_state(self, state: BridgeState) -> None:
         old = self.state
         self.state = state
@@ -170,6 +185,15 @@ class BaseBridge(ABC):
 
     async def stop(self) -> None:
         """Shutdown bridge."""
+        # Stop stderr monitoring task
+        if self._stderr_task and not self._stderr_task.done():
+            self._stderr_task.cancel()
+            try:
+                await self._stderr_task
+            except asyncio.CancelledError:
+                pass
+            self._stderr_task = None
+
         if self._proc and self._proc.returncode is None:
             logger.info("Terminating persistent process")
             try:
@@ -197,6 +221,9 @@ class BaseBridge(ABC):
             env=env,
         )
 
+        # Start stderr monitoring task
+        self._stderr_task = asyncio.create_task(self._monitor_stderr())
+
         # Read init/system events until the process is ready
         try:
             init_events = await self._read_until_turn_complete()
@@ -210,6 +237,24 @@ class BaseBridge(ABC):
             logger.error(f"Warm-up failed: {exc}")
             self._set_state(BridgeState.ERROR)
             raise
+
+    async def _monitor_stderr(self) -> None:
+        """Background task to monitor stderr output."""
+        try:
+            while self._proc and self._proc.returncode is None:
+                line = await self._proc.stderr.readline()
+                if not line:
+                    break
+                text = line.decode(errors="replace").strip()
+                if text:
+                    self._stderr_buffer.append(text)
+                    logger.debug(f"stderr: {text}")
+                    if self._on_stderr:
+                        self._on_stderr(text)
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.debug(f"stderr monitor: {exc}")
 
     # === Core API =======================================================
 

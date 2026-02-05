@@ -336,6 +336,10 @@ class AvatarEngine(EventEmitter):
             pcfg = self._config.claude_config if self._config else self._kwargs
             # Extract cost_control settings if present
             cost_cfg = pcfg.get("cost_control", {})
+            # Extract session settings if present
+            session_cfg = pcfg.get("session", {})
+            # Extract structured_output settings if present
+            struct_cfg = pcfg.get("structured_output", {})
             return ClaudeBridge(
                 executable=pcfg.get("executable", "claude"),
                 model=self._model or pcfg.get("model", "claude-sonnet-4-5"),
@@ -344,6 +348,9 @@ class AvatarEngine(EventEmitter):
                 strict_mcp_config=pcfg.get("strict_mcp_config", False),
                 max_turns=cost_cfg.get("max_turns"),
                 max_budget_usd=cost_cfg.get("max_budget_usd"),
+                json_schema=struct_cfg.get("schema") if struct_cfg.get("enabled") else None,
+                continue_session=session_cfg.get("continue_last", False),
+                resume_session_id=session_cfg.get("resume_id"),
                 **common,
             )
         else:
