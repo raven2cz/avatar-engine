@@ -1,0 +1,115 @@
+# =============================================================================
+# Avatar Engine — Configuration
+# =============================================================================
+# Headless JSON mode: no PTY, no ANSI, no ASCII art.
+# Clean JSON communication via --output-format stream-json.
+
+# Active provider ("gemini" or "claude")
+provider: "gemini"
+
+# =============================================================================
+# GEMINI CLI
+# =============================================================================
+gemini:
+  executable: "gemini"
+  model: "gemini-3-pro-preview"  # Latest: gemini-3-pro-preview, stable: gemini-2.5-pro
+  timeout: 120
+
+  # Tool approval: "yolo" = auto-approve all (required for automation)
+  approval_mode: "yolo"
+
+  # ACP warm session (true = persistent process, false = oneshot per call)
+  # Requires: pip install agent-client-protocol>=0.6.0
+  # Requires: gemini CLI >= v0.23.0 (PR #9410 OAuth fix)
+  acp_enabled: true
+
+  # Authentication method for ACP warm session:
+  #   "oauth-personal"  — Google account (Pro), no API key needed
+  #   "gemini-api-key"  — API key via GEMINI_API_KEY env var
+  #   "vertex-ai"       — GCP Vertex AI
+  auth_method: "oauth-personal"
+
+  # Model generation parameters (written to .gemini/settings.json)
+  # These configure the model's behavior for response generation.
+  generation_config:
+    # Temperature: Controls randomness (0.0 = deterministic, 1.0 = creative)
+    temperature: 0.7
+
+    # Thinking configuration for Gemini 3 models
+    # thinkingLevel values:
+    #   "minimal"  — Minimal thinking (closest to disabled, but cannot be fully off for Gemini 3 Pro)
+    #   "low"      — Low latency, for straightforward tasks
+    #   "medium"   — Balanced (Flash only)
+    #   "high"     — Default, maximizes reasoning depth
+    thinking_level: "high"
+
+    # Whether to include thinking process in output (true = verbose reasoning shown)
+    include_thoughts: false
+
+    # Max output tokens (optional, model default if not set)
+    # max_output_tokens: 8192
+
+  # System prompt (written to GEMINI.md)
+  system_prompt: |
+    Jsi AI avatar. Odpovídej česky, stručně a přirozeně.
+    Používej MCP nástroje pro ovládání avatara.
+
+  # MCP servers (written to .gemini/settings.json)
+  mcp_servers:
+    avatar-tools:
+      command: "/home/box/git/github/avatar-engine-acp-stream/.venv/bin/python"
+      args: ["/home/box/git/github/avatar-engine-acp-stream/mcp_tools.py"]
+
+  # Oneshot fallback: max history messages to inject into prompt
+  context_messages: 20
+  context_max_chars: 500
+
+  # Extra environment variables
+  env: {}
+
+# =============================================================================
+# CLAUDE CODE
+# =============================================================================
+claude:
+  executable: "claude"
+  # Models: claude-opus-4-5 (best), claude-sonnet-4-5 (fast), claude-haiku-3-5
+  model: "claude-sonnet-4-5"
+  timeout: 120
+
+  # Permission mode for tool approval
+  permission_mode: "acceptEdits"
+
+  # Pre-approved tools (avoid blocking approval prompts)
+  allowed_tools:
+    - "Read"
+    - "Grep"
+    - "mcp__avatar-tools__*"
+
+  # System prompt (written to CLAUDE.md + --append-system-prompt)
+  system_prompt: |
+    Jsi AI avatar. Odpovídej česky, stručně a přirozeně.
+    Používej MCP nástroje pro ovládání avatara.
+
+  # MCP servers (written to mcp_servers.json for --mcp-config)
+  mcp_servers:
+    avatar-tools:
+      command: "/home/box/git/github/avatar-engine-acp-stream/.venv/bin/python"
+      args: ["/home/box/git/github/avatar-engine-acp-stream/mcp_tools.py"]
+
+  env: {}
+
+# =============================================================================
+# AVATAR ENGINE
+# =============================================================================
+avatar:
+  working_dir: ""       # Empty = current directory
+  max_history: 100
+  auto_restart: true
+  max_restarts: 3
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+logging:
+  level: "INFO"
+  file: ""              # Empty = stdout only

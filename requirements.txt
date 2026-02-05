@@ -1,0 +1,24 @@
+# Avatar Engine - Dependencies
+# Install with: uv pip install -r requirements.txt
+
+# Core
+pyyaml>=6.0
+
+# ACP SDK for Gemini warm session (OAuth + persistent process)
+agent-client-protocol>=0.6.0
+
+# MCP SDK (optional, for custom tools)
+mcp>=0.9.0
+
+# Optional: For FastAPI integration
+# fastapi>=0.100.0
+# uvicorn>=0.22.0
+# pydantic>=2.0
+
+# Optional: For HTTP client in MCP tools
+# httpx>=0.24.0
+
+# Development
+# pytest>=7.0
+# black>=23.0
+# mypy>=1.0
