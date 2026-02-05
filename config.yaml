@@ -57,8 +57,8 @@ gemini:
   # MCP servers (written to .gemini/settings.json)
   mcp_servers:
     avatar-tools:
-      command: "/home/box/git/github/avatar-engine-acp-stream/.venv/bin/python"
-      args: ["/home/box/git/github/avatar-engine-acp-stream/mcp_tools.py"]
+      command: "/home/box/git/github/avatar-engine/.venv/bin/python"
+      args: ["/home/box/git/github/avatar-engine/mcp_tools.py"]
 
   # Oneshot fallback: max history messages to inject into prompt
   context_messages: 20
@@ -93,8 +93,8 @@ claude:
   # MCP servers (written to mcp_servers.json for --mcp-config)
   mcp_servers:
     avatar-tools:
-      command: "/home/box/git/github/avatar-engine-acp-stream/.venv/bin/python"
-      args: ["/home/box/git/github/avatar-engine-acp-stream/mcp_tools.py"]
+      command: "/home/box/git/github/avatar-engine/.venv/bin/python"
+      args: ["/home/box/git/github/avatar-engine/mcp_tools.py"]
 
   env: {}
 
