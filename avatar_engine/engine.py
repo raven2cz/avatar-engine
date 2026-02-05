@@ -351,6 +351,8 @@ class AvatarEngine(EventEmitter):
                 json_schema=struct_cfg.get("schema") if struct_cfg.get("enabled") else None,
                 continue_session=session_cfg.get("continue_last", False),
                 resume_session_id=session_cfg.get("resume_id"),
+                fallback_model=pcfg.get("fallback_model"),
+                debug=pcfg.get("debug", False),
                 **common,
             )
         else:

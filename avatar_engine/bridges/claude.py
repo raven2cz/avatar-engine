@@ -58,6 +58,8 @@ class ClaudeBridge(BaseBridge):
         json_schema: Optional[Dict[str, Any]] = None,
         continue_session: bool = False,
         resume_session_id: Optional[str] = None,
+        fallback_model: Optional[str] = None,
+        debug: bool = False,
         env: Optional[Dict[str, str]] = None,
         mcp_servers: Optional[Dict[str, Any]] = None,
     ):
@@ -74,6 +76,8 @@ class ClaudeBridge(BaseBridge):
         self.json_schema = json_schema
         self.continue_session = continue_session
         self.resume_session_id = resume_session_id
+        self.fallback_model = fallback_model
+        self.debug = debug
 
         # Track whether we're in persistent mode (can fall back to oneshot)
         self._persistent_mode = True
@@ -236,6 +240,14 @@ class ClaudeBridge(BaseBridge):
             schema_path.write_text(json.dumps(self.json_schema, indent=2))
             cmd.extend(["--json-schema", str(schema_path)])
 
+        # Fallback model (when primary model is overloaded)
+        if self.fallback_model:
+            cmd.extend(["--fallback-model", self.fallback_model])
+
+        # Debug flag
+        if self.debug:
+            cmd.append("--debug")
+
         return cmd
 
     def _format_user_message(self, prompt: str) -> str:
@@ -300,6 +312,14 @@ class ClaudeBridge(BaseBridge):
             schema_path = Path(self.working_dir) / ".claude_schema.json"
             schema_path.write_text(json.dumps(self.json_schema, indent=2))
             cmd.extend(["--json-schema", str(schema_path)])
+
+        # Fallback model (when primary model is overloaded)
+        if self.fallback_model:
+            cmd.extend(["--fallback-model", self.fallback_model])
+
+        # Debug flag
+        if self.debug:
+            cmd.append("--debug")
 
         return cmd
 

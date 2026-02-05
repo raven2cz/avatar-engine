@@ -88,6 +88,17 @@ class BaseBridge(ABC):
         self._on_event: Optional[Callable[[Dict[str, Any]], None]] = None
         self._on_stderr: Optional[Callable[[str], None]] = None
 
+        # Usage statistics
+        self._stats = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "total_duration_ms": 0,
+            "total_cost_usd": 0.0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+        }
+
     # === Abstract interface =============================================
 
     @property
@@ -284,21 +295,27 @@ class BaseBridge(ABC):
             self.history.append(Message(role="assistant", content=content, tool_calls=tools))
 
             self._set_state(BridgeState.READY)
-            return BridgeResponse(
+            response = BridgeResponse(
                 content=content, tool_calls=tools, raw_events=events,
                 duration_ms=elapsed, session_id=self.session_id,
                 token_usage=usage, success=True,
             )
+            self._update_stats(response)
+            return response
 
         except asyncio.TimeoutError:
             self._set_state(BridgeState.ERROR)
-            return BridgeResponse(content="", duration_ms=int((time.time() - t0) * 1000),
-                                  success=False, error=f"Timeout ({self.timeout}s)")
+            response = BridgeResponse(content="", duration_ms=int((time.time() - t0) * 1000),
+                                      success=False, error=f"Timeout ({self.timeout}s)")
+            self._update_stats(response)
+            return response
         except Exception as exc:
             logger.error(f"send: {exc}", exc_info=True)
             self._set_state(BridgeState.ERROR)
-            return BridgeResponse(content="", duration_ms=int((time.time() - t0) * 1000),
-                                  success=False, error=str(exc))
+            response = BridgeResponse(content="", duration_ms=int((time.time() - t0) * 1000),
+                                      success=False, error=str(exc))
+            self._update_stats(response)
+            return response
 
     async def send_stream(self, prompt: str) -> AsyncIterator[str]:
         """Send prompt, yield text chunks in real-time."""
@@ -496,4 +513,38 @@ class BaseBridge(ABC):
         if self._proc:
             health["pid"] = self._proc.pid
             health["returncode"] = self._proc.returncode
+        # Include usage stats
+        health.update(self._stats)
         return health
+
+    # === Usage Stats ====================================================
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get usage statistics."""
+        return dict(self._stats)
+
+    def reset_stats(self) -> None:
+        """Reset usage statistics."""
+        self._stats = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "total_duration_ms": 0,
+            "total_cost_usd": 0.0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+        }
+
+    def _update_stats(self, response: BridgeResponse) -> None:
+        """Update stats from a response."""
+        self._stats["total_requests"] += 1
+        if response.success:
+            self._stats["successful_requests"] += 1
+        else:
+            self._stats["failed_requests"] += 1
+        self._stats["total_duration_ms"] += response.duration_ms
+        if response.cost_usd:
+            self._stats["total_cost_usd"] += response.cost_usd
+        if response.token_usage:
+            self._stats["total_input_tokens"] += response.token_usage.get("input", 0)
+            self._stats["total_output_tokens"] += response.token_usage.get("output", 0)
