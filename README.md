@@ -1,14 +1,25 @@
-# Avatar Engine
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/banner.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/banner-light.svg">
+    <img alt="Avatar Engine" src="assets/banner.svg" width="840">
+  </picture>
+</p>
 
-**Python library for integrating AI assistants (Claude Code, Gemini CLI) into applications.**
+<p align="center">
+  <strong>Python library for integrating AI assistants (Claude Code, Gemini CLI) into applications.</strong>
+</p>
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
+<p align="center">
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-green.svg" alt="License: Apache 2.0"></a>
+</p>
 
 ## Features
 
 - **Unified API** — Single interface for Claude Code and Gemini CLI
-- **Warm Sessions** — Persistent subprocess for instant responses
+- **Warm Sessions** — ACP / stream-json persistent subprocess for instant responses
+- **Zero Footprint** — No config files written to your project directory
 - **Event System** — Callbacks for GUI integration (text, tools, state changes)
 - **Streaming** — Real-time response streaming
 - **MCP Support** — Model Context Protocol tools for both providers
@@ -179,6 +190,7 @@ avatar-engine/
 │   ├── config.py        # Configuration
 │   ├── events.py        # Event system
 │   ├── types.py         # Type definitions
+│   ├── config_sandbox.py # Zero Footprint config (temp files)
 │   ├── bridges/         # Provider implementations
 │   │   ├── base.py      # Abstract bridge
 │   │   ├── claude.py    # Claude Code bridge
@@ -242,7 +254,7 @@ pytest tests/ -v
 # Run with coverage
 pytest tests/ --cov=avatar_engine
 
-# Current: 184 tests passing
+# Current: 334 unit tests + 40 integration tests
 ```
 
 ## API Reference

@@ -127,14 +127,14 @@ class TestClaudeBridgeCommands:
         assert "Hello" in cmd
 
     def test_command_with_allowed_tools(self):
-        """Should include allowed tools in command."""
+        """Should include allowed tools via --settings flag (Zero Footprint)."""
         bridge = ClaudeBridge(allowed_tools=["Read", "Grep"])
+        bridge._setup_config_files()
         cmd = bridge._build_persistent_command()
 
-        assert "--allowedTools" in cmd
-        idx = cmd.index("--allowedTools")
-        assert "Read" in cmd[idx + 1]
-        assert "Grep" in cmd[idx + 1]
+        # Zero Footprint: permissions are in --settings file, not --allowedTools
+        assert "--settings" in cmd
+        bridge._sandbox.cleanup()
 
 
 class TestClaudeBridgeParsing:

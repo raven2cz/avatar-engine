@@ -403,7 +403,8 @@ class TestProcessCrash:
 
         with patch("asyncio.create_subprocess_exec", side_effect=create_fresh_proc):
             with patch("shutil.which", return_value="/usr/bin/gemini"):
-                engine = AvatarEngine(provider="gemini")
+                # Explicitly disable ACP to test oneshot mode
+                engine = AvatarEngine(provider="gemini", acp_enabled=False)
                 await engine.start()
 
                 # First chat works

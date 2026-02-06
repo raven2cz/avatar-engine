@@ -1,0 +1,71 @@
+<svg width="840" height="180" viewBox="0 0 840 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ico" x1="0" y1="0" x2="80" y2="80">
+      <stop offset="0%" stop-color="#0969da"/>
+      <stop offset="100%" stop-color="#8250df"/>
+    </linearGradient>
+  </defs>
+  <rect width="840" height="180" rx="12" fill="#ffffff"/>
+  <rect width="840" height="180" rx="12" stroke="#d0d7de" stroke-width="1" fill="none"/>
+
+  <!-- Gemini node -->
+  <g transform="translate(64, 44)">
+    <rect x="-40" y="-18" width="80" height="36" rx="10" fill="#ffffff" stroke="#4285f4" stroke-width="2"/>
+    <text x="0" y="5" text-anchor="middle" fill="#4285f4" font-size="14" font-weight="600" font-family="system-ui, sans-serif">Gemini</text>
+  </g>
+  <!-- Claude node -->
+  <g transform="translate(64, 136)">
+    <rect x="-40" y="-18" width="80" height="36" rx="10" fill="#ffffff" stroke="#bf8b5e" stroke-width="2"/>
+    <text x="0" y="5" text-anchor="middle" fill="#bf8b5e" font-size="14" font-weight="600" font-family="system-ui, sans-serif">Claude</text>
+  </g>
+
+  <!-- Connection lines -->
+  <path d="M104 44 C160 44 180 90 230 90" stroke="#4285f4" stroke-width="2" fill="none" opacity="0.3" stroke-dasharray="6 4"/>
+  <path d="M104 136 C160 136 180 90 230 90" stroke="#bf8b5e" stroke-width="2" fill="none" opacity="0.3" stroke-dasharray="6 4"/>
+
+  <!-- CENTER ICON -->
+  <g transform="translate(270, 90)">
+    <circle r="38" fill="#ffffff" stroke="url(#ico)" stroke-width="2.5"/>
+    <rect x="-20" y="-14" width="40" height="30" rx="8" fill="url(#ico)" opacity="0.08"/>
+    <rect x="-20" y="-14" width="40" height="30" rx="8" stroke="url(#ico)" stroke-width="1.5" fill="none"/>
+    <path d="M-15 -3 Q-10 -9 -5 -3" stroke="#0969da" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M5 -3 Q10 -9 15 -3" stroke="#0969da" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M-13 7 Q0 16 13 7" stroke="#0969da" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <line x1="0" y1="-14" x2="0" y2="-23" stroke="url(#ico)" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="0" cy="-26" r="3" fill="#0969da"/>
+  </g>
+
+  <!-- Arrow right -->
+  <path d="M308 90 L370 90" stroke="url(#ico)" stroke-width="2" opacity="0.25" stroke-dasharray="6 4"/>
+
+  <!-- Title -->
+  <text x="385" y="48" fill="#1f2328" font-size="32" font-weight="700" font-family="system-ui, -apple-system, sans-serif">Avatar Engine</text>
+  <text x="385" y="72" fill="#656d76" font-size="14" font-family="system-ui, -apple-system, sans-serif">AI assistant integration library for Python</text>
+
+  <!-- Tags -->
+  <g transform="translate(385, 86)">
+    <rect x="0" y="0" width="80" height="20" rx="4" fill="#dafbe1"/>
+    <text x="40" y="14" text-anchor="middle" fill="#1a7f37" font-size="10" font-family="system-ui, sans-serif">ACP Sessions</text>
+
+    <rect x="88" y="0" width="92" height="20" rx="4" fill="#ddf4ff"/>
+    <text x="134" y="14" text-anchor="middle" fill="#0969da" font-size="10" font-family="system-ui, sans-serif">Zero Footprint</text>
+
+    <rect x="188" y="0" width="70" height="20" rx="4" fill="#fbefff"/>
+    <text x="223" y="14" text-anchor="middle" fill="#8250df" font-size="10" font-family="system-ui, sans-serif">MCP Tools</text>
+
+    <rect x="266" y="0" width="76" height="20" rx="4" fill="#fff1e5"/>
+    <text x="304" y="14" text-anchor="middle" fill="#bc4c00" font-size="10" font-family="system-ui, sans-serif">Event-Driven</text>
+
+    <rect x="350" y="0" width="72" height="20" rx="4" fill="#ddf4ff"/>
+    <text x="386" y="14" text-anchor="middle" fill="#0969da" font-size="10" font-family="system-ui, sans-serif">Streaming</text>
+  </g>
+
+  <!-- pip install box -->
+  <g transform="translate(385, 120)">
+    <rect x="0" y="0" width="220" height="28" rx="6" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1"/>
+    <text x="12" y="19" fill="#1a7f37" font-size="13" font-family="'Courier New', Consolas, monospace">pip install avatar-engine</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="385" y="168" fill="#8c959f" font-size="11" font-family="system-ui, sans-serif">Python 3.10+  ·  asyncio  ·  Apache 2.0</text>
+</svg>

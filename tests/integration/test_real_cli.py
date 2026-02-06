@@ -93,13 +93,28 @@ class TestGeminiCLI:
             ],
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=120,
         )
 
         assert result.returncode == 0, f"stderr: {result.stderr}"
 
-        # Should be valid JSON
-        data = json.loads(result.stdout)
+        # Extract last JSON object from stdout (logging may precede it)
+        lines = result.stdout.strip().splitlines()
+        json_str = ""
+        for line in reversed(lines):
+            json_str = line + json_str
+            try:
+                data = json.loads(json_str)
+                break
+            except json.JSONDecodeError:
+                json_str = "\n" + json_str
+                continue
+        else:
+            # Try finding JSON by looking for the opening brace
+            start = result.stdout.rfind("{")
+            assert start >= 0, f"No JSON found in stdout: {result.stdout[:500]}"
+            data = json.loads(result.stdout[start:])
+
         assert "content" in data
         assert "success" in data
         assert data["success"] is True
@@ -164,7 +179,10 @@ class TestClaudeCLI:
 
         assert result.returncode == 0, f"stderr: {result.stderr}"
 
-        data = json.loads(result.stdout)
+        # Extract last JSON object from stdout (logging may precede it)
+        start = result.stdout.rfind("{")
+        assert start >= 0, f"No JSON found in stdout: {result.stdout[:500]}"
+        data = json.loads(result.stdout[start:])
         assert data["success"] is True
 
 

@@ -80,11 +80,12 @@ def create_mock_subprocess(stdout_lines: List[str], returncode: int = 0):
 class TestACPConfiguration:
     """Test ACP configuration options."""
 
-    def test_acp_disabled_by_default(self):
-        """ACP is disabled by default (uses oneshot mode)."""
+    def test_acp_enabled_by_default_when_sdk_available(self):
+        """ACP is enabled by default when agent-client-protocol SDK is installed."""
         bridge = GeminiBridge()
-        # Note: ACP is disabled by default for stability
-        assert bridge.acp_enabled is False
+        # ACP is preferred mode when SDK is available
+        from avatar_engine.bridges.gemini import _ACP_AVAILABLE
+        assert bridge.acp_enabled == _ACP_AVAILABLE
 
     def test_acp_can_be_disabled(self):
         """ACP can be disabled via config."""
@@ -447,3 +448,128 @@ class TestGenerationConfig:
         """Should accept thinking level config."""
         bridge = GeminiBridge(generation_config={"thinking_level": "high"})
         assert bridge.generation_config["thinking_level"] == "high"
+
+
+# =============================================================================
+# Settings.json Configuration Tests (customAliases issue)
+# =============================================================================
+
+
+class TestSettingsJsonConfig:
+    """Test settings.json configuration in sandbox (Zero Footprint).
+
+    CRITICAL: customAliases section breaks ACP warm sessions with "Internal error".
+    These tests verify that customAliases is NOT generated in ACP mode.
+
+    NOTE: Settings are now written to a ConfigSandbox temp dir, NOT to working_dir.
+    """
+
+    def _read_sandbox_settings(self, bridge) -> dict:
+        """Read settings from bridge's sandbox."""
+        return json.loads(
+            (bridge._sandbox.root / "gemini-settings.json").read_text()
+        )
+
+    def test_acp_mode_no_custom_aliases(self, tmp_path):
+        """ACP mode should NOT generate customAliases in sandbox settings.
+
+        This is critical because customAliases causes "Internal error" in
+        Gemini CLI's ACP implementation.
+        """
+        bridge = GeminiBridge(
+            model="gemini-3-pro-preview",
+            acp_enabled=True,
+            generation_config={"temperature": 0.7},
+            working_dir=str(tmp_path),
+        )
+        bridge._setup_config_files()
+        settings = self._read_sandbox_settings(bridge)
+
+        # CRITICAL: customAliases must NOT be present in ACP mode
+        assert "modelConfigs" not in settings, (
+            "ACP mode must not have modelConfigs with customAliases - "
+            "this causes 'Internal error' in Gemini CLI"
+        )
+
+        # Model should still be set
+        assert settings.get("model", {}).get("name") == "gemini-3-pro-preview"
+        assert settings.get("previewFeatures") is True
+
+        # Zero Footprint: no files in working_dir
+        assert not (tmp_path / ".gemini").exists()
+        bridge._sandbox.cleanup()
+
+    def test_oneshot_mode_has_custom_aliases(self, tmp_path):
+        """Oneshot mode (acp_enabled=False) should generate customAliases.
+
+        customAliases is needed for generation_config in oneshot mode.
+        """
+        bridge = GeminiBridge(
+            model="gemini-3-pro-preview",
+            acp_enabled=False,
+            generation_config={"temperature": 0.7},
+            working_dir=str(tmp_path),
+        )
+        bridge._setup_config_files()
+        settings = self._read_sandbox_settings(bridge)
+
+        # Oneshot mode should have customAliases with generation config
+        assert "modelConfigs" in settings
+        assert "customAliases" in settings["modelConfigs"]
+        assert "gemini-3-pro-preview" in settings["modelConfigs"]["customAliases"]
+
+        # Verify temperature is set
+        alias_cfg = settings["modelConfigs"]["customAliases"]["gemini-3-pro-preview"]
+        gen_cfg = alias_cfg["modelConfig"]["generateContentConfig"]
+        assert gen_cfg.get("temperature") == 0.7
+        bridge._sandbox.cleanup()
+
+    def test_acp_mode_still_sets_model_name(self, tmp_path):
+        """ACP mode should still set model name in sandbox settings."""
+        bridge = GeminiBridge(
+            model="gemini-3-pro-preview",
+            acp_enabled=True,
+            working_dir=str(tmp_path),
+        )
+        bridge._setup_config_files()
+        settings = self._read_sandbox_settings(bridge)
+
+        assert settings.get("model", {}).get("name") == "gemini-3-pro-preview"
+        bridge._sandbox.cleanup()
+
+    def test_acp_mode_sets_preview_features(self, tmp_path):
+        """ACP mode should set previewFeatures for Gemini 3 models."""
+        bridge = GeminiBridge(
+            model="gemini-3-pro-preview",
+            acp_enabled=True,
+            working_dir=str(tmp_path),
+        )
+        bridge._setup_config_files()
+        settings = self._read_sandbox_settings(bridge)
+
+        assert settings.get("previewFeatures") is True
+        bridge._sandbox.cleanup()
+
+    def test_oneshot_mode_includes_thinking_config(self, tmp_path):
+        """Oneshot mode should include thinking config in customAliases."""
+        bridge = GeminiBridge(
+            model="gemini-3-pro-preview",
+            acp_enabled=False,
+            generation_config={
+                "temperature": 0.8,
+                "thinking_level": "high",
+                "include_thoughts": True,
+            },
+            working_dir=str(tmp_path),
+        )
+        bridge._setup_config_files()
+        settings = self._read_sandbox_settings(bridge)
+
+        alias_cfg = settings["modelConfigs"]["customAliases"]["gemini-3-pro-preview"]
+        gen_cfg = alias_cfg["modelConfig"]["generateContentConfig"]
+
+        assert gen_cfg.get("temperature") == 0.8
+        assert "thinkingConfig" in gen_cfg
+        assert gen_cfg["thinkingConfig"].get("thinkingLevel") == "HIGH"
+        assert gen_cfg["thinkingConfig"].get("includeThoughts") is True
+        bridge._sandbox.cleanup()

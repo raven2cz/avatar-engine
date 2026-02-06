@@ -147,6 +147,10 @@ class BaseBridge(ABC):
     @abstractmethod
     def _build_oneshot_command(self, prompt: str) -> List[str]: ...
 
+    def _build_subprocess_env(self) -> Dict[str, str]:
+        """Build environment for subprocesses. Override to add sandbox env vars."""
+        return {**os.environ, **self.env}
+
     # === Callbacks ======================================================
 
     def on_output(self, cb: Callable[[str], None]) -> None:
@@ -215,12 +219,16 @@ class BaseBridge(ABC):
             self._proc = None
         self.session_id = None
         self._set_state(BridgeState.DISCONNECTED)
+        # Cleanup sandbox temp files (Zero Footprint)
+        if hasattr(self, "_sandbox") and self._sandbox:
+            self._sandbox.cleanup()
+            self._sandbox = None
 
     async def _start_persistent(self) -> None:
         """Spawn long-running process and wait for warm-up (init event)."""
         self._set_state(BridgeState.WARMING_UP)
         cmd = self._build_persistent_command()
-        env = {**os.environ, **self.env}
+        env = self._build_subprocess_env()
 
         logger.info(f"Spawning: {' '.join(cmd[:10])}…")
         self._proc = await asyncio.create_subprocess_exec(
@@ -419,7 +427,7 @@ class BaseBridge(ABC):
 
     async def _send_oneshot(self, prompt: str) -> List[Dict[str, Any]]:
         cmd = self._build_oneshot_command(prompt)
-        env = {**os.environ, **self.env}
+        env = self._build_subprocess_env()
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.DEVNULL,
@@ -453,7 +461,7 @@ class BaseBridge(ABC):
 
     async def _stream_oneshot(self, prompt: str) -> AsyncIterator[Dict[str, Any]]:
         cmd = self._build_oneshot_command(prompt)
-        env = {**os.environ, **self.env}
+        env = self._build_subprocess_env()
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.DEVNULL,

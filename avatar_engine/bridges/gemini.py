@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from .base import BaseBridge, BridgeResponse, BridgeState, Message
+from ..config_sandbox import ConfigSandbox
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +167,7 @@ class GeminiBridge(BaseBridge):
         if self._acp_mode:
             await self._cleanup_acp()
             self._acp_mode = False
-        await super().stop()
+        await super().stop()  # BaseBridge.stop() handles sandbox cleanup
 
     # ======================================================================
     # ACP warm session management
@@ -191,13 +192,13 @@ class GeminiBridge(BaseBridge):
         )
 
         # Build command args
+        # Note: Don't pass --model for ACP mode - model is set via .gemini/settings.json
+        # Passing both causes "Internal error" in Gemini CLI ACP implementation
         cmd_args = [gemini_bin, "--experimental-acp"]
         if self.approval_mode == "yolo":
             cmd_args.append("--yolo")
-        if self.model:
-            cmd_args.extend(["--model", self.model])
 
-        env = {**os.environ, **self.env}
+        env = self._build_subprocess_env()
 
         logger.info(f"Spawning ACP: {' '.join(cmd_args[:6])}…")
 
@@ -460,9 +461,12 @@ class GeminiBridge(BaseBridge):
     # ======================================================================
 
     def _setup_config_files(self) -> None:
-        """Write .gemini/settings.json and GEMINI.md."""
-        gemini_dir = Path(self.working_dir) / ".gemini"
-        gemini_dir.mkdir(parents=True, exist_ok=True)
+        """Write config to sandbox (temp dir), NOT to working_dir.
+
+        Zero Footprint: uses env vars to point Gemini CLI to temp config.
+        Host application's .gemini/settings.json and GEMINI.md are untouched.
+        """
+        self._sandbox = ConfigSandbox()
 
         settings: Dict[str, Any] = {}
 
@@ -473,8 +477,8 @@ class GeminiBridge(BaseBridge):
         # Enable preview features (required for Gemini 3 models)
         settings["previewFeatures"] = True
 
-        # MCP servers
-        if self.mcp_servers:
+        # MCP servers in settings (oneshot only — ACP passes via protocol)
+        if not self.acp_enabled and self.mcp_servers:
             mcp = {}
             for name, srv in self.mcp_servers.items():
                 mcp[name] = {"command": srv["command"], "args": srv.get("args", [])}
@@ -483,35 +487,10 @@ class GeminiBridge(BaseBridge):
             settings["mcpServers"] = mcp
 
         # Model configuration with thinking and generation parameters
-        if self.model or self.generation_config:
-            # Build generateContentConfig from generation_config
-            gen_cfg: Dict[str, Any] = {}
-
-            # Temperature: default 1.0 for Gemini 3 (docs recommend not lowering)
-            gen_cfg["temperature"] = self.generation_config.get("temperature", 1.0)
-
-            # Sampling parameters
-            if "top_p" in self.generation_config:
-                gen_cfg["topP"] = self.generation_config["top_p"]
-            if "top_k" in self.generation_config:
-                gen_cfg["topK"] = self.generation_config["top_k"]
-
-            if "max_output_tokens" in self.generation_config:
-                gen_cfg["maxOutputTokens"] = self.generation_config["max_output_tokens"]
-
-            # Build thinkingConfig for Gemini 3 models
-            thinking_cfg: Dict[str, Any] = {}
-            if "thinking_level" in self.generation_config:
-                # Map config values to API values (uppercase)
-                level = self.generation_config["thinking_level"].upper()
-                thinking_cfg["thinkingLevel"] = level
-            if "include_thoughts" in self.generation_config:
-                thinking_cfg["includeThoughts"] = self.generation_config["include_thoughts"]
-
-            if thinking_cfg:
-                gen_cfg["thinkingConfig"] = thinking_cfg
-
-            # Add modelConfigs with customAliases
+        # NOTE: customAliases breaks ACP mode with "Internal error", so we only
+        # use it for oneshot mode. ACP mode uses default model settings.
+        if not self.acp_enabled and (self.model or self.generation_config):
+            gen_cfg = self._build_generation_config()
             if gen_cfg:
                 settings["modelConfigs"] = {
                     "customAliases": {
@@ -523,14 +502,68 @@ class GeminiBridge(BaseBridge):
                     }
                 }
 
-        (gemini_dir / "settings.json").write_text(
-            json.dumps(settings, indent=2, ensure_ascii=False)
-        )
+        self._gemini_settings_path = self._sandbox.write_gemini_settings(settings)
 
+        # System prompt → temp file for GEMINI_SYSTEM_MD env var
         if self.system_prompt:
-            (Path(self.working_dir) / "GEMINI.md").write_text(
-                self.system_prompt, encoding="utf-8"
+            self._system_prompt_path = self._sandbox.write_system_prompt(
+                self.system_prompt
             )
+        else:
+            self._system_prompt_path = None
+
+    def _build_generation_config(self) -> Dict[str, Any]:
+        """Build generateContentConfig dict from generation_config."""
+        gen_cfg: Dict[str, Any] = {}
+
+        # Temperature: default 1.0 for Gemini 3 (docs recommend not lowering)
+        gen_cfg["temperature"] = self.generation_config.get("temperature", 1.0)
+
+        # Sampling parameters
+        if "top_p" in self.generation_config:
+            gen_cfg["topP"] = self.generation_config["top_p"]
+        if "top_k" in self.generation_config:
+            gen_cfg["topK"] = self.generation_config["top_k"]
+
+        if "max_output_tokens" in self.generation_config:
+            gen_cfg["maxOutputTokens"] = self.generation_config["max_output_tokens"]
+
+        # Build thinkingConfig for Gemini 3 models
+        thinking_cfg: Dict[str, Any] = {}
+        if "thinking_level" in self.generation_config:
+            level = self.generation_config["thinking_level"].upper()
+            thinking_cfg["thinkingLevel"] = level
+        if "include_thoughts" in self.generation_config:
+            thinking_cfg["includeThoughts"] = self.generation_config[
+                "include_thoughts"
+            ]
+
+        if thinking_cfg:
+            gen_cfg["thinkingConfig"] = thinking_cfg
+
+        return gen_cfg
+
+    def _build_subprocess_env(self) -> Dict[str, str]:
+        """Build subprocess environment with sandbox config paths.
+
+        GEMINI_CLI_SYSTEM_SETTINGS_PATH has the highest priority in Gemini CLI's
+        5-level settings hierarchy, ensuring avatar config overrides everything.
+        These env vars are isolated to the subprocess — they don't affect the
+        user's own Gemini CLI usage.
+        """
+        env = super()._build_subprocess_env()
+
+        # System settings = highest priority (level 5 in Gemini CLI hierarchy)
+        if hasattr(self, "_gemini_settings_path") and self._gemini_settings_path:
+            env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"] = str(
+                self._gemini_settings_path
+            )
+
+        # Custom system prompt (replaces Gemini CLI default)
+        if hasattr(self, "_system_prompt_path") and self._system_prompt_path:
+            env["GEMINI_SYSTEM_MD"] = str(self._system_prompt_path)
+
+        return env
 
     # ======================================================================
     # Oneshot fallback (BaseBridge abstract implementations)

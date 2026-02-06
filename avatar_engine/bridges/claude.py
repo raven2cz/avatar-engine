@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .base import BaseBridge, BridgeState
+from ..config_sandbox import ConfigSandbox
 
 logger = logging.getLogger(__name__)
 
@@ -145,39 +146,30 @@ class ClaudeBridge(BaseBridge):
     # === Config =========================================================
 
     def _setup_config_files(self) -> None:
-        claude_dir = Path(self.working_dir) / ".claude"
-        claude_dir.mkdir(parents=True, exist_ok=True)
+        """Write config to sandbox (temp dir), NOT to working_dir.
 
-        # .claude/settings.json
+        Zero Footprint: uses CLI flags to point Claude Code to temp config.
+        Host application's .claude/settings.json and CLAUDE.md are untouched.
+        """
+        self._sandbox = ConfigSandbox()
+
+        # Settings → temp file for --settings flag
         settings: Dict[str, Any] = {}
         if self.allowed_tools:
             settings["permissions"] = {"allow": self.allowed_tools}
-        if self.mcp_servers:
-            mcp = {}
-            for name, srv in self.mcp_servers.items():
-                mcp[name] = {"command": srv["command"], "args": srv.get("args", [])}
-                if "env" in srv:
-                    mcp[name]["env"] = srv["env"]
-            settings["mcpServers"] = mcp
-        (claude_dir / "settings.json").write_text(
-            json.dumps(settings, indent=2, ensure_ascii=False))
+        self._claude_settings_path = self._sandbox.write_claude_settings(settings)
 
-        # mcp_servers.json for --mcp-config
+        # MCP servers → temp file for --mcp-config flag
         if self.mcp_servers:
-            mcp_file = {"mcpServers": {}}
-            for name, srv in self.mcp_servers.items():
-                mcp_file["mcpServers"][name] = {
-                    "command": srv["command"], "args": srv.get("args", []),
-                }
-                if "env" in srv:
-                    mcp_file["mcpServers"][name]["env"] = srv["env"]
-            (Path(self.working_dir) / "mcp_servers.json").write_text(
-                json.dumps(mcp_file, indent=2, ensure_ascii=False))
+            self._mcp_config_path = self._sandbox.write_mcp_config(self.mcp_servers)
+        else:
+            self._mcp_config_path = None
 
-        # CLAUDE.md
-        if self.system_prompt:
-            (Path(self.working_dir) / "CLAUDE.md").write_text(
-                self.system_prompt, encoding="utf-8")
+        # JSON schema → temp file for --json-schema flag
+        if self.json_schema:
+            self._schema_path = self._sandbox.write_json_schema(self.json_schema)
+        else:
+            self._schema_path = None
 
     # === Persistent command ==============================================
 
@@ -185,12 +177,17 @@ class ClaudeBridge(BaseBridge):
         """
         Build the persistent subprocess command.
 
+        Zero Footprint: all config via CLI flags pointing to sandbox temp files.
+        No files written to working_dir.
+
         Key flags:
             -p                          Non-interactive (print) mode
             --input-format stream-json  Accept JSONL user messages on stdin
             --output-format stream-json Emit JSONL events on stdout
             --verbose                   Include all event types
             --include-partial-messages  Enable streaming text deltas (REQUIRED!)
+            --settings <file>           Settings from sandbox (NOT .claude/settings.json)
+            --mcp-config <file>         MCP config from sandbox (NOT working_dir)
         """
         cmd = [self.executable, "-p"]
 
@@ -207,20 +204,21 @@ class ClaudeBridge(BaseBridge):
         cmd.append("--verbose")
         cmd.append("--include-partial-messages")
 
-        # Tool permissions
-        if self.allowed_tools:
-            cmd.extend(["--allowedTools", ",".join(self.allowed_tools)])
+        # Settings via --settings flag (NOT .claude/settings.json!)
+        if hasattr(self, "_claude_settings_path") and self._claude_settings_path:
+            cmd.extend(["--settings", str(self._claude_settings_path)])
+
+        # Permission mode
         if self.permission_mode:
             cmd.extend(["--permission-mode", self.permission_mode])
 
-        # System prompt
+        # System prompt via CLI flag (NOT CLAUDE.md!)
         if self.system_prompt:
             cmd.extend(["--append-system-prompt", self.system_prompt])
 
-        # MCP config
-        mcp_path = Path(self.working_dir) / "mcp_servers.json"
-        if mcp_path.exists():
-            cmd.extend(["--mcp-config", str(mcp_path)])
+        # MCP config from sandbox temp file
+        if hasattr(self, "_mcp_config_path") and self._mcp_config_path:
+            cmd.extend(["--mcp-config", str(self._mcp_config_path)])
             if self.strict_mcp_config:
                 cmd.append("--strict-mcp-config")
 
@@ -234,11 +232,9 @@ class ClaudeBridge(BaseBridge):
         elif self.resume_session_id:
             cmd.extend(["--resume", self.resume_session_id])
 
-        # Structured output (JSON schema)
-        if self.json_schema:
-            schema_path = Path(self.working_dir) / ".claude_schema.json"
-            schema_path.write_text(json.dumps(self.json_schema, indent=2))
-            cmd.extend(["--json-schema", str(schema_path)])
+        # Structured output (JSON schema from sandbox)
+        if hasattr(self, "_schema_path") and self._schema_path:
+            cmd.extend(["--json-schema", str(self._schema_path)])
 
         # Fallback model (when primary model is overloaded)
         if self.fallback_model:

@@ -99,8 +99,10 @@ class TestGeminiACP:
             if not response.success:
                 pytest.skip("ACP with thinking not available")
 
-            # Should have the correct answer (may be formatted with spaces)
-            assert "56088" in response.content or "56 088" in response.content
+            # Should have the correct answer (may be formatted variously:
+            # "56088", "56 088", "56,088", "56\ 088" in LaTeX, etc.)
+            normalized = response.content.replace(",", "").replace(" ", "").replace("\\", "")
+            assert "56088" in normalized
 
         finally:
             await engine.stop()
