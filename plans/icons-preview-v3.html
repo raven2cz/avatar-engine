@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avatar Engine — Final v3</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    padding: 40px;
+    line-height: 1.6;
+  }
+  h1 { font-size: 2rem; margin-bottom: 8px; }
+  h2 { font-size: 1.4rem; margin: 48px 0 24px; color: #58a6ff; border-bottom: 1px solid #21262d; padding-bottom: 8px; }
+  .subtitle { color: #8b949e; margin-bottom: 40px; }
+  .banner-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 32px;
+    margin: 24px 0;
+    text-align: center;
+  }
+  .banner-card:hover { border-color: #58a6ff; }
+  .banner-card .label { margin-top: 16px; font-size: 0.85rem; color: #8b949e; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 24px;
+    margin: 24px 0;
+  }
+  .icon-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+  .icon-card .label { margin-top: 8px; font-size: 0.8rem; color: #8b949e; }
+  .guide { stroke: red; stroke-width: 0.5; stroke-dasharray: 2 2; fill: none; opacity: 0.35; }
+</style>
+</head>
+<body>
+
+<h1>Avatar Engine v3 — final</h1>
+<p class="subtitle">Opravene centrovani ikony A3 + Banner 4b</p>
+
+<!-- ============================================================ -->
+<h2>1. Ikona A3 Happy Eyes — oprava centrovani</h2>
+<!-- ============================================================ -->
+
+<div class="grid">
+
+  <!-- Stara verze se smernicemi (pro porovnani) -->
+  <div class="icon-card">
+    <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="old" x1="0" y1="0" x2="128" y2="128">
+          <stop offset="0%" stop-color="#58a6ff"/>
+          <stop offset="100%" stop-color="#bc8cff"/>
+        </linearGradient>
+      </defs>
+      <circle cx="64" cy="64" r="58" stroke="url(#old)" stroke-width="4" fill="#0d1117"/>
+      <!-- smernice -->
+      <line x1="6" y1="64" x2="122" y2="64" class="guide"/>
+      <line x1="64" y1="6" x2="64" y2="122" class="guide"/>
+      <!-- puvodni spatne centrovane -->
+      <rect x="34" y="38" width="60" height="48" rx="12" fill="url(#old)" opacity="0.12"/>
+      <rect x="34" y="38" width="60" height="48" rx="12" stroke="url(#old)" stroke-width="2.5" fill="none"/>
+      <path d="M40 56 Q48 48 56 56" stroke="#58a6ff" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M72 56 Q80 48 88 56" stroke="#58a6ff" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M44 68 Q64 82 84 68" stroke="#58a6ff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <line x1="64" y1="38" x2="64" y2="22" stroke="url(#old)" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="64" cy="19" r="4" fill="#58a6ff"/>
+    </svg>
+    <div class="label">PRED (spatne centrovano)</div>
+  </div>
+
+  <!-- Nova opravena verze 128px -->
+  <div class="icon-card" style="border-color:#58a6ff;">
+    <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="gN" x1="0" y1="0" x2="128" y2="128">
+          <stop offset="0%" stop-color="#58a6ff"/>
+          <stop offset="100%" stop-color="#bc8cff"/>
+        </linearGradient>
+      </defs>
+      <circle cx="64" cy="64" r="58" stroke="url(#gN)" stroke-width="4" fill="#0d1117"/>
+      <!-- smernice pro kontrolu -->
+      <line x1="6" y1="64" x2="122" y2="64" class="guide"/>
+      <line x1="64" y1="6" x2="64" y2="122" class="guide"/>
+      <!--
+        Centrovani: vizualni stred robota = stred kruhu (64, 64)
+        Antena: 64,22 → 64,36  (14px)
+        Face plate: 34,36 → 94,84 (60x48), stred = 64,60
+        Oci: y=54
+        Usev: y=70
+        Vizualni rozsah: 22 (antena tip) → 78 (spodek usmevu) = 56px
+        Vizualni stred: 22 + 56/2 = 50... to je moc vysoko
+
+        Lepsi pristup: Face plate stred = stred kruhu.
+        Face plate 60x44, stred na 64,64 → y: 42-86, x: 34-94
+        Antena z 64,42 nahoru na 64,26, tip na 64,22
+        Oci na y=56
+        Usev na y=74
+        Vizualni stred: (22..78)/2 = 50 — jeste posunout dolu
+
+        FINAL: Stred face plate na (64, 66), trochu pod stredem kruhu,
+        cimz antena vizualne vyvazi celek.
+        Face: y=44 → y=88 (height 44), x=34 → x=94 (width 60)
+        Antena: 64,44 → 64,28, tip 64,24
+        Oci: y=58
+        Usev: y=76
+        Vizualni rozsah: 24 → 80 = 56px, stred = 52...
+
+        Jeste lepe: antena kratsi.
+        Face plate stred (64, 65): y=43..87
+        Antena: 64,43 → 64,32, tip 64,28
+        Oci: y=57
+        Usev: y=75
+        Rozsah: 28..79 = 51px, stred = 54 → blizko 64? ne, 28+51/2=53.5
+
+        OK jiny pristup - proste merim a vizualne koriguji:
+      -->
+      <!-- Face plate: stred na (64,64), o neco vetsi -->
+      <rect x="34" y="42" width="60" height="46" rx="12" fill="url(#gN)" opacity="0.12"/>
+      <rect x="34" y="42" width="60" height="46" rx="12" stroke="url(#gN)" stroke-width="2.5" fill="none"/>
+      <!-- Happy eyes: oblouky, y=57 -->
+      <path d="M41 60 Q49 51 57 60" stroke="#58a6ff" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M71 60 Q79 51 87 60" stroke="#58a6ff" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <!-- Usev: siroky oblouk y=72-82 -->
+      <path d="M44 74 Q64 87 84 74" stroke="#58a6ff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <!-- Antena: kratka, z vrchu face plate -->
+      <line x1="64" y1="42" x2="64" y2="28" stroke="url(#gN)" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="64" cy="25" r="4" fill="#58a6ff">
+        <animate attributeName="r" values="4;5;4" dur="2s" repeatCount="indefinite"/>
+      </circle>
+    </svg>
+    <div class="label">PO (opraveno)</div>
+  </div>
+
+  <!-- Bez smernic — finalni podoba -->
+  <div class="icon-card" style="border-color:#3fb950;">
+    <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="gF" x1="0" y1="0" x2="128" y2="128">
+          <stop offset="0%" stop-color="#58a6ff"/>
+          <stop offset="100%" stop-color="#bc8cff"/>
+        </linearGradient>
+      </defs>
+      <circle cx="64" cy="64" r="58" stroke="url(#gF)" stroke-width="4" fill="#0d1117"/>
+      <rect x="34" y="42" width="60" height="46" rx="12" fill="url(#gF)" opacity="0.12"/>
+      <rect x="34" y="42" width="60" height="46" rx="12" stroke="url(#gF)" stroke-width="2.5" fill="none"/>
+      <path d="M41 60 Q49 51 57 60" stroke="#58a6ff" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M71 60 Q79 51 87 60" stroke="#58a6ff" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M44 74 Q64 87 84 74" stroke="#58a6ff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <line x1="64" y1="42" x2="64" y2="28" stroke="url(#gF)" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="64" cy="25" r="4" fill="#58a6ff">
+        <animate attributeName="r" values="4;5;4" dur="2s" repeatCount="indefinite"/>
+      </circle>
+    </svg>
+    <div class="label">FINAL A3</div>
+  </div>
+
+  <!-- Male velikosti -->
+  <div class="icon-card">
+    <div style="display:flex; gap:16px; align-items:flex-end; justify-content:center;">
+      <div style="text-align:center">
+        <svg width="16" height="16" viewBox="0 0 128 128" fill="none"><defs><linearGradient id="gs16" x1="0" y1="0" x2="128" y2="128"><stop offset="0%" stop-color="#58a6ff"/><stop offset="100%" stop-color="#bc8cff"/></linearGradient></defs><circle cx="64" cy="64" r="58" stroke="url(#gs16)" stroke-width="8" fill="#0d1117"/><path d="M38 60 Q50 48 62 60" stroke="#58a6ff" stroke-width="6" fill="none"/><path d="M66 60 Q78 48 90 60" stroke="#58a6ff" stroke-width="6" fill="none"/><path d="M40 76 Q64 92 88 76" stroke="#58a6ff" stroke-width="5" fill="none"/></svg>
+        <div class="label">16</div>
+      </div>
+      <div style="text-align:center">
+        <svg width="32" height="32" viewBox="0 0 128 128" fill="none"><defs><linearGradient id="gs32" x1="0" y1="0" x2="128" y2="128"><stop offset="0%" stop-color="#58a6ff"/><stop offset="100%" stop-color="#bc8cff"/></linearGradient></defs><circle cx="64" cy="64" r="58" stroke="url(#gs32)" stroke-width="6" fill="#0d1117"/><path d="M41 60 Q49 51 57 60" stroke="#58a6ff" stroke-width="4" fill="none"/><path d="M71 60 Q79 51 87 60" stroke="#58a6ff" stroke-width="4" fill="none"/><path d="M44 74 Q64 87 84 74" stroke="#58a6ff" stroke-width="3.5" fill="none"/></svg>
+        <div class="label">32</div>
+      </div>
+      <div style="text-align:center">
+        <svg width="64" height="64" viewBox="0 0 128 128" fill="none"><defs><linearGradient id="gs64" x1="0" y1="0" x2="128" y2="128"><stop offset="0%" stop-color="#58a6ff"/><stop offset="100%" stop-color="#bc8cff"/></linearGradient></defs><circle cx="64" cy="64" r="58" stroke="url(#gs64)" stroke-width="4" fill="#0d1117"/><rect x="34" y="42" width="60" height="46" rx="12" fill="url(#gs64)" opacity="0.12"/><rect x="34" y="42" width="60" height="46" rx="12" stroke="url(#gs64)" stroke-width="2.5" fill="none"/><path d="M41 60 Q49 51 57 60" stroke="#58a6ff" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M71 60 Q79 51 87 60" stroke="#58a6ff" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M44 74 Q64 87 84 74" stroke="#58a6ff" stroke-width="2.5" fill="none" stroke-linecap="round"/><line x1="64" y1="42" x2="64" y2="28" stroke="url(#gs64)" stroke-width="2.5" stroke-linecap="round"/><circle cx="64" cy="25" r="4" fill="#58a6ff"/></svg>
+        <div class="label">64</div>
+      </div>
+    </div>
+    <div class="label">Velikosti</div>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2>2. Banner 4b — s A3 ikonou, opravene centrovani</h2>
+<!-- ============================================================ -->
+
+<div class="banner-card">
+  <svg width="840" height="180" viewBox="0 0 840 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="bIco" x1="0" y1="0" x2="80" y2="80">
+        <stop offset="0%" stop-color="#58a6ff"/>
+        <stop offset="100%" stop-color="#bc8cff"/>
+      </linearGradient>
+    </defs>
+    <rect width="840" height="180" rx="12" fill="#0d1117"/>
+    <rect width="840" height="180" rx="12" stroke="#30363d" stroke-width="1" fill="none"/>
+
+    <!-- Gemini node -->
+    <g transform="translate(64, 44)">
+      <rect x="-40" y="-18" width="80" height="36" rx="10" fill="#0d1117" stroke="#4285f4" stroke-width="2"/>
+      <text x="0" y="5" text-anchor="middle" fill="#4285f4" font-size="14" font-weight="600" font-family="system-ui">Gemini</text>
+    </g>
+    <!-- Claude node -->
+    <g transform="translate(64, 136)">
+      <rect x="-40" y="-18" width="80" height="36" rx="10" fill="#0d1117" stroke="#d4a574" stroke-width="2"/>
+      <text x="0" y="5" text-anchor="middle" fill="#d4a574" font-size="14" font-weight="600" font-family="system-ui">Claude</text>
+    </g>
+
+    <!-- Animated connection lines -->
+    <path d="M104 44 C160 44 180 90 230 90" stroke="#4285f4" stroke-width="2" fill="none" opacity="0.4" stroke-dasharray="6 4">
+      <animate attributeName="stroke-dashoffset" values="0;-10" dur="1.5s" repeatCount="indefinite"/>
+    </path>
+    <path d="M104 136 C160 136 180 90 230 90" stroke="#d4a574" stroke-width="2" fill="none" opacity="0.4" stroke-dasharray="6 4">
+      <animate attributeName="stroke-dashoffset" values="0;-10" dur="1.5s" repeatCount="indefinite"/>
+    </path>
+
+    <!--
+      CENTER ICON: A3 Happy Eyes
+      Kruh r=38 se stredem na (270, 90).
+      Vsechny souradnice relativni k (0,0) uvnitr grupy.
+
+      Obsah robota (z 128x128 viewboxu prepocteny na r=38 kruh):
+        Pomer: 38/58 = 0.655
+        Z puvodni ikony (stred 64,64, radius 58):
+          face plate: (34,42)-(94,88) → prepocet na (-30*0.655, -22*0.655)-(30*0.655, 24*0.655)
+                    = (-19.6, -14.4)-(19.6, 15.7)  → zaokrouhlim
+          oci: y=60-64=-4 → -4*0.655 = -2.6
+          usev: y=74-64=10 → 10*0.655 = 6.5
+          antena zaklad: y=42-64=-22 → -22*0.655 = -14.4
+          antena tip: y=25-64=-39 → -39*0.655 = -25.5
+    -->
+    <g transform="translate(270, 90)">
+      <!-- Hlavni kruh -->
+      <circle r="38" fill="#0d1117" stroke="url(#bIco)" stroke-width="2.5"/>
+      <!-- Face plate -->
+      <rect x="-20" y="-14" width="40" height="30" rx="8" fill="url(#bIco)" opacity="0.1"/>
+      <rect x="-20" y="-14" width="40" height="30" rx="8" stroke="url(#bIco)" stroke-width="1.5" fill="none"/>
+      <!-- Happy eyes (oblouky) -->
+      <path d="M-15 -3 Q-10 -9 -5 -3" stroke="#58a6ff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <path d="M5 -3 Q10 -9 15 -3" stroke="#58a6ff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <!-- Siroky usev -->
+      <path d="M-13 7 Q0 16 13 7" stroke="#58a6ff" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <!-- Antena -->
+      <line x1="0" y1="-14" x2="0" y2="-23" stroke="url(#bIco)" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="0" cy="-26" r="3" fill="#58a6ff">
+        <animate attributeName="r" values="3;4;3" dur="2s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+
+    <!-- Arrow right -->
+    <path d="M308 90 L370 90" stroke="url(#bIco)" stroke-width="2" opacity="0.3" stroke-dasharray="6 4">
+      <animate attributeName="stroke-dashoffset" values="0;-10" dur="1.5s" repeatCount="indefinite"/>
+    </path>
+
+    <!-- Title -->
+    <text x="385" y="48" fill="#e6edf3" font-size="32" font-weight="700" font-family="'Segoe UI', system-ui, sans-serif">Avatar Engine</text>
+    <text x="385" y="72" fill="#8b949e" font-size="14" font-family="'Segoe UI', system-ui, sans-serif">AI assistant integration library for Python</text>
+
+    <!-- Tags -->
+    <g transform="translate(385, 86)">
+      <rect x="0" y="0" width="80" height="20" rx="4" fill="#238636" opacity="0.2"/>
+      <text x="40" y="14" text-anchor="middle" fill="#7ee787" font-size="10" font-family="system-ui">ACP Sessions</text>
+
+      <rect x="88" y="0" width="92" height="20" rx="4" fill="#1f6feb" opacity="0.2"/>
+      <text x="134" y="14" text-anchor="middle" fill="#79c0ff" font-size="10" font-family="system-ui">Zero Footprint</text>
+
+      <rect x="188" y="0" width="70" height="20" rx="4" fill="#6e40c9" opacity="0.2"/>
+      <text x="223" y="14" text-anchor="middle" fill="#bc8cff" font-size="10" font-family="system-ui">MCP Tools</text>
+
+      <rect x="266" y="0" width="76" height="20" rx="4" fill="#f0883e" opacity="0.15"/>
+      <text x="304" y="14" text-anchor="middle" fill="#f0883e" font-size="10" font-family="system-ui">Event-Driven</text>
+
+      <rect x="350" y="0" width="72" height="20" rx="4" fill="#58a6ff" opacity="0.15"/>
+      <text x="386" y="14" text-anchor="middle" fill="#58a6ff" font-size="10" font-family="system-ui">Streaming</text>
+    </g>
+
+    <!-- pip install box -->
+    <g transform="translate(385, 120)">
+      <rect x="0" y="0" width="220" height="28" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+      <text x="12" y="19" fill="#7ee787" font-size="13" font-family="'Courier New', monospace">pip install avatar-engine</text>
+    </g>
+
+    <!-- Footer -->
+    <text x="385" y="168" fill="#484f58" font-size="11" font-family="system-ui">Python 3.10+  ·  asyncio  ·  MIT License</text>
+  </svg>
+  <div class="label">Banner 4b FINAL — A3 Happy Eyes, opravene centrovani</div>
+</div>
+
+<!-- Jeste verze s cervenym krizkem pro overeni centrovani -->
+<h2>3. Kontrola centrovani (smernice)</h2>
+
+<div class="banner-card">
+  <svg width="840" height="180" viewBox="0 0 840 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="bIco2" x1="0" y1="0" x2="80" y2="80">
+        <stop offset="0%" stop-color="#58a6ff"/>
+        <stop offset="100%" stop-color="#bc8cff"/>
+      </linearGradient>
+    </defs>
+    <rect width="840" height="180" rx="12" fill="#0d1117"/>
+    <rect width="840" height="180" rx="12" stroke="#30363d" stroke-width="1" fill="none"/>
+
+    <!-- Gemini -->
+    <g transform="translate(64, 44)">
+      <rect x="-40" y="-18" width="80" height="36" rx="10" fill="#0d1117" stroke="#4285f4" stroke-width="2"/>
+      <text x="0" y="5" text-anchor="middle" fill="#4285f4" font-size="14" font-weight="600" font-family="system-ui">Gemini</text>
+    </g>
+    <!-- Claude -->
+    <g transform="translate(64, 136)">
+      <rect x="-40" y="-18" width="80" height="36" rx="10" fill="#0d1117" stroke="#d4a574" stroke-width="2"/>
+      <text x="0" y="5" text-anchor="middle" fill="#d4a574" font-size="14" font-weight="600" font-family="system-ui">Claude</text>
+    </g>
+    <!-- Lines -->
+    <path d="M104 44 C160 44 180 90 230 90" stroke="#4285f4" stroke-width="2" fill="none" opacity="0.4" stroke-dasharray="6 4"/>
+    <path d="M104 136 C160 136 180 90 230 90" stroke="#d4a574" stroke-width="2" fill="none" opacity="0.4" stroke-dasharray="6 4"/>
+
+    <!-- CENTER ICON se smernicemi -->
+    <g transform="translate(270, 90)">
+      <!-- Smernice stredu -->
+      <line x1="-42" y1="0" x2="42" y2="0" class="guide"/>
+      <line x1="0" y1="-42" x2="0" y2="42" class="guide"/>
+
+      <circle r="38" fill="#0d1117" stroke="url(#bIco2)" stroke-width="2.5"/>
+      <rect x="-20" y="-14" width="40" height="30" rx="8" fill="url(#bIco2)" opacity="0.1"/>
+      <rect x="-20" y="-14" width="40" height="30" rx="8" stroke="url(#bIco2)" stroke-width="1.5" fill="none"/>
+      <path d="M-15 -3 Q-10 -9 -5 -3" stroke="#58a6ff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <path d="M5 -3 Q10 -9 15 -3" stroke="#58a6ff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <path d="M-13 7 Q0 16 13 7" stroke="#58a6ff" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <line x1="0" y1="-14" x2="0" y2="-23" stroke="url(#bIco2)" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="0" cy="-26" r="3" fill="#58a6ff"/>
+    </g>
+
+    <!-- Arrow right -->
+    <path d="M308 90 L370 90" stroke="url(#bIco2)" stroke-width="2" opacity="0.3" stroke-dasharray="6 4"/>
+
+    <!-- Title -->
+    <text x="385" y="48" fill="#e6edf3" font-size="32" font-weight="700" font-family="'Segoe UI', system-ui, sans-serif">Avatar Engine</text>
+    <text x="385" y="72" fill="#8b949e" font-size="14" font-family="'Segoe UI', system-ui, sans-serif">AI assistant integration library for Python</text>
+    <g transform="translate(385, 86)">
+      <rect x="0" y="0" width="80" height="20" rx="4" fill="#238636" opacity="0.2"/>
+      <text x="40" y="14" text-anchor="middle" fill="#7ee787" font-size="10" font-family="system-ui">ACP Sessions</text>
+      <rect x="88" y="0" width="92" height="20" rx="4" fill="#1f6feb" opacity="0.2"/>
+      <text x="134" y="14" text-anchor="middle" fill="#79c0ff" font-size="10" font-family="system-ui">Zero Footprint</text>
+      <rect x="188" y="0" width="70" height="20" rx="4" fill="#6e40c9" opacity="0.2"/>
+      <text x="223" y="14" text-anchor="middle" fill="#bc8cff" font-size="10" font-family="system-ui">MCP Tools</text>
+      <rect x="266" y="0" width="76" height="20" rx="4" fill="#f0883e" opacity="0.15"/>
+      <text x="304" y="14" text-anchor="middle" fill="#f0883e" font-size="10" font-family="system-ui">Event-Driven</text>
+      <rect x="350" y="0" width="72" height="20" rx="4" fill="#58a6ff" opacity="0.15"/>
+      <text x="386" y="14" text-anchor="middle" fill="#58a6ff" font-size="10" font-family="system-ui">Streaming</text>
+    </g>
+    <g transform="translate(385, 120)">
+      <rect x="0" y="0" width="220" height="28" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+      <text x="12" y="19" fill="#7ee787" font-size="13" font-family="'Courier New', monospace">pip install avatar-engine</text>
+    </g>
+    <text x="385" y="168" fill="#484f58" font-size="11" font-family="system-ui">Python 3.10+  ·  asyncio  ·  MIT License</text>
+  </svg>
+  <div class="label">Se smernicemi — overeni centrovani (cerveny krizek = stred kruhu)</div>
+</div>
+
+</body>
+</html>
