@@ -399,22 +399,24 @@ class DisplayManager:
             return self._status_active
 
     def advance_spinner(self) -> None:
-        """Render one spinner frame for current thinking state.
+        """Render one colored spinner frame for current thinking state.
 
         Shows a fallback 'Thinking...' when no ThinkingEvent has been
         received yet (common for Codex/Claude which take time to start).
         """
         if self._verbose:
             return
-        line = self.thinking.render_plain(self._frame_index)
-        if not line and self._state in (EngineState.THINKING, EngineState.RESPONDING):
+        rich_text = self.thinking.render()
+        if rich_text is None and self._state in (EngineState.THINKING, EngineState.RESPONDING):
             # Fallback: no ThinkingEvent yet, but we know we're waiting
             frame = SPINNER_FRAMES[self._frame_index % len(SPINNER_FRAMES)]
-            line = f"{frame} Thinking..."
+            rich_text = Text()
+            rich_text.append(f"{frame} ", style="bold cyan")
+            rich_text.append("Thinking...", style="cyan")
         self._frame_index += 1
-        if not line:
+        if rich_text is None:
             return
-        self._write_status(line)
+        self._write_status_rich(rich_text)
 
     def clear_status(self) -> None:
         """Clear transient spinner/status line."""
@@ -427,16 +429,23 @@ class DisplayManager:
             self._status_active = False
             self._status_width = 0
 
-    def _write_status(self, line: str) -> None:
+    def _write_status_rich(self, text: Text) -> None:
+        """Write a colored transient status line (overwritten on next call)."""
         with self._status_lock:
-            if self._status_active and self._status_width > len(line):
-                padded = line + (" " * (self._status_width - len(line)))
+            visible_width = len(text.plain)
+            # Render Rich Text → string with ANSI color codes
+            with self._console.capture() as cap:
+                self._console.print(text, end="", highlight=False)
+            rendered = cap.get()
+            # Pad to clear leftover chars from previous longer line
+            if self._status_active and self._status_width > visible_width:
+                pad = " " * (self._status_width - visible_width)
             else:
-                padded = line
-            self._console.file.write("\r" + padded)
+                pad = ""
+            self._console.file.write("\r" + rendered + pad)
             self._console.file.flush()
             self._status_active = True
-            self._status_width = max(self._status_width, len(line))
+            self._status_width = max(visible_width, self._status_width)
 
     def _print_tool_event(self, event: ToolEvent) -> None:
         """Print a tool event in non-live mode."""

@@ -214,6 +214,12 @@ async def _repl_async(
     if PromptSession is None:
         raise RuntimeError("prompt_toolkit is required for REPL mode. Install avatar-engine[cli].")
 
+    try:
+        from prompt_toolkit.formatted_text import HTML
+        prompt_text = HTML('<b><style fg="ansiblue">You</style></b>: ')
+    except ImportError:
+        prompt_text = "You: "
+
     session = PromptSession()
 
     try:
@@ -226,7 +232,7 @@ async def _repl_async(
         with patch_stdout():
             while True:
                 try:
-                    user_input = await session.prompt_async("You: ")
+                    user_input = await session.prompt_async(prompt_text)
 
                     # Handle commands
                     if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
@@ -343,7 +349,7 @@ async def _repl_async(
                                 except asyncio.CancelledError:
                                     pass
                                 display.clear_status()
-                                out_console.print("Assistant:")
+                                out_console.print("[bold green]Assistant[/bold green]:")
                                 printed_header = True
                             out_console.print(chunk, end="")
                     finally:
