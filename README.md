@@ -115,6 +115,10 @@ avatar chat "What is 2+2?"
 avatar -p claude chat "Write a haiku"
 avatar -p codex chat "Refactor this function"
 
+# Working directory override
+avatar -w /path/to/project chat "Analyze this codebase"
+avatar --working-dir /tmp/sandbox repl
+
 # Interactive REPL
 avatar repl
 avatar -p codex repl
@@ -125,6 +129,9 @@ avatar chat --resume abc123 "Back to this session"
 avatar repl --continue
 avatar session list
 avatar session info abc123
+
+# Claude-specific: allowed tools filter
+avatar -p claude chat --allowed-tools "Read,Write,Bash" "Fix the bug"
 
 # With config file: -p overrides config's provider
 avatar -p codex chat "Hello"     # uses codex even if .avatar.yaml says gemini
@@ -331,6 +338,10 @@ asyncio.run(main())
 /sessions     — List available sessions
 /session      — Show current session ID
 /resume ID    — Resume a session by ID
+/usage        — Show usage stats (requests, tokens, cost, latency, uptime)
+/tools        — List configured MCP servers
+/tool NAME    — Show MCP server detail (supports partial name match)
+/mcp          — Show MCP server status
 ```
 
 **How it works:**
@@ -372,7 +383,7 @@ pytest tests/ -v
 # Run with coverage
 pytest tests/ --cov=avatar_engine
 
-# Current: 561+ tests (unit + integration)
+# Current: 581+ tests (unit + integration)
 ```
 
 ## API Reference
