@@ -51,8 +51,8 @@ gemini:
 
   # System prompt (written to GEMINI.md)
   system_prompt: |
-    Jsi AI avatar. Odpovídej česky, stručně a přirozeně.
-    Používej MCP nástroje pro ovládání avatara.
+    You are an AI avatar. Respond concisely and naturally.
+    Use MCP tools to control the avatar.
 
   # MCP servers (written to .gemini/settings.json)
   mcp_servers:
@@ -87,8 +87,8 @@ claude:
 
   # System prompt (written to CLAUDE.md + --append-system-prompt)
   system_prompt: |
-    Jsi AI avatar. Odpovídej česky, stručně a přirozeně.
-    Používej MCP nástroje pro ovládání avatara.
+    You are an AI avatar. Respond concisely and naturally.
+    Use MCP tools to control the avatar.
 
   # MCP servers (written to mcp_servers.json for --mcp-config)
   mcp_servers:

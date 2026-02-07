@@ -3,17 +3,36 @@
 # Avatar Engine - Install Script for Arch Linux
 # ============================================================================
 #
-# Instaluje závislosti pomocí uv package manager.
-# Podporuje Gemini CLI a Claude Code.
+# Installs dependencies using the uv package manager.
+# Supports Gemini CLI and Claude Code.
 #
-# Použití:
-#   ./install.sh              # Instalace
-#   ./install.sh --check      # Kontrola závislostí
-#   ./install.sh --setup-cli  # Instalace Gemini CLI a Claude Code
+# Usage:
+#   ./install.sh              # Full installation
+#   ./install.sh --check      # Check dependencies
+#   ./install.sh --setup-cli  # Install Gemini CLI and Claude Code
 #
 # ============================================================================
 
 set -e
+
+# ============================================================================
+# Detect the parent shell (the shell that invoked this script)
+# ============================================================================
+
+detect_parent_shell() {
+    local parent_comm
+    parent_comm=$(ps -p "$PPID" -o comm= 2>/dev/null || echo "")
+
+    if [[ "$parent_comm" == *fish* ]]; then
+        PARENT_SHELL="fish"
+    elif [[ "$parent_comm" == *zsh* ]]; then
+        PARENT_SHELL="zsh"
+    else
+        PARENT_SHELL="bash"
+    fi
+}
+
+detect_parent_shell
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -40,237 +59,272 @@ print_error() {
 }
 
 # ============================================================================
-# Kontrola závislostí
+# Dependency check
 # ============================================================================
 
 check_command() {
     if command -v "$1" &> /dev/null; then
-        print_ok "$1 nalezen: $(which $1)"
+        print_ok "$1 found: $(which $1)"
         return 0
     else
-        print_warn "$1 nenalezen"
+        print_warn "$1 not found"
         return 1
     fi
 }
 
 check_dependencies() {
-    print_header "Kontrola závislostí"
-    
+    print_header "Checking dependencies"
+
+    print_ok "Detected shell: ${PARENT_SHELL}"
+    echo ""
+
     local all_ok=true
-    
+
     # Python
     if check_command python3; then
-        echo "    Verze: $(python3 --version)"
+        echo "    Version: $(python3 --version)"
     else
         all_ok=false
     fi
-    
+
     # uv
     if check_command uv; then
-        echo "    Verze: $(uv --version)"
+        echo "    Version: $(uv --version)"
     else
         all_ok=false
     fi
-    
-    # Node.js (pro CLI)
+
+    # Node.js (for CLI tools)
     if check_command node; then
-        echo "    Verze: $(node --version)"
+        echo "    Version: $(node --version)"
     else
-        print_warn "Node.js potřebný pro Gemini CLI a Claude Code"
+        print_warn "Node.js is required for Gemini CLI and Claude Code"
     fi
-    
+
     # npm
     if check_command npm; then
-        echo "    Verze: $(npm --version)"
+        echo "    Version: $(npm --version)"
     else
-        print_warn "npm potřebný pro Gemini CLI a Claude Code"
+        print_warn "npm is required for Gemini CLI and Claude Code"
     fi
-    
+
     # Gemini CLI
     echo ""
     if check_command gemini; then
-        echo "    Verze: $(gemini --version 2>/dev/null || echo 'N/A')"
+        echo "    Version: $(gemini --version 2>/dev/null || echo 'N/A')"
     else
-        print_warn "Gemini CLI není nainstalován"
-        echo "    Instaluj: npm install -g @google/gemini-cli"
+        print_warn "Gemini CLI is not installed"
+        echo "    Install: npm install -g @google/gemini-cli"
     fi
-    
+
     # Claude Code
     if check_command claude; then
-        echo "    Verze: $(claude --version 2>/dev/null || echo 'N/A')"
+        echo "    Version: $(claude --version 2>/dev/null || echo 'N/A')"
     else
-        print_warn "Claude Code není nainstalován"
-        echo "    Instaluj: npm install -g @anthropic-ai/claude-code"
+        print_warn "Claude Code is not installed"
+        echo "    Install: npm install -g @anthropic-ai/claude-code"
     fi
-    
+
     echo ""
     if $all_ok; then
-        print_ok "Všechny základní závislosti jsou splněny"
+        print_ok "All base dependencies are satisfied"
     else
-        print_error "Některé závislosti chybí"
+        print_error "Some dependencies are missing"
     fi
 }
 
 # ============================================================================
-# Instalace uv
+# Install uv
 # ============================================================================
 
 install_uv() {
     if command -v uv &> /dev/null; then
-        print_ok "uv je již nainstalován"
+        print_ok "uv is already installed"
         return 0
     fi
-    
-    print_header "Instalace uv"
-    
-    # Zkus pacman
+
+    print_header "Installing uv"
+
+    # Try pacman
     if command -v pacman &> /dev/null; then
-        echo "Zkouším pacman..."
+        echo "Trying pacman..."
         if pacman -Ss "^python-uv$" &> /dev/null; then
             sudo pacman -S --noconfirm python-uv
-            print_ok "uv nainstalován přes pacman"
+            print_ok "uv installed via pacman"
             return 0
         fi
     fi
-    
-    # Zkus AUR helper
+
+    # Try AUR helper
     for helper in yay paru; do
         if command -v $helper &> /dev/null; then
-            echo "Zkouším $helper..."
+            echo "Trying $helper..."
             $helper -S --noconfirm python-uv 2>/dev/null && {
-                print_ok "uv nainstalován přes $helper"
+                print_ok "uv installed via $helper"
                 return 0
             }
         fi
     done
-    
-    # Fallback: oficiální instalátor
-    echo "Instaluji přes oficiální skript..."
+
+    # Fallback: official installer
+    echo "Installing via official script..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    
-    # Přidej do PATH
+
+    # Add to PATH
     export PATH="$HOME/.local/bin:$PATH"
-    
+
     if command -v uv &> /dev/null; then
-        print_ok "uv nainstalován"
+        print_ok "uv installed"
     else
-        print_error "Instalace uv selhala"
+        print_error "uv installation failed"
         exit 1
     fi
 }
 
 # ============================================================================
-# Instalace CLI nástrojů
+# Install CLI tools
 # ============================================================================
 
 install_cli_tools() {
-    print_header "Instalace AI CLI nástrojů"
-    
+    print_header "Installing AI CLI tools"
+
     if ! command -v npm &> /dev/null; then
-        print_error "npm není nainstalován!"
-        echo "Instaluj Node.js: sudo pacman -S nodejs npm"
+        print_error "npm is not installed!"
+        echo "Install Node.js: sudo pacman -S nodejs npm"
         exit 1
     fi
-    
+
     # Gemini CLI
     echo -e "\n${YELLOW}Gemini CLI:${NC}"
     if command -v gemini &> /dev/null; then
-        print_ok "Již nainstalován"
+        print_ok "Already installed"
     else
-        echo "Instaluji @google/gemini-cli..."
+        echo "Installing @google/gemini-cli..."
         npm install -g @google/gemini-cli
-        print_ok "Gemini CLI nainstalován"
+        print_ok "Gemini CLI installed"
     fi
-    
+
     # Claude Code
     echo -e "\n${YELLOW}Claude Code:${NC}"
     if command -v claude &> /dev/null; then
-        print_ok "Již nainstalován"
+        print_ok "Already installed"
     else
-        echo "Instaluji @anthropic-ai/claude-code..."
+        echo "Installing @anthropic-ai/claude-code..."
         npm install -g @anthropic-ai/claude-code
-        print_ok "Claude Code nainstalován"
+        print_ok "Claude Code installed"
     fi
-    
+
     echo ""
-    print_ok "CLI nástroje nainstalovány"
+    print_ok "CLI tools installed"
     echo ""
-    echo "Pro přihlášení spusť:"
-    echo "  gemini auth login    # Pro Gemini CLI"
-    echo "  claude auth login    # Pro Claude Code"
+    echo "To sign in, run:"
+    echo "  gemini auth login    # For Gemini CLI"
+    echo "  claude auth login    # For Claude Code"
 }
 
 # ============================================================================
-# Instalace Python závislostí
+# Install Python dependencies
 # ============================================================================
 
 install_python_deps() {
-    print_header "Instalace Python závislostí"
-    
-    # Vytvoř venv pokud neexistuje
+    print_header "Installing Python dependencies"
+
+    # Create venv if it doesn't exist
     if [ ! -d ".venv" ]; then
-        echo "Vytvářím virtuální prostředí..."
+        echo "Creating virtual environment..."
         uv venv
     fi
-    
-    # Aktivuj venv
+
+    # Activate venv
     source .venv/bin/activate
-    
-    # Instaluj závislosti
-    echo "Instaluji závislosti..."
+
+    # Install dependencies
+    echo "Installing dependencies..."
     uv pip install pyyaml
-    uv pip install agent-client-protocol || print_warn "ACP SDK se nepodařilo nainstalovat (Gemini ACP warm session nebude dostupný)"
-    
-    # MCP SDK (volitelné)
-    echo "Instaluji MCP SDK..."
-    uv pip install mcp || print_warn "MCP SDK se nepodařilo nainstalovat (volitelné)"
-    
-    # Vývojové nástroje (volitelné)
-    read -p "Instalovat vývojové nástroje (pytest, black, mypy)? [y/N] " -n 1 -r
+    uv pip install agent-client-protocol || print_warn "ACP SDK installation failed (Gemini ACP warm session will be unavailable)"
+
+    # MCP SDK (optional)
+    echo "Installing MCP SDK..."
+    uv pip install mcp || print_warn "MCP SDK installation failed (optional)"
+
+    # Development tools (optional)
+    read -p "Install development tools (pytest, black, mypy)? [y/N] " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         uv pip install pytest black mypy
     fi
-    
-    print_ok "Python závislosti nainstalovány"
+
+    print_ok "Python dependencies installed"
 }
 
 # ============================================================================
-# Vytvoření aktivačního skriptu
+# Create activation scripts
 # ============================================================================
 
 create_activate_script() {
-    print_header "Vytváření aktivačního skriptu"
-    
+    print_header "Creating activation scripts"
+
+    # --- activate.sh (bash/zsh) ---
     cat > activate.sh << 'EOF'
 #!/bin/bash
-# Avatar Engine - Aktivační skript
-# Použití: source activate.sh
+# Avatar Engine - Activation script
+# Usage: source activate.sh
 
-# Aktivuj virtuální prostředí
+# Activate virtual environment
 if [ -d ".venv" ]; then
     source .venv/bin/activate
-    echo "✓ Virtuální prostředí aktivováno"
+    echo "✓ Virtual environment activated"
 else
-    echo "✗ Virtuální prostředí nenalezeno, spusť ./install.sh"
+    echo "✗ Virtual environment not found, run ./install.sh"
     return 1
 fi
 
-# Nastav PYTHONPATH
+# Set PYTHONPATH
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 
 # Info
 echo ""
-echo "Avatar Engine připraven!"
-echo "  Provider z config.yaml: $(grep '^provider:' config.yaml 2>/dev/null | awk '{print $2}')"
+echo "Avatar Engine ready!"
+echo "  Provider from .avatar.yaml: $(grep '^provider:' .avatar.yaml 2>/dev/null | awk '{print $2}')"
 echo ""
-echo "Spusť příklady:"
+echo "Run examples:"
 echo "  python examples.py basic"
 echo "  python examples.py --help"
 EOF
-
     chmod +x activate.sh
-    print_ok "Vytvořen activate.sh"
+    print_ok "Created activate.sh (bash/zsh)"
+
+    # --- activate.fish ---
+    cat > activate.fish << 'FISHEOF'
+# Avatar Engine - Activation script for fish
+# Usage: source activate.fish
+
+# Activate virtual environment
+if test -d .venv
+    source .venv/bin/activate.fish
+    echo "✓ Virtual environment activated"
+else
+    echo "✗ Virtual environment not found, run ./install.sh"
+    return 1
+end
+
+# Set PYTHONPATH
+set -gx PYTHONPATH "$PYTHONPATH:(pwd)"
+
+# Info
+echo ""
+echo "Avatar Engine ready!"
+set -l provider (grep '^provider:' .avatar.yaml 2>/dev/null | awk '{print $2}')
+if test -n "$provider"
+    echo "  Provider from .avatar.yaml: $provider"
+end
+echo ""
+echo "Run examples:"
+echo "  python examples.py basic"
+echo "  python examples.py --help"
+FISHEOF
+    chmod +x activate.fish
+    print_ok "Created activate.fish (fish)"
 }
 
 # ============================================================================
@@ -279,7 +333,7 @@ EOF
 
 main() {
     cd "$(dirname "$0")"
-    
+
     case "${1:-}" in
         --check)
             check_dependencies
@@ -290,42 +344,48 @@ main() {
         --help|-h)
             echo "Avatar Engine - Install Script"
             echo ""
-            echo "Použití:"
-            echo "  ./install.sh              Kompletní instalace"
-            echo "  ./install.sh --check      Kontrola závislostí"
-            echo "  ./install.sh --setup-cli  Instalace Gemini CLI a Claude Code"
-            echo "  ./install.sh --help       Tato nápověda"
+            echo "Usage:"
+            echo "  ./install.sh              Full installation"
+            echo "  ./install.sh --check      Check dependencies"
+            echo "  ./install.sh --setup-cli  Install Gemini CLI and Claude Code"
+            echo "  ./install.sh --help       Show this help"
             ;;
         *)
-            print_header "Avatar Engine - Instalace"
-            
-            # 1. Kontrola
+            print_header "Avatar Engine - Installation"
+
+            # 1. Check dependencies
             check_dependencies
-            
-            # 2. Instalace uv
+
+            # 2. Install uv
             install_uv
-            
-            # 3. Python závislosti
+
+            # 3. Python dependencies
             install_python_deps
-            
-            # 4. Aktivační skript
+
+            # 4. Activation scripts
             create_activate_script
-            
-            # 5. Hotovo
-            print_header "Instalace dokončena!"
-            echo "Další kroky:"
+
+            # 5. Done
+            print_header "Installation complete!"
+            echo "Detected shell: ${PARENT_SHELL}"
             echo ""
-            echo "1. Aktivuj prostředí:"
-            echo "   source activate.sh"
+            echo "Next steps:"
             echo ""
-            echo "2. Uprav konfiguraci:"
-            echo "   nano config.yaml"
+            echo "1. Activate the environment:"
+            if [ "$PARENT_SHELL" = "fish" ]; then
+                echo "   source activate.fish"
+            else
+                echo "   source activate.sh"
+            fi
             echo ""
-            echo "3. Přihlaš se do CLI (pokud ještě ne):"
-            echo "   gemini auth login    # Pro Gemini"
-            echo "   claude auth login    # Pro Claude"
+            echo "2. Edit configuration:"
+            echo "   nano .avatar.yaml"
             echo ""
-            echo "4. Spusť příklad:"
+            echo "3. Sign in to CLI (if not already):"
+            echo "   gemini auth login    # For Gemini"
+            echo "   claude auth login    # For Claude"
+            echo ""
+            echo "4. Run an example:"
             echo "   python examples.py basic"
             echo ""
             ;;

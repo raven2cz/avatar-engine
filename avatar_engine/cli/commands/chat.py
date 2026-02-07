@@ -1,7 +1,9 @@
 """Chat command — single message interaction."""
 
 import asyncio
+import gc
 import json
+import sys
 import click
 from rich.console import Console
 from rich.markdown import Markdown
@@ -61,7 +63,7 @@ def chat(
     # Parse inline MCP servers
     mcp_servers = _parse_mcp_servers(mcp, mcp_server)
 
-    asyncio.run(_chat_async(
+    _run_async_clean(_chat_async(
         message=message,
         provider=provider,
         model=model,
@@ -181,6 +183,32 @@ async def _chat_async(
 
     finally:
         await engine.stop()
+
+
+def _run_async_clean(coro: object) -> None:
+    """Run a coroutine with clean subprocess transport shutdown.
+
+    Suppresses the harmless "Event loop is closed" RuntimeError that
+    occurs when BaseSubprocessTransport.__del__ fires during interpreter
+    shutdown after the loop has been closed.  This is a known CPython
+    issue with asyncio subprocess transports — the process is already
+    dead and the OS has reclaimed the pipes; the error is purely cosmetic.
+
+    The hook stays installed until process exit because the transport
+    __del__ fires during interpreter shutdown, after asyncio.run() returns.
+    """
+    _prev_hook = sys.unraisablehook
+
+    def _suppress_transport_error(unraisable: object) -> None:
+        if (
+            isinstance(unraisable.exc_value, RuntimeError)
+            and "Event loop is closed" in str(unraisable.exc_value)
+        ):
+            return  # suppress
+        _prev_hook(unraisable)
+
+    sys.unraisablehook = _suppress_transport_error
+    asyncio.run(coro)
 
 
 def _parse_mcp_servers(mcp_file: str, mcp_servers: tuple) -> dict:
