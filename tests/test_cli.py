@@ -454,3 +454,307 @@ class TestErrorMessages:
 
         assert result.exit_code == 1
         assert "Error" in result.output
+
+
+# =============================================================================
+# Working Dir Flag Tests
+# =============================================================================
+
+
+class TestWorkingDirFlag:
+    """Test --working-dir / -w global flag."""
+
+    def test_working_dir_passed_to_engine(self, runner, mock_engine, tmp_path):
+        """--working-dir should be passed to AvatarEngine."""
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-w", str(tmp_path),
+                "chat", "--no-stream", "Hello"
+            ])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            assert kwargs.get("working_dir") == str(tmp_path)
+
+    def test_working_dir_short_flag(self, runner, mock_engine, tmp_path):
+        """-w shorthand should work."""
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-w", str(tmp_path),
+                "chat", "--no-stream", "Test"
+            ])
+
+        assert result.exit_code == 0
+
+    def test_working_dir_invalid_path(self, runner):
+        """--working-dir with invalid path should fail."""
+        result = runner.invoke(cli, [
+            "-w", "/nonexistent/path/xyz",
+            "chat", "Hello"
+        ])
+        assert result.exit_code != 0
+
+    def test_no_working_dir_is_none(self, runner, mock_engine):
+        """Without --working-dir, it should not be in kwargs."""
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, ["chat", "--no-stream", "Hello"])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            assert "working_dir" not in kwargs
+
+
+# =============================================================================
+# Allowed Tools Flag Tests
+# =============================================================================
+
+
+class TestAllowedToolsFlag:
+    """Test --allowed-tools flag on chat command."""
+
+    def test_allowed_tools_passed_to_claude(self, runner, mock_engine):
+        """--allowed-tools should be parsed and passed for Claude."""
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-p", "claude",
+                "chat", "--no-stream",
+                "--allowed-tools", "Read,Grep,Glob",
+                "Hello"
+            ])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            assert kwargs.get("allowed_tools") == ["Read", "Grep", "Glob"]
+
+    def test_allowed_tools_single(self, runner, mock_engine):
+        """Single tool should also work."""
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-p", "claude",
+                "chat", "--no-stream",
+                "--allowed-tools", "Bash",
+                "Hello"
+            ])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            assert kwargs.get("allowed_tools") == ["Bash"]
+
+    def test_allowed_tools_ignored_for_gemini(self, runner, mock_engine):
+        """--allowed-tools should not be passed for non-Claude providers."""
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-p", "gemini",
+                "chat", "--no-stream",
+                "--allowed-tools", "Read",
+                "Hello"
+            ])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            assert "allowed_tools" not in kwargs
+
+
+# =============================================================================
+# get_usage() Bridge Tests
+# =============================================================================
+
+
+class TestBridgeGetUsage:
+    """Test BaseBridge.get_usage() and ClaudeBridge override."""
+
+    def test_base_bridge_get_usage(self):
+        """BaseBridge.get_usage() should return stats + provider + session_id."""
+        bridge = MagicMock()
+        bridge.provider_name = "gemini"
+        bridge.session_id = "sess-123"
+        bridge._stats = {
+            "total_requests": 5,
+            "successful_requests": 4,
+            "failed_requests": 1,
+            "total_duration_ms": 5000,
+            "total_cost_usd": 0.0,
+            "total_input_tokens": 100,
+            "total_output_tokens": 200,
+        }
+        from avatar_engine.bridges.base import BaseBridge
+        usage = BaseBridge.get_usage(bridge)
+        assert usage["provider"] == "gemini"
+        assert usage["session_id"] == "sess-123"
+        assert usage["total_requests"] == 5
+        assert usage["total_input_tokens"] == 100
+
+    def test_claude_bridge_get_usage_with_budget(self):
+        """ClaudeBridge.get_usage() should include cost and budget."""
+        from avatar_engine.bridges.claude import ClaudeBridge
+        bridge = MagicMock(spec=ClaudeBridge)
+        bridge.provider_name = "claude"
+        bridge.session_id = "claude-sess"
+        bridge._stats = {
+            "total_requests": 3,
+            "successful_requests": 3,
+            "failed_requests": 0,
+            "total_duration_ms": 3000,
+            "total_cost_usd": 0.15,
+            "total_input_tokens": 500,
+            "total_output_tokens": 300,
+        }
+        bridge._total_cost_usd = 0.47
+        bridge.max_budget_usd = 5.0
+        usage = ClaudeBridge.get_usage(bridge)
+        assert usage["total_cost_usd"] == 0.47
+        assert usage["budget_usd"] == 5.0
+        assert usage["budget_remaining_usd"] == pytest.approx(4.53)
+
+    def test_claude_bridge_get_usage_no_budget(self):
+        """ClaudeBridge.get_usage() without budget should not include budget keys."""
+        from avatar_engine.bridges.claude import ClaudeBridge
+        bridge = MagicMock(spec=ClaudeBridge)
+        bridge.provider_name = "claude"
+        bridge.session_id = None
+        bridge._stats = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "total_duration_ms": 0,
+            "total_cost_usd": 0.0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+        }
+        bridge._total_cost_usd = 0.0
+        bridge.max_budget_usd = None
+        usage = ClaudeBridge.get_usage(bridge)
+        assert "budget_usd" not in usage
+        assert "budget_remaining_usd" not in usage
+
+
+# =============================================================================
+# REPL Command Tests (/usage, /tools, /tool, /mcp, /help)
+# =============================================================================
+
+
+class TestReplNewCommands:
+    """Test new REPL commands: /usage, /tools, /tool, /mcp."""
+
+    def test_repl_help_shows_new_commands(self, runner):
+        """REPL --help should list the new commands."""
+        result = runner.invoke(cli, ["repl", "--help"])
+        assert result.exit_code == 0
+        assert "/usage" in result.output
+        assert "/tools" in result.output
+        assert "/tool NAME" in result.output
+        assert "/mcp" in result.output
+
+    def test_show_usage_function(self):
+        """_show_usage should render without error."""
+        from avatar_engine.cli.commands.repl import _show_usage
+
+        engine = MagicMock()
+        engine._bridge = MagicMock()
+        engine._bridge.get_usage.return_value = {
+            "provider": "gemini",
+            "session_id": "test-123",
+            "total_requests": 10,
+            "successful_requests": 9,
+            "failed_requests": 1,
+            "total_duration_ms": 10000,
+            "total_cost_usd": 0.0,
+            "total_input_tokens": 500,
+            "total_output_tokens": 300,
+        }
+        engine._start_time = 1000.0
+
+        # Should not raise
+        _show_usage(engine)
+
+    def test_show_usage_no_bridge(self):
+        """_show_usage with no bridge should not crash."""
+        from avatar_engine.cli.commands.repl import _show_usage
+        engine = MagicMock()
+        engine._bridge = None
+        _show_usage(engine)
+
+    def test_show_tools_function(self):
+        """_show_tools should list MCP servers."""
+        from avatar_engine.cli.commands.repl import _show_tools
+
+        engine = MagicMock()
+        engine._bridge = MagicMock()
+        engine._bridge.mcp_servers = {
+            "calc": {"command": "python", "args": ["calc.py"]},
+            "files": {"command": "node", "args": ["files.js"]},
+        }
+        _show_tools(engine)
+
+    def test_show_tools_no_servers(self):
+        """_show_tools with no MCP servers should show message."""
+        from avatar_engine.cli.commands.repl import _show_tools
+        engine = MagicMock()
+        engine._bridge = MagicMock()
+        engine._bridge.mcp_servers = {}
+        _show_tools(engine)
+
+    def test_show_tool_detail_found(self):
+        """_show_tool_detail should display server info."""
+        from avatar_engine.cli.commands.repl import _show_tool_detail
+
+        engine = MagicMock()
+        engine._bridge = MagicMock()
+        engine._bridge.mcp_servers = {
+            "calc": {"command": "python", "args": ["calc.py"], "env": {"DEBUG": "1"}},
+        }
+        _show_tool_detail(engine, "calc")
+
+    def test_show_tool_detail_partial_match(self):
+        """_show_tool_detail should match by partial name."""
+        from avatar_engine.cli.commands.repl import _show_tool_detail
+        engine = MagicMock()
+        engine._bridge = MagicMock()
+        engine._bridge.mcp_servers = {
+            "calculator": {"command": "python", "args": ["calc.py"]},
+        }
+        _show_tool_detail(engine, "calc")
+
+    def test_show_tool_detail_not_found(self):
+        """_show_tool_detail should handle missing server."""
+        from avatar_engine.cli.commands.repl import _show_tool_detail
+        engine = MagicMock()
+        engine._bridge = MagicMock()
+        engine._bridge.mcp_servers = {}
+        _show_tool_detail(engine, "nonexistent")
+
+    def test_show_mcp_status(self):
+        """_show_mcp_status should show configured servers."""
+        from avatar_engine.cli.commands.repl import _show_mcp_status
+
+        engine = MagicMock()
+        engine._bridge = MagicMock()
+        engine._bridge.mcp_servers = {
+            "tools": {"command": "python", "args": ["srv.py"]},
+        }
+        _show_mcp_status(engine)
+
+    def test_show_mcp_status_empty(self):
+        """_show_mcp_status with no servers."""
+        from avatar_engine.cli.commands.repl import _show_mcp_status
+        engine = MagicMock()
+        engine._bridge = MagicMock()
+        engine._bridge.mcp_servers = {}
+        _show_mcp_status(engine)

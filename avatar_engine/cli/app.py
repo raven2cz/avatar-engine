@@ -51,10 +51,11 @@ def find_config() -> str | None:
     default="gemini",
     help="AI provider",
 )
+@click.option("--working-dir", "-w", type=click.Path(exists=True, file_okay=False), help="Working directory")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 @click.option("--debug", is_flag=True, help="Debug mode")
 @click.pass_context
-def cli(ctx: click.Context, config: str, no_config: bool, provider: str, verbose: bool, debug: bool) -> None:
+def cli(ctx: click.Context, config: str, no_config: bool, provider: str, working_dir: str, verbose: bool, debug: bool) -> None:
     """Avatar Engine — application-specific AI avatar runtime.
 
     Build and run configurable AI avatars inside your application.
@@ -90,6 +91,7 @@ def cli(ctx: click.Context, config: str, no_config: bool, provider: str, verbose
 
     ctx.obj["config"] = config
     ctx.obj["provider"] = provider
+    ctx.obj["working_dir"] = working_dir
     ctx.obj["provider_explicit"] = (
         ctx.get_parameter_source("provider") == click.core.ParameterSource.COMMANDLINE
     )

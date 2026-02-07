@@ -551,6 +551,13 @@ class BaseBridge(ABC):
 
     # === Usage Stats ====================================================
 
+    def get_usage(self) -> Dict[str, Any]:
+        """Get usage summary for display (e.g. /usage REPL command)."""
+        stats = dict(self._stats)
+        stats["provider"] = self.provider_name
+        stats["session_id"] = self.session_id
+        return stats
+
     def get_stats(self) -> Dict[str, Any]:
         """Get usage statistics."""
         return dict(self._stats)

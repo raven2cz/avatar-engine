@@ -1,8 +1,9 @@
 # Avatar Engine — Codex Provider Integration Plan
 
 > Created: 2026-02-07
-> Status: Draft
+> Status: DONE
 > Version: 1.0
+> Closed: 2026-02-07
 
 ---
 
@@ -394,13 +395,33 @@ path (`_start_acp`, `_send_acp`, `_cleanup_acp`) with these substitutions:
 
 ## 10. Success Criteria
 
-- [ ] `avatar chat -p codex "Hello"` works end-to-end
-- [ ] `avatar repl -p codex` supports multi-turn conversation
-- [ ] Streaming text output works in real-time
-- [ ] Tool calls (exec, patch) emit ToolEvent with correct status
-- [ ] Thinking/reasoning emits ThinkingEvent
-- [ ] Auto-approval works for non-interactive use
-- [ ] MCP servers are passed to codex-acp session
-- [ ] All existing tests pass (no regressions)
-- [ ] New unit tests cover CodexBridge lifecycle
-- [ ] Integration test confirms real codex-acp communication
+- [x] `avatar chat -p codex "Hello"` works end-to-end
+- [x] `avatar repl -p codex` supports multi-turn conversation
+- [x] Streaming text output works in real-time
+- [x] Tool calls (exec, patch) emit ToolEvent with correct status
+- [x] Thinking/reasoning emits ThinkingEvent
+- [x] Auto-approval works for non-interactive use
+- [x] MCP servers are passed to codex-acp session
+- [x] All existing tests pass (no regressions)
+- [x] New unit tests cover CodexBridge lifecycle
+- [x] Integration test confirms real codex-acp communication
+
+---
+
+## Implementation Status: DONE (2026-02-07)
+
+Všechny fáze implementovány:
+
+| Fáze | Soubor | Stav |
+|------|--------|------|
+| 1 | `avatar_engine/bridges/codex.py` — CodexBridge (ACP-only) | DONE |
+| 2a | `avatar_engine/types.py` — ProviderType.CODEX | DONE |
+| 2b | `avatar_engine/engine.py` — _create_bridge() + config | DONE |
+| 2c | `avatar_engine/bridges/__init__.py` + `__init__.py` — exports | DONE |
+| 3 | `avatar_engine/cli/` — codex as provider choice + health | DONE |
+| 4 | `tests/test_codex_bridge.py` + `tests/integration/test_real_codex.py` | DONE |
+| 5 | `README.md`, `examples/`, `install.sh` | DONE |
+
+Session management (resume, continue, list) for Codex also implemented — see SESSION_MANAGEMENT_PLAN.md.
+
+**Finální stav testů:** 561+ testů, all PASS.

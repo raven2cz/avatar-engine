@@ -2,9 +2,11 @@
 
 import asyncio
 import json
+import time
 import click
 from rich.console import Console
 from rich.prompt import Prompt
+from rich.table import Table
 
 from ...config import AvatarConfig
 from ...engine import AvatarEngine
@@ -51,6 +53,14 @@ def repl(
 
         /stats        - Show session statistics
 
+        /usage        - Show usage (tokens, cost, requests)
+
+        /tools        - List available MCP tools
+
+        /tool NAME    - Show MCP tool detail
+
+        /mcp          - Show MCP server status
+
         /sessions     - List available sessions
 
         /session      - Show current session ID
@@ -61,6 +71,7 @@ def repl(
     config_path = ctx.obj.get("config")
     provider_explicit = ctx.obj.get("provider_explicit", False)
     verbose = ctx.obj.get("verbose", False)
+    working_dir = ctx.obj.get("working_dir")
 
     # Parse inline MCP servers
     mcp_servers = _parse_mcp_servers(mcp, mcp_server)
@@ -71,6 +82,7 @@ def repl(
         config_path=config_path,
         provider_explicit=provider_explicit,
         verbose=verbose,
+        working_dir=working_dir,
         mcp_servers=mcp_servers,
         thinking_level=thinking_level,
         yolo=yolo,
@@ -86,6 +98,7 @@ async def _repl_async(
     config_path: str,
     provider_explicit: bool,
     verbose: bool,
+    working_dir: str,
     mcp_servers: dict,
     thinking_level: str,
     yolo: bool,
@@ -96,6 +109,8 @@ async def _repl_async(
     """Async REPL implementation."""
     # Build engine kwargs
     kwargs = {"timeout": timeout}
+    if working_dir:
+        kwargs["working_dir"] = working_dir
 
     # Session params
     if resume_id:
@@ -186,12 +201,33 @@ async def _repl_async(
                     console.print_json(data=stats)
                     continue
 
+                if user_input.lower() == "/usage":
+                    _show_usage(engine)
+                    continue
+
+                if user_input.lower() == "/tools":
+                    _show_tools(engine)
+                    continue
+
+                if user_input.lower().startswith("/tool "):
+                    tool_name = user_input[6:].strip()
+                    _show_tool_detail(engine, tool_name)
+                    continue
+
+                if user_input.lower() == "/mcp":
+                    _show_mcp_status(engine)
+                    continue
+
                 if user_input.lower() == "/help":
                     console.print("[bold]Commands:[/bold]")
                     console.print("  /exit, /quit  - Exit the session")
                     console.print("  /clear        - Clear conversation history")
                     console.print("  /health       - Show health status")
                     console.print("  /stats        - Show session statistics")
+                    console.print("  /usage        - Show usage (tokens, cost, requests)")
+                    console.print("  /tools        - List available MCP tools")
+                    console.print("  /tool NAME    - Show MCP tool detail")
+                    console.print("  /mcp          - Show MCP server status")
                     console.print("  /sessions     - List available sessions")
                     console.print("  /session      - Show current session ID")
                     console.print("  /resume ID    - Resume a session by ID")
@@ -259,6 +295,131 @@ async def _repl_async(
     finally:
         await engine.stop()
         console.print("[dim]Session ended[/dim]")
+
+
+def _show_usage(engine: AvatarEngine) -> None:
+    """Display usage statistics as a Rich table."""
+    bridge = engine._bridge
+    if not bridge:
+        console.print("[yellow]No active bridge[/yellow]")
+        return
+
+    usage = bridge.get_usage()
+    table = Table(title=f"Session Usage ({usage.get('provider', '?')})")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", justify="right")
+
+    table.add_row("Session ID", usage.get("session_id") or "—")
+
+    total = usage.get("total_requests", 0)
+    ok = usage.get("successful_requests", 0)
+    table.add_row("Requests", f"{total} ({ok} ok)")
+
+    inp = usage.get("total_input_tokens", 0)
+    out = usage.get("total_output_tokens", 0)
+    table.add_row("Input tokens", f"{inp:,}" if inp else "—")
+    table.add_row("Output tokens", f"{out:,}" if out else "—")
+
+    cost = usage.get("total_cost_usd", 0)
+    if cost:
+        table.add_row("Total cost", f"${cost:.4f}")
+    else:
+        table.add_row("Total cost", "—")
+
+    if "budget_usd" in usage:
+        remaining = usage.get("budget_remaining_usd", 0)
+        budget = usage["budget_usd"]
+        table.add_row("Budget remaining", f"${remaining:.2f} / ${budget:.2f}")
+
+    dur = usage.get("total_duration_ms", 0)
+    if total > 0:
+        table.add_row("Avg latency", f"{dur // total:,} ms")
+
+    if engine._start_time:
+        uptime = int(time.time() - engine._start_time)
+        mins, secs = divmod(uptime, 60)
+        table.add_row("Uptime", f"{mins}m {secs}s")
+
+    console.print(table)
+
+
+def _show_tools(engine: AvatarEngine) -> None:
+    """List MCP tools from the engine's MCP server config."""
+    bridge = engine._bridge
+    if not bridge:
+        console.print("[yellow]No active bridge[/yellow]")
+        return
+
+    servers = getattr(bridge, "mcp_servers", {})
+    if not servers:
+        console.print("[dim]No MCP servers configured[/dim]")
+        return
+
+    table = Table(title="MCP Servers & Tools")
+    table.add_column("Server", style="cyan")
+    table.add_column("Command")
+    table.add_column("Args")
+
+    for name, srv in servers.items():
+        cmd = srv.get("command", "?")
+        args = " ".join(srv.get("args", []))
+        table.add_row(name, cmd, args)
+
+    console.print(table)
+    console.print(f"[dim]{len(servers)} server(s) configured[/dim]")
+
+
+def _show_tool_detail(engine: AvatarEngine, tool_name: str) -> None:
+    """Show detail for a specific MCP server."""
+    bridge = engine._bridge
+    if not bridge:
+        console.print("[yellow]No active bridge[/yellow]")
+        return
+
+    servers = getattr(bridge, "mcp_servers", {})
+    if tool_name not in servers:
+        # Try partial match
+        matches = [n for n in servers if tool_name.lower() in n.lower()]
+        if len(matches) == 1:
+            tool_name = matches[0]
+        elif matches:
+            console.print(f"[yellow]Multiple matches: {', '.join(matches)}[/yellow]")
+            return
+        else:
+            console.print(f"[red]MCP server not found: {tool_name}[/red]")
+            return
+
+    srv = servers[tool_name]
+    console.print(f"[bold cyan]{tool_name}[/bold cyan]")
+    console.print(f"  Command: {srv.get('command', '?')}")
+    console.print(f"  Args:    {' '.join(srv.get('args', []))}")
+    if srv.get("env"):
+        console.print(f"  Env:     {', '.join(f'{k}={v}' for k, v in srv['env'].items())}")
+
+
+def _show_mcp_status(engine: AvatarEngine) -> None:
+    """Show MCP server status."""
+    bridge = engine._bridge
+    if not bridge:
+        console.print("[yellow]No active bridge[/yellow]")
+        return
+
+    servers = getattr(bridge, "mcp_servers", {})
+    if not servers:
+        console.print("[dim]No MCP servers configured[/dim]")
+        return
+
+    table = Table(title="MCP Server Status")
+    table.add_column("Server", style="cyan")
+    table.add_column("Status", style="green")
+    table.add_column("Command")
+
+    for name, srv in servers.items():
+        cmd = srv.get("command", "?")
+        # MCP servers are managed by the provider, we just show config
+        table.add_row(name, "configured", cmd)
+
+    console.print(table)
 
 
 def _parse_mcp_servers(mcp_file: str, mcp_servers: tuple) -> dict:

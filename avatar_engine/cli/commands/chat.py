@@ -31,6 +31,7 @@ console = Console()
 @click.option("--yolo", is_flag=True, help="Auto-approve tool calls (Gemini/Codex)")
 @click.option("--permission-mode", help="Permission mode (Claude)")
 @click.option("--max-turns", type=int, help="Max turns (Claude)")
+@click.option("--allowed-tools", help="Comma-separated allowed tools (Claude)")
 @click.option("--timeout", "-t", type=int, default=120, help="Request timeout")
 @click.option("--resume", "resume_id", help="Resume session by ID")
 @click.option("--continue", "continue_last", is_flag=True, help="Continue last session")
@@ -47,6 +48,7 @@ def chat(
     yolo: bool,
     permission_mode: str,
     max_turns: int,
+    allowed_tools: str,
     timeout: int,
     resume_id: str,
     continue_last: bool,
@@ -66,6 +68,7 @@ def chat(
     provider_explicit = ctx.obj.get("provider_explicit", False)
     verbose = ctx.obj.get("verbose", False)
     debug = ctx.obj.get("debug", False)
+    working_dir = ctx.obj.get("working_dir")
 
     # Parse inline MCP servers
     mcp_servers = _parse_mcp_servers(mcp, mcp_server)
@@ -80,11 +83,13 @@ def chat(
         json_output=json_output,
         verbose=verbose,
         debug=debug,
+        working_dir=working_dir,
         mcp_servers=mcp_servers,
         thinking_level=thinking_level,
         yolo=yolo,
         permission_mode=permission_mode,
         max_turns=max_turns,
+        allowed_tools=allowed_tools,
         timeout=timeout,
         resume_id=resume_id,
         continue_last=continue_last,
@@ -101,11 +106,13 @@ async def _chat_async(
     json_output: bool,
     verbose: bool,
     debug: bool,
+    working_dir: str,
     mcp_servers: dict,
     thinking_level: str,
     yolo: bool,
     permission_mode: str,
     max_turns: int,
+    allowed_tools: str,
     timeout: int,
     resume_id: str = None,
     continue_last: bool = False,
@@ -113,6 +120,8 @@ async def _chat_async(
     """Async chat implementation."""
     # Build engine kwargs
     kwargs = {"timeout": timeout}
+    if working_dir:
+        kwargs["working_dir"] = working_dir
 
     # Session params (provider-agnostic — engine routes to correct bridge)
     if resume_id:
@@ -137,6 +146,8 @@ async def _chat_async(
             kwargs["permission_mode"] = permission_mode
         if max_turns:
             kwargs["max_turns"] = max_turns
+        if allowed_tools:
+            kwargs["allowed_tools"] = [t.strip() for t in allowed_tools.split(",")]
     elif provider == "codex":
         if mcp_servers:
             kwargs["mcp_servers"] = mcp_servers

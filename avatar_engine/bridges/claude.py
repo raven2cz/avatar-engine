@@ -439,6 +439,15 @@ class ClaudeBridge(BaseBridge):
                     return cost
         return None
 
+    def get_usage(self) -> Dict[str, Any]:
+        """Extended usage with cost and budget info."""
+        usage = super().get_usage()
+        usage["total_cost_usd"] = self._total_cost_usd
+        if self.max_budget_usd is not None:
+            usage["budget_usd"] = self.max_budget_usd
+            usage["budget_remaining_usd"] = max(0, self.max_budget_usd - self._total_cost_usd)
+        return usage
+
     def get_total_cost(self) -> float:
         """Get total accumulated cost for this session."""
         return self._total_cost_usd

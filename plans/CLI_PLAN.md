@@ -748,10 +748,66 @@ avatar repl --mcp-server "calc:python calc.py" --mcp-server "files:python files.
 
 ---
 
-## 10. Future enhancements (out of scope)
+## 10. Implementation Status
 
-- [ ] Tab completion pro commands
-- [ ] History persistence (readline)
-- [ ] Multi-file chat (attach files)
-- [ ] Session save/load
-- [ ] Config wizard (`avatar init`)
+Core CLI je implementované (chat, repl, health, version, mcp, session).
+Zbývají drobné doplňky:
+
+### 10.1 Chybějící flagy
+
+| # | Flag | Soubor | Popis | Effort |
+|---|------|--------|-------|--------|
+| F1 | `--working-dir, -w` | `app.py` | Globální flag pro working directory, propaguje do engine | 5 min |
+| F2 | `--allowed-tools` | `chat.py` | Comma-separated list allowed tools (Claude) | 5 min |
+
+### 10.2 Chybějící REPL příkazy
+
+| # | Příkaz | Soubor | Popis | Effort |
+|---|--------|--------|-------|--------|
+| R1 | `/tools` | `repl.py` | Vypíše seznam MCP tools z engine — volá bridge `list_tools()` nebo parsuje z MCP config | 15 min |
+| R2 | `/tool <name>` | `repl.py` | Detail konkrétního MCP toolu (name, description, input schema) | 10 min |
+| R3 | `/mcp` | `repl.py` | Status MCP serverů (nakonfigurované, aktivní) | 10 min |
+| R4 | `/usage` | `repl.py` | Zobrazí usage statistiky aktuální session | 15 min |
+
+### 10.3 `/usage` — detailní specifikace
+
+Příkaz `/usage` zobrazí aktuální spotřebu session ve formátu Rich tabulky.
+
+**Zdroj dat:** `BaseBridge._stats` (už sleduje requesty, duration, cost, tokeny) + provider-specific metody.
+
+```
+/usage
+┌─────────────────────────────────┐
+│ Session Usage (claude)          │
+├─────────────────┬───────────────┤
+│ Session ID      │ abc123...     │
+│ Requests        │ 42 (40 ok)   │
+│ Input tokens    │ 15,234        │
+│ Output tokens   │ 8,942         │
+│ Total cost      │ $0.47         │
+│ Budget remaining│ $4.53 / $5.00 │
+│ Avg latency     │ 1,234 ms      │
+│ Uptime          │ 12m 34s       │
+└─────────────────┴───────────────┘
+```
+
+**Dostupnost dat per provider:**
+
+| Data | Claude | Gemini | Codex |
+|------|--------|--------|-------|
+| Request count | ✅ | ✅ | ✅ |
+| Success rate | ✅ | ✅ | ✅ |
+| Input/Output tokens | ✅ | ⚠️ partial | ⚠️ partial |
+| Cost (USD) | ✅ | N/A (subscription) | N/A |
+| Budget tracking | ✅ | N/A | N/A |
+| Avg latency | ✅ | ✅ | ✅ |
+| Uptime | ✅ | ✅ | ✅ |
+
+Kde data nejsou dostupná, zobrazí se "—".
+
+**Implementace:**
+1. V `BaseBridge` přidat `get_usage() -> dict` — vrátí `_stats` + `uptime` + `session_id`
+2. V `ClaudeBridge` override — přidat `cost`, `budget`, token breakdown
+3. V `repl.py` — formátování přes Rich Table
+
+**Celkem: ~55 min**
