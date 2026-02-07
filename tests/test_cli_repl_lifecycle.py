@@ -57,6 +57,17 @@ class TestSpinnerStatus:
         assert display.state == EngineState.ERROR
 
 
+    def test_advance_spinner_fallback_when_no_thinking_event(self):
+        """Spinner should show 'Thinking...' even without ThinkingEvent."""
+        display, _, console = _make_display()
+        display.on_response_start()  # sets state to THINKING
+        # No ThinkingEvent emitted — Codex/Claude scenario
+        display.advance_spinner()
+        output = console.file.getvalue()
+        assert "Thinking" in output
+        assert display.has_active_status is True
+
+
 class TestResponseLifecycle:
     def test_response_start_end_resets_state(self):
         display, emitter, _ = _make_display()

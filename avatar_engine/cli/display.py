@@ -399,10 +399,18 @@ class DisplayManager:
             return self._status_active
 
     def advance_spinner(self) -> None:
-        """Render one spinner frame for current thinking state."""
+        """Render one spinner frame for current thinking state.
+
+        Shows a fallback 'Thinking...' when no ThinkingEvent has been
+        received yet (common for Codex/Claude which take time to start).
+        """
         if self._verbose:
             return
         line = self.thinking.render_plain(self._frame_index)
+        if not line and self._state in (EngineState.THINKING, EngineState.RESPONDING):
+            # Fallback: no ThinkingEvent yet, but we know we're waiting
+            frame = SPINNER_FRAMES[self._frame_index % len(SPINNER_FRAMES)]
+            line = f"{frame} Thinking..."
         self._frame_index += 1
         if not line:
             return
