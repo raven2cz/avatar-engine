@@ -9,6 +9,7 @@ before having a real codex-acp binary to test against.
 """
 
 import asyncio
+import logging
 import time
 from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -596,7 +597,7 @@ class TestACPStateMachine:
                 assert bridge.state == BridgeState.DISCONNECTED
 
     @pytest.mark.asyncio
-    async def test_state_on_auth_failure_continues(self):
+    async def test_state_on_auth_failure_continues(self, caplog):
         """Generic auth failure should warn but continue (auth is optional for some modes).
 
         CodexBridge treats auth errors as non-fatal since some auth methods
@@ -608,14 +609,16 @@ class TestACPStateMachine:
         with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
             with patch("shutil.which", return_value="/usr/bin/npx"):
                 bridge = CodexBridge()
-                await bridge.start()
+                with caplog.at_level(logging.WARNING, logger="avatar_engine.bridges.codex"):
+                    await bridge.start()
 
                 # Auth failures are non-fatal — bridge continues to session creation
                 assert bridge.state == BridgeState.READY
+                assert "authenticate issue" in caplog.text.lower()
                 await bridge.stop()
 
     @pytest.mark.asyncio
-    async def test_state_on_session_failure(self):
+    async def test_state_on_session_failure(self, caplog):
         """State should go to ERROR on session creation failure."""
         ctx, conn = self._make_mock_ctx()
         conn.new_session = AsyncMock(side_effect=RuntimeError("Session failed"))
@@ -624,10 +627,12 @@ class TestACPStateMachine:
             with patch("shutil.which", return_value="/usr/bin/npx"):
                 bridge = CodexBridge()
 
-                with pytest.raises(RuntimeError, match="Session failed"):
-                    await bridge.start()
+                with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
+                    with pytest.raises(RuntimeError, match="Session failed"):
+                        await bridge.start()
 
                 assert bridge.state == BridgeState.ERROR
+                assert "start failed" in caplog.text.lower()
 
     @pytest.mark.asyncio
     async def test_state_on_prompt_timeout(self):
@@ -653,7 +658,7 @@ class TestACPStateMachine:
                 await bridge.stop()
 
     @pytest.mark.asyncio
-    async def test_state_recovery_after_error(self):
+    async def test_state_recovery_after_error(self, caplog):
         """Bridge should be able to restart after error state."""
         ctx1, conn1 = self._make_mock_ctx(session_id="s-error")
         # Use session failure (which IS fatal) instead of auth failure (non-fatal)
@@ -673,9 +678,11 @@ class TestACPStateMachine:
                 bridge = CodexBridge()
 
                 # First attempt: fails (session creation error is fatal)
-                with pytest.raises(RuntimeError, match="Session creation failed"):
-                    await bridge.start()
+                with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
+                    with pytest.raises(RuntimeError, match="Session creation failed"):
+                        await bridge.start()
                 assert bridge.state == BridgeState.ERROR
+                assert "start failed" in caplog.text.lower()
 
                 # Second attempt: succeeds
                 await bridge.start()
@@ -836,17 +843,19 @@ class TestACPPermissionHandling:
         )
         assert result["outcome"]["outcome"] == "approved"
 
-    def test_manual_deny_returns_cancelled(self):
-        """Manual mode should deny with cancelled outcome."""
+    def test_manual_deny_returns_cancelled(self, caplog):
+        """Manual mode should deny with cancelled outcome and log warning."""
         from avatar_engine.bridges.codex import _CodexACPClient
 
         client = _CodexACPClient(auto_approve=False)
         options = MagicMock()
 
-        result = asyncio.run(
-            client.request_permission(options, "s-1", "tc-1")
-        )
+        with caplog.at_level(logging.WARNING, logger="avatar_engine.bridges.codex"):
+            result = asyncio.run(
+                client.request_permission(options, "s-1", "tc-1")
+            )
         assert result["outcome"]["outcome"] == "cancelled"
+        assert "denied" in caplog.text.lower() or "auto_approve=False" in caplog.text
 
 
 # =============================================================================
@@ -893,13 +902,15 @@ class TestACPCommandBuilding:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _ACP_AVAILABLE, reason="ACP SDK not installed")
-    async def test_executable_not_found_raises(self):
-        """Missing executable should raise FileNotFoundError."""
+    async def test_executable_not_found_raises(self, caplog):
+        """Missing executable should raise FileNotFoundError and log error."""
         with patch("shutil.which", return_value=None):
             bridge = CodexBridge(executable="nonexistent-binary")
 
-            with pytest.raises(FileNotFoundError, match="Executable not found"):
-                await bridge.start()
+            with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
+                with pytest.raises(FileNotFoundError, match="Executable not found"):
+                    await bridge.start()
+            assert "start failed" in caplog.text.lower()
 
 
 # =============================================================================
@@ -1089,8 +1100,8 @@ class TestACPAuthEdgeCases:
                 await bridge.stop()
 
     @pytest.mark.asyncio
-    async def test_auth_timeout(self):
-        """Auth timeout should raise with helpful message."""
+    async def test_auth_timeout(self, caplog):
+        """Auth timeout should raise with helpful message and log error."""
         async def slow_auth(**kwargs):
             await asyncio.sleep(10)
 
@@ -1100,11 +1111,13 @@ class TestACPAuthEdgeCases:
             with patch("shutil.which", return_value="/usr/bin/npx"):
                 bridge = CodexBridge(timeout=0.1)
 
-                with pytest.raises(RuntimeError, match="timed out"):
-                    await bridge.start()
+                with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
+                    with pytest.raises(RuntimeError, match="timed out"):
+                        await bridge.start()
+                assert "timed out" in caplog.text.lower()
 
     @pytest.mark.asyncio
-    async def test_auth_generic_error_warns_but_continues(self):
+    async def test_auth_generic_error_warns_but_continues(self, caplog):
         """Generic auth error should warn but continue to session creation."""
         ctx = self._make_ctx_with_auth(
             AsyncMock(side_effect=Exception("some random error"))
@@ -1113,10 +1126,12 @@ class TestACPAuthEdgeCases:
         with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
             with patch("shutil.which", return_value="/usr/bin/npx"):
                 bridge = CodexBridge()
-                await bridge.start()
+                with caplog.at_level(logging.WARNING, logger="avatar_engine.bridges.codex"):
+                    await bridge.start()
 
                 # Should continue despite error (with warning)
                 assert bridge.state == BridgeState.READY
+                assert "authenticate issue" in caplog.text.lower()
                 await bridge.stop()
 
 
@@ -1209,7 +1224,7 @@ class TestACPCleanup:
                 assert bridge.state == BridgeState.DISCONNECTED
 
     @pytest.mark.asyncio
-    async def test_cleanup_on_start_failure(self):
+    async def test_cleanup_on_start_failure(self, caplog):
         """ACP context should be cleaned up if start fails partway."""
         ctx = self._make_ctx()
         # Make new_session fail after init+auth succeed
@@ -1231,12 +1246,14 @@ class TestACPCleanup:
             with patch("shutil.which", return_value="/usr/bin/npx"):
                 bridge = CodexBridge()
 
-                with pytest.raises(RuntimeError, match="Session boom"):
-                    await bridge.start()
+                with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
+                    with pytest.raises(RuntimeError, match="Session boom"):
+                        await bridge.start()
 
                 # ACP context should have been cleaned up
                 ctx2.__aexit__.assert_called_once()
                 assert bridge._acp_conn is None
+                assert "start failed" in caplog.text.lower()
 
 
 # =============================================================================

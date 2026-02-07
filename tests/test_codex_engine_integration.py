@@ -17,6 +17,7 @@ ensuring the full pipeline works:
 """
 
 import asyncio
+import logging
 import os
 import tempfile
 from typing import Any, List, Optional
@@ -612,8 +613,8 @@ class TestEngineCodexRestart:
             await engine.stop()
 
     @pytest.mark.asyncio
-    async def test_error_event_on_start_failure(self):
-        """ErrorEvent should be emitted when start fails."""
+    async def test_error_event_on_start_failure(self, caplog):
+        """ErrorEvent should be emitted when start fails, with error logged."""
         error_events = []
 
         conn = AsyncMock()
@@ -633,12 +634,14 @@ class TestEngineCodexRestart:
                 def on_error(event):
                     error_events.append(event)
 
-                with pytest.raises(RuntimeError):
-                    await engine.start()
+                with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
+                    with pytest.raises(RuntimeError):
+                        await engine.start()
 
                 assert len(error_events) == 1
                 assert "Init boom" in error_events[0].error
                 assert error_events[0].provider == "codex"
+                assert "start failed" in caplog.text.lower()
 
 
 # =============================================================================
