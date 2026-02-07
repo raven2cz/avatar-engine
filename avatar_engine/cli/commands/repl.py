@@ -153,12 +153,6 @@ async def _repl_async(
     # DisplayManager handles all event visualization
     display = DisplayManager(engine, console=console, verbose=verbose)
 
-    async def _update_display_loop():
-        """Background task to animate spinners."""
-        while True:
-            display.update_live()
-            await asyncio.sleep(0.125)  # 8 FPS
-
     console.print(f"[bold]Avatar Engine REPL[/bold] ({provider})")
     console.print("Type '/exit' to quit, '/help' for commands\n")
 
@@ -168,15 +162,8 @@ async def _repl_async(
         if verbose:
             console.print(f"[dim]Session: {engine.session_id}[/dim]\n")
 
-        # Start live display for animated spinners
-        display.start_live()
-        update_task = asyncio.create_task(_update_display_loop())
-
         while True:
             try:
-                # In live mode, we must use display.live.console.print or similar
-                # if we want to print while Live is active.
-                # Rich's Prompt.ask works by temporarily stopping Live if needed.
                 user_input = Prompt.ask("[bold blue]You[/bold blue]")
 
                 # Handle commands
@@ -291,6 +278,8 @@ async def _repl_async(
             except KeyboardInterrupt:
                 console.print("\n[dim]Use '/exit' to quit[/dim]")
                 continue
+            except EOFError:
+                break
 
     except KeyboardInterrupt:
         pass
@@ -299,9 +288,6 @@ async def _repl_async(
         console.print(f"[red]Error: {e}[/red]")
 
     finally:
-        if "update_task" in locals():
-            update_task.cancel()
-        display.stop_live()
         display.unregister()
         await engine.stop()
         console.print("[dim]Session ended[/dim]")
