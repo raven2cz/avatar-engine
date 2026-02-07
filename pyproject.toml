@@ -39,6 +39,7 @@ dev = [
 cli = [
     "click>=8.0",
     "rich>=13.0",
+    "prompt-toolkit>=3.0",
 ]
 
 [project.scripts]
@@ -61,6 +62,7 @@ markers = [
     "integration: marks tests as integration tests (require real CLI tools)",
     "gemini: marks tests as requiring Gemini CLI",
     "claude: marks tests as requiring Claude CLI",
+    "pty: marks tests as requiring PTY support (/dev/pts)",
     "slow: marks tests as slow (API calls)",
 ]
 

@@ -27,6 +27,7 @@ Requirements:
 """
 
 import asyncio
+from collections import deque
 import logging
 import shutil
 import threading
@@ -139,6 +140,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         # Collected events from ACP session_update notifications
         self._acp_events: List[Dict[str, Any]] = []
         self._acp_text_buffer: str = ""
+        self._recent_thinking_norm = deque(maxlen=8)
         self._acp_buffer_lock = threading.Lock()  # RC-3/4: sync callback vs main thread
 
         # Provider capabilities
@@ -304,6 +306,10 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         # Extract thinking content
         thinking = _extract_thinking_from_update(update)
         if thinking:
+            norm = _normalize_reasoning_text(thinking)
+            if norm:
+                with self._acp_buffer_lock:
+                    self._recent_thinking_norm.append(norm)
             thinking_event = {
                 "type": "thinking",
                 "session_id": session_id,
@@ -325,7 +331,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
 
         # Extract text content
         text = _extract_text_from_update(update)
-        if text:
+        if text and not self._should_suppress_text_output(text):
             event["text"] = text
             with self._acp_buffer_lock:
                 self._acp_text_buffer += text
@@ -357,6 +363,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         with self._acp_buffer_lock:  # RC-3/4
             self._acp_events.clear()
             self._acp_text_buffer = ""
+            self._recent_thinking_norm.clear()
 
         try:
             result = await asyncio.wait_for(
@@ -426,6 +433,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         with self._acp_buffer_lock:  # RC-3/4
             self._acp_events.clear()
             self._acp_text_buffer = ""
+            self._recent_thinking_norm.clear()
 
         # Bridge callback → async iterator via Queue
         queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
@@ -541,6 +549,22 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             return event.get("text")
         return None
 
+    def _should_suppress_text_output(self, text: str) -> bool:
+        """Suppress text chunks that duplicate recent thinking/reasoning content."""
+        norm_text = _normalize_reasoning_text(text)
+        if not norm_text:
+            return False
+        with self._acp_buffer_lock:
+            recent = list(self._recent_thinking_norm)
+        for thought in recent:
+            if not thought:
+                continue
+            if norm_text == thought:
+                return True
+            if norm_text.startswith(thought) or thought.startswith(norm_text):
+                return True
+        return False
+
 
 # ==========================================================================
 # ACP Client implementation (handles permission requests from Codex)
@@ -649,21 +673,31 @@ def _extract_thinking_from_update(update: Any) -> Optional[str]:
 def _extract_text_from_update(update: Any) -> Optional[str]:
     """Extract text from a codex-acp AgentMessageChunk."""
     try:
+        def _is_reasoning_block(block_type: Any) -> bool:
+            if not block_type:
+                return False
+            bt = str(block_type).lower()
+            return bt in {"thinking", "thought", "reasoning", "analysis"}
+
         # AgentMessageChunk.content.text
         if hasattr(update, "content"):
             content = update.content
             if hasattr(content, "text"):
                 # Skip thinking blocks
-                if hasattr(content, "type") and getattr(content, "type", "") == "thinking":
+                if hasattr(content, "type") and _is_reasoning_block(getattr(content, "type", "")):
                     return None
                 return content.text
             if isinstance(content, list):
                 parts = []
                 for block in content:
-                    if hasattr(block, "type") and block.type == "thinking":
+                    if hasattr(block, "type") and _is_reasoning_block(getattr(block, "type", "")):
                         continue  # Skip thinking blocks
+                    if isinstance(block, dict) and _is_reasoning_block(block.get("type")):
+                        continue
                     if hasattr(block, "text"):
                         parts.append(block.text)
+                    elif isinstance(block, dict) and "text" in block:
+                        parts.append(str(block["text"]))
                 return "".join(parts) if parts else None
 
         # Check for message chunk pattern by type name
@@ -672,16 +706,34 @@ def _extract_text_from_update(update: Any) -> Optional[str]:
             if hasattr(update, "content"):
                 content = update.content
                 if hasattr(content, "text"):
+                    if hasattr(content, "type") and _is_reasoning_block(getattr(content, "type", "")):
+                        return None
                     return content.text
 
         # Dict-style access
         if isinstance(update, dict):
             if update.get("type") == "AgentMessageChunk":
-                return update.get("content", {}).get("text", "")
+                content = update.get("content", {})
+                if isinstance(content, dict):
+                    if _is_reasoning_block(content.get("type")):
+                        return None
+                    if "text" in content:
+                        return str(content.get("text") or "")
+                if isinstance(content, list):
+                    parts = []
+                    for block in content:
+                        if isinstance(block, dict):
+                            if _is_reasoning_block(block.get("type")):
+                                continue
+                            if "text" in block:
+                                parts.append(str(block["text"]))
+                    return "".join(parts) if parts else None
             msg = update.get("agentMessage", {})
             content = msg.get("content", [])
             parts = []
             for block in content:
+                if isinstance(block, dict) and _is_reasoning_block(block.get("type")):
+                    continue
                 if isinstance(block, dict) and "text" in block:
                     parts.append(block["text"])
             return "".join(parts) if parts else None
@@ -789,3 +841,15 @@ def _extract_text_from_result(result: Any) -> str:
     except Exception as exc:
         logger.debug(f"Could not extract text from result: {exc}")
     return ""
+
+
+def _normalize_reasoning_text(text: Any) -> str:
+    """Normalize text for lightweight reasoning/output dedupe."""
+    if text is None:
+        return ""
+    normalized = str(text).strip().lower()
+    if not normalized:
+        return ""
+    normalized = normalized.replace("**", "")
+    normalized = " ".join(normalized.split())
+    return normalized

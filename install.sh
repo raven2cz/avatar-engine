@@ -135,12 +135,41 @@ select_providers() {
 
 check_command() {
     if command -v "$1" &> /dev/null; then
-        print_ok "$1 found: $(which $1)"
+        print_ok "$1 found: $(command -v "$1")"
         return 0
     else
         print_warn "$1 not found"
         return 1
     fi
+}
+
+check_python_module() {
+    local python_bin="$1"
+    local module_name="$2"
+    local display_name="$3"
+    local required="${4:-false}"
+
+    if "$python_bin" -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('$module_name') else 1)" &> /dev/null; then
+        print_ok "${display_name} installed"
+        return 0
+    fi
+
+    if [[ "$required" == "true" ]]; then
+        print_warn "${display_name} missing"
+    else
+        print_warn "${display_name} missing (optional)"
+    fi
+    return 1
+}
+
+check_acp_module() {
+    local python_bin="$1"
+    if "$python_bin" -c "import importlib.util, sys; sys.exit(0 if (importlib.util.find_spec('acp') or importlib.util.find_spec('agent_client_protocol')) else 1)" &> /dev/null; then
+        print_ok "agent-client-protocol (ACP) installed"
+        return 0
+    fi
+    print_warn "agent-client-protocol (ACP) missing"
+    return 1
 }
 
 check_dependencies() {
@@ -213,6 +242,30 @@ check_dependencies() {
     else
         print_warn "codex-acp requires npx (Node.js)"
     fi
+
+    # --- Python package dependencies ---
+    echo ""
+    echo -e "${BOLD}Python packages:${NC}"
+    local python_bin=""
+    if [ -x ".venv/bin/python" ]; then
+        python_bin=".venv/bin/python"
+        print_ok "Using project venv: ${python_bin}"
+    elif command -v python3 &> /dev/null; then
+        python_bin="$(command -v python3)"
+        print_warn "Project venv not found, checking system Python: ${python_bin}"
+    fi
+
+    if [ -n "$python_bin" ]; then
+        check_python_module "$python_bin" "click" "click (CLI)" true || all_ok=false
+        check_python_module "$python_bin" "rich" "rich (CLI rendering)" true || all_ok=false
+        check_python_module "$python_bin" "prompt_toolkit" "prompt_toolkit (REPL input)" true || all_ok=false
+        check_acp_module "$python_bin" || all_ok=false
+    else
+        print_warn "Python interpreter unavailable for package checks"
+        all_ok=false
+    fi
+
+    echo "    Install/repair: uv sync --extra cli --extra dev"
 
     echo ""
     if $all_ok; then
@@ -366,28 +419,14 @@ install_python_deps() {
         uv venv
     fi
 
-    # Activate venv
-    source .venv/bin/activate
+    echo "Installing project dependencies (core + CLI extras)..."
+    uv sync --extra cli
 
-    # Core dependencies
-    echo "Installing core dependencies..."
-    uv pip install pyyaml
-
-    # ACP SDK (needed for Gemini ACP and Codex ACP)
-    if $INSTALL_GEMINI || $INSTALL_CODEX; then
-        echo "Installing ACP SDK (for Gemini/Codex warm sessions)..."
-        uv pip install agent-client-protocol || print_warn "ACP SDK installation failed (warm sessions will be unavailable)"
-    fi
-
-    # MCP SDK (optional, useful for all providers)
-    echo "Installing MCP SDK..."
-    uv pip install mcp || print_warn "MCP SDK installation failed (optional)"
-
-    # Development tools (optional)
-    read -p "Install development tools (pytest, pytest-asyncio, ruff, mypy)? [y/N] " -n 1 -r
+    # Development tools (optional extra)
+    read -p "Install development tools extra ([dev]: pytest, ruff, mypy)? [y/N] " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        uv pip install pytest pytest-asyncio ruff mypy
+        uv sync --extra cli --extra dev
     fi
 
     print_ok "Python dependencies installed"

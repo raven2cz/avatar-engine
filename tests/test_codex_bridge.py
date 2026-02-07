@@ -335,6 +335,27 @@ class TestTextExtraction:
         text = _extract_text_from_update(update)
         assert text == "Hello dict!"
 
+    def test_extract_text_from_dict_skips_reasoning_content(self):
+        """Dict AgentMessageChunk with thinking/reasoning block should be skipped."""
+        update = {
+            "type": "AgentMessageChunk",
+            "content": {"type": "thinking", "text": "internal thought"},
+        }
+        text = _extract_text_from_update(update)
+        assert text is None
+
+    def test_extract_text_from_dict_list_skips_reasoning_blocks(self):
+        """Dict content list should only include text blocks, not reasoning."""
+        update = {
+            "type": "AgentMessageChunk",
+            "content": [
+                {"type": "thinking", "text": "hidden"},
+                {"type": "text", "text": "visible"},
+            ],
+        }
+        text = _extract_text_from_update(update)
+        assert text == "visible"
+
     def test_extract_text_from_content_list(self):
         """Should extract text from content block list."""
         update = MagicMock()
@@ -986,6 +1007,21 @@ class TestCodexEventHandling:
         thinking_events = [e for e in events if e.get("type") == "thinking"]
         assert len(thinking_events) == 1
         assert thinking_events[0]["thought"] == "Let me think..."
+
+    def test_suppresses_text_duplicate_of_thinking(self):
+        """If ACP duplicates reasoning as text, text output should be suppressed."""
+        bridge = CodexBridge()
+        streamed = []
+        bridge._on_output = lambda chunk: streamed.append(chunk)
+
+        class _DupUpdate:
+            def __init__(self):
+                self.thought = _ContentBlock("Preparing project inspection plan", "thinking")
+                self.content = _ContentBlock("Preparing project inspection plan", "text")
+
+        bridge._handle_acp_update("sess-1", _DupUpdate())
+        assert bridge._acp_text_buffer == ""
+        assert streamed == []
 
     def test_handle_tool_call_update(self):
         """Should emit tool call event."""

@@ -24,6 +24,9 @@ def pytest_configure(config):
         "markers", "codex: mark test as requiring Codex CLI (codex-acp)"
     )
     config.addinivalue_line(
+        "markers", "pty: mark test as requiring PTY support (/dev/pts)"
+    )
+    config.addinivalue_line(
         "markers", "slow: mark test as slow (API calls)"
     )
 

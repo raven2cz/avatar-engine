@@ -665,6 +665,7 @@ class TestReplNewCommands:
         assert "/tools" in result.output
         assert "/tool NAME" in result.output
         assert "/mcp" in result.output
+        assert "--plain" in result.output
 
     def test_show_usage_function(self):
         """_show_usage should render without error."""

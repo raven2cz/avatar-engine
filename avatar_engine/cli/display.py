@@ -1,40 +1,18 @@
-"""
-CLI display layer — rich visualization of engine events.
-
-Provides DisplayManager that hooks into AvatarEngine events and renders:
-- Thinking spinner with phase/subject and elapsed time
-- Tool group display with status icons and border box
-- Activity tree for parallel operations
-- State-aware status line
-
-Uses Rich library (Live, Spinner, Panel, Tree, Table).
-
-Reference patterns:
-- Gemini CLI: LoadingIndicator + ToolGroupMessage + ThoughtSummary
-- Codex CLI: shimmer animation + ExecCell lifecycle + active_cell tracking
-"""
+"""CLI display layer for REPL-safe status + event output."""
 
 import threading
 import time
 from typing import Dict, List, Optional
 
 from rich.console import Console, Group
-from rich.live import Live
 from rich.panel import Panel
-from rich.spinner import Spinner
 from rich.text import Text
-from rich.tree import Tree
 
 from ..events import (
-    ActivityEvent,
-    ActivityStatus,
-    AvatarEvent,
-    CostEvent,
     EngineState,
     ErrorEvent,
     EventEmitter,
     StateEvent,
-    TextEvent,
     ThinkingEvent,
     ThinkingPhase,
     ToolEvent,
@@ -133,6 +111,17 @@ class ThinkingDisplay:
             text.append(phase_label.capitalize(), style=style)
         text.append(f" ({elapsed:.0f}s)", style="dim")
         return text
+
+    def render_plain(self, frame_index: int) -> str:
+        """Render current thinking status as plain text."""
+        with self._lock:
+            if not self._active:
+                return ""
+            frame = SPINNER_FRAMES[frame_index % len(SPINNER_FRAMES)]
+            elapsed = time.time() - self._started_at
+            phase_label = PHASE_LABELS.get(self._phase, "thinking")
+            subject = self._subject or phase_label.capitalize()
+        return f"{frame} {subject} ({elapsed:.0f}s)"
 
     def render_verbose(self, thought: str) -> Text:
         """Render verbose thinking with full thought text."""
@@ -294,20 +283,7 @@ class _ToolEntry:
 
 
 class DisplayManager:
-    """Manages CLI display by listening to engine events.
-
-    Connects to an AvatarEngine (or any EventEmitter) and provides
-    rich terminal output for thinking, tool execution, and activity.
-
-    Usage:
-        engine = AvatarEngine(provider="gemini")
-        display = DisplayManager(engine, verbose=False)
-        # display registers its own event handlers
-        # then just use engine.chat() / engine.chat_stream() as normal
-
-    For REPL (long-running sessions), use start_live()/stop_live()
-    to enable real-time updates of thinking spinners and tool groups.
-    """
+    """Manages CLI display by listening to engine events."""
 
     def __init__(
         self,
@@ -327,8 +303,11 @@ class DisplayManager:
         self._state = EngineState.IDLE
         self._state_lock = threading.Lock()
 
-        # Live display for REPL mode
-        self._live: Optional[Live] = None
+        # Spinner/status line state for REPL-safe output
+        self._status_lock = threading.Lock()
+        self._status_active = False
+        self._status_width = 0
+        self._frame_index = 0
 
         # Register event handlers
         self._register_handlers()
@@ -366,6 +345,7 @@ class DisplayManager:
             self.thinking.stop()
             if not self.tools.has_active:
                 self._set_state(EngineState.IDLE)
+            self.clear_status()
             return
 
         self.thinking.start(event)
@@ -374,14 +354,12 @@ class DisplayManager:
         if self._verbose:
             rendered = self.thinking.render_verbose(event.thought)
             self._console.print(rendered)
-        elif not self._live:
-            # Non-live mode: print inline spinner update
-            rendered = self.thinking.render()
-            if rendered:
-                self._console.print(rendered, end="\r")
 
     def _on_tool(self, event: ToolEvent) -> None:
         """Handle tool events — update tool group display."""
+        # Tool lines are permanent; clear transient spinner first.
+        self.clear_status()
+
         if event.status == "started":
             self.tools.tool_started(event)
             self._set_state(EngineState.TOOL_EXECUTING)
@@ -391,13 +369,12 @@ class DisplayManager:
             if not self.tools.has_active:
                 self._set_state(EngineState.RESPONDING)
 
-        # Non-live mode: print tool status directly
-        if not self._live:
-            self._print_tool_event(event)
+        self._print_tool_event(event)
 
     def _on_error(self, event: ErrorEvent) -> None:
         """Handle error events."""
         self._set_state(EngineState.ERROR)
+        self.clear_status()
         self._console.print(
             Text.assemble(
                 ("\u2717 ", "bold red"),
@@ -415,6 +392,43 @@ class DisplayManager:
             self._set_state(EngineState.ERROR)
 
     # === Direct Print Helpers ===
+
+    @property
+    def has_active_status(self) -> bool:
+        with self._status_lock:
+            return self._status_active
+
+    def advance_spinner(self) -> None:
+        """Render one spinner frame for current thinking state."""
+        if self._verbose:
+            return
+        line = self.thinking.render_plain(self._frame_index)
+        self._frame_index += 1
+        if not line:
+            return
+        self._write_status(line)
+
+    def clear_status(self) -> None:
+        """Clear transient spinner/status line."""
+        with self._status_lock:
+            if not self._status_active:
+                return
+            clear = "\r" + (" " * self._status_width) + "\r"
+            self._console.file.write(clear)
+            self._console.file.flush()
+            self._status_active = False
+            self._status_width = 0
+
+    def _write_status(self, line: str) -> None:
+        with self._status_lock:
+            if self._status_active and self._status_width > len(line):
+                padded = line + (" " * (self._status_width - len(line)))
+            else:
+                padded = line
+            self._console.file.write("\r" + padded)
+            self._console.file.flush()
+            self._status_active = True
+            self._status_width = max(self._status_width, len(line))
 
     def _print_tool_event(self, event: ToolEvent) -> None:
         """Print a tool event in non-live mode."""
@@ -444,51 +458,6 @@ class DisplayManager:
                     (f": {event.error or 'failed'}", "dim red") if event.error else ("", ""),
                 )
             )
-
-    # === Live Display (REPL mode) ===
-
-    def start_live(self) -> None:
-        """Start Rich Live display for real-time updates (REPL mode)."""
-        if self._live:
-            return
-        self._live = Live(
-            "",
-            console=self._console,
-            refresh_per_second=8,
-            transient=True,
-        )
-        self._live.start()
-
-    def stop_live(self) -> None:
-        """Stop Rich Live display."""
-        if self._live:
-            self._live.stop()
-            self._live = None
-
-    def update_live(self) -> None:
-        """Update the live display with current state.
-
-        Call this from a timer/loop to animate spinners.
-        """
-        if not self._live:
-            return
-
-        renderables = []
-
-        # Thinking spinner
-        thinking_text = self.thinking.render()
-        if thinking_text:
-            renderables.append(thinking_text)
-
-        # Tool group panel
-        tool_panel = self.tools.render()
-        if tool_panel:
-            renderables.append(tool_panel)
-
-        if renderables:
-            self._live.update(Group(*renderables))
-        else:
-            self._live.update("")
 
     # === Rendering Helpers ===
 
@@ -522,10 +491,13 @@ class DisplayManager:
 
     def on_response_start(self) -> None:
         """Call when a response stream starts (after user sends message)."""
+        self.clear_status()
+        self._frame_index = 0
         self._set_state(EngineState.THINKING)
 
     def on_response_end(self) -> None:
         """Call when a response is complete."""
+        self.clear_status()
         self.thinking.stop()
         self.tools.clear_completed()
         self._set_state(EngineState.IDLE)

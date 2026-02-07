@@ -4,9 +4,9 @@ Real integration tests for REPL display lifecycle.
 Tests the full pipeline with real providers to ensure the display
 event handling doesn't break actual provider communication.
 
-The current REPL uses no Live — events print directly via console.
-These tests verify that the display lifecycle (on_response_start,
-events, on_response_end) works correctly with real streaming.
+The current REPL uses prompt_toolkit input with transient spinner status
+rendering in DisplayManager. These tests verify that the display lifecycle
+(on_response_start, events, on_response_end) works correctly with real streaming.
 
 Run with: pytest tests/integration/test_real_repl_display.py -v
 """
@@ -33,7 +33,7 @@ def _make_quiet_console():
 
 
 # =============================================================================
-# Display lifecycle with real streaming (no Live)
+# Display lifecycle with real streaming
 # =============================================================================
 
 
@@ -46,7 +46,7 @@ class TestReplDisplayLifecycleGemini:
     @pytest.mark.asyncio
     async def test_stream_with_display_events(self, skip_if_no_gemini):
         """
-        Simulate the REPL flow without Live:
+        Simulate the REPL flow:
         on_response_start → stream text → on_response_end.
         Display events fire correctly alongside streaming.
         """
@@ -59,6 +59,8 @@ class TestReplDisplayLifecycleGemini:
 
             display.on_response_start()
             assert display.state == EngineState.THINKING
+            # spinner render should be safe even before first stream chunk
+            display.advance_spinner()
 
             chunks = []
             async for chunk in engine.chat_stream("What is 2+2? Reply briefly."):
@@ -68,6 +70,7 @@ class TestReplDisplayLifecycleGemini:
 
             # Assertions
             assert display.state == EngineState.IDLE
+            assert display.has_active_status is False
             assert len(chunks) > 0, "Should have received text chunks"
             full_text = "".join(chunks)
             assert len(full_text) > 0, "Response should not be empty"

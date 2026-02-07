@@ -127,6 +127,7 @@ avatar --working-dir /tmp/sandbox repl
 # Interactive REPL
 avatar repl
 avatar -p codex repl
+avatar repl --plain
 
 # Session management
 avatar chat --continue "Continue where we left off"
@@ -438,6 +439,8 @@ pytest tests/ --cov=avatar_engine
 
 # Current: 700+ unit tests, 110+ integration tests
 ```
+
+PTY REPL integration tests are marked with `-m pty` and require host PTY support (`/dev/pts`); they auto-skip when PTY devices are unavailable.
 
 ## API Reference
 
