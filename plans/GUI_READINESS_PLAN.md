@@ -1447,7 +1447,11 @@ CLI zobrazí odpovídající vizuál pro každý stav.
 
 ---
 
-## 17. Demo GUI aplikace — Testování a tutorial
+## ~~17. Demo GUI aplikace — Testování a tutorial~~ — WON'T DO — replaced by web bridge
+
+> **Celá sekce 17 je nahrazena plánem `PHASE7_WEB_BRIDGE_PLAN.md`.**
+> Textual TUI nebude implementován. Místo toho: FastAPI web bridge + reference React app.
+> Důvod: primární konzument Avatar Engine je Synapse (web app), ne terminálová TUI.
 
 ### 17.1 Účel
 
@@ -1458,9 +1462,10 @@ Demo GUI aplikace slouží jako:
 
 ### 17.2 Technologie
 
-- **Python + Textual** (TUI framework) — jednoduché, žádné nativní závislosti
-- Alternativně: **Python + PyQt6** nebo **Python + tkinter** pro desktop GUI
-- Textual je preferovaný — běží v terminálu, easy to test, rich widgets
+- ~~**Python + Textual** (TUI framework) — jednoduché, žádné nativní závislosti~~
+- ~~Alternativně: **Python + PyQt6** nebo **Python + tkinter** pro desktop GUI~~
+- ~~Textual je preferovaný — běží v terminálu, easy to test, rich widgets~~
+- **Nahrazeno:** FastAPI + WebSocket (backend) + React 18 + Vite + TailwindCSS (frontend)
 
 ### 17.3 Layout
 
@@ -1956,14 +1961,14 @@ DiagnosticEvent → stderr surfacing → ProviderCapabilities →
 ToolPolicy → testy
 ```
 
-### Fáze 7: Demo GUI
-```
+### ~~Fáze 7: Demo GUI~~ — WON'T DO — replaced by web bridge (see PHASE7_WEB_BRIDGE_PLAN.md)
+~~```
 Avatar widget → Chat panel → Thinking panel →
 Activity panel → Status bar → integration testy →
 dokumentace
-```
-Reference: `codex/codex-rs/tui/src/shimmer.rs` (shimmer animace),
-`gemini-cli/packages/cli/src/ui/components/LoadingIndicator.tsx`
+```~~
+Originally planned as Python Textual TUI. Replaced by web bridge (FastAPI + WebSocket)
++ reference React app, which matches the actual Synapse consumer stack.
 
 ---
 
@@ -2001,7 +2006,7 @@ Reference: `codex/codex-rs/tui/src/shimmer.rs` (shimmer animace),
 | Paralelní tool_use není v ACP spec | GAP-2 activity tracking jen z raw events | Best-effort tracking |
 | Budget estimation pro Gemini/Codex je přibližný | GAP-6 cost tracking není přesný | Konzervativní odhady |
 | `threading.Lock` v EventEmitter může zpomalit | GAP-4 performance overhead | Benchmark, zvážit RLock |
-| Textual pro demo GUI limituje vizuální možnosti | GUI demo není plný desktop app | Je to proof-of-concept |
+| ~~Textual pro demo GUI limituje vizuální možnosti~~ | ~~GUI demo není plný desktop app~~ | WON'T DO — replaced by web bridge |
 | Bold marker pattern nemusí fungovat pro všechny modely | Thinking subject extrakce selže | Fallback na celý text |
 
 ---

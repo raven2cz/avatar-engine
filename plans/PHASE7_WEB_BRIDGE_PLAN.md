@@ -1,0 +1,263 @@
+# Phase 7: Web GUI Demo — Avatar Engine Web Bridge + Reference React App
+
+> Created: 2026-02-07
+> Status: Draft
+> Replaces: GUI_READINESS_PLAN.md section 17 (Textual TUI) + Fáze 7
+
+---
+
+## Context
+
+Phase 7 was originally planned as a Python Textual TUI. This is **wrong** — the primary consumer of Avatar Engine is **Synapse** (and similar web apps), which uses:
+- **Backend:** Python FastAPI + uvicorn
+- **Frontend:** React 18 + Vite + TanStack Query + TailwindCSS + Lucide icons
+- **Communication:** REST API (fetch), useQuery/useMutation hooks
+
+Avatar Engine needs a **web bridge** that exposes AvatarEngine over HTTP/WebSocket, and a **reference React demo** showing how to consume the event stream. This is the library's primary use case.
+
+Phases 1-6 (events, activity tracking, CLI display, system prompt, budget, diagnostics, capabilities) are done and correct — the event system is exactly what a web GUI needs. Phase 7 adds the transport layer.
+
+---
+
+## Architecture
+
+```
+avatar_engine/
+  web/                          # NEW — Web bridge module
+    __init__.py                 # create_app() factory, exports
+    protocol.py                 # Event → JSON serialization
+    bridge.py                   # AvatarEngine events → WebSocket adapter
+    session_manager.py          # Engine lifecycle for web server
+    server.py                   # FastAPI app with REST + WebSocket routes
+    __main__.py                 # python -m avatar_engine.web
+
+examples/
+  web-demo/                     # NEW — Reference React app
+    package.json                # React 18 + Vite + Tailwind + Lucide
+    vite.config.ts
+    tailwind.config.js
+    index.html
+    src/
+      main.tsx
+      App.tsx
+      api/
+        types.ts                # TypeScript event types (mirrors protocol.py)
+        client.ts               # REST API client
+      hooks/
+        useAvatarWebSocket.ts   # WS connection + event dispatch (useReducer)
+        useAvatarChat.ts        # Chat state management (messages array)
+      components/
+        ChatPanel.tsx           # Message list + input
+        MessageBubble.tsx       # Single message (user/assistant)
+        ThinkingIndicator.tsx   # AI thinking phase + subject + spinner
+        ToolActivity.tsx        # Tool executions with status icons
+        StatusBar.tsx           # Connection, provider, engine state, capabilities
+        CostTracker.tsx         # Usage/budget (only when cost_tracking=true)
+```
+
+---
+
+## WebSocket Protocol
+
+### Server → Client
+
+Every message: `{"type": "<event_type>", "data": {...}}`
+
+| type | data | source |
+|------|------|--------|
+| `connected` | `{session_id, provider, capabilities}` | on WS open |
+| `text` | `{text, is_complete, timestamp, provider}` | TextEvent |
+| `thinking` | `{thought, phase, subject, is_start, is_complete, block_id, ...}` | ThinkingEvent |
+| `tool` | `{tool_name, tool_id, parameters, status, result, error}` | ToolEvent |
+| `state` | `{old_state, new_state}` | StateEvent |
+| `cost` | `{cost_usd, input_tokens, output_tokens}` | CostEvent |
+| `error` | `{error, recoverable}` | ErrorEvent |
+| `diagnostic` | `{message, level, source}` | DiagnosticEvent |
+| `activity` | `{activity_id, name, status, progress, ...}` | ActivityEvent |
+| `chat_response` | `{content, success, error, duration_ms}` | after chat() completes |
+
+### Client → Server
+
+| type | data |
+|------|------|
+| `chat` | `{message: "..."}` |
+| `stop` | `{}` |
+| `ping` | `{}` |
+| `clear_history` | `{}` |
+
+---
+
+## Python Implementation (avatar_engine/web/)
+
+### Step 1: `protocol.py` — Event serialization
+
+```python
+EVENT_TYPE_MAP = {
+    TextEvent: "text",
+    ThinkingEvent: "thinking",
+    ToolEvent: "tool",
+    # ... all 8 event types
+}
+
+def event_to_ws_message(event: AvatarEvent) -> Optional[dict]:
+    """Convert AvatarEvent → {"type": "...", "data": {...}}"""
+    # dataclasses.asdict() + enum.value for string serialization
+```
+
+### Step 2: `bridge.py` — WebSocket event adapter
+
+- `WebSocketBridge(engine)` — registers `engine.on_any()` handler
+- Maintains set of connected WS clients
+- `_on_event()` is sync (EventEmitter callback) → uses `asyncio.create_task()` for async WS send
+- `_broadcast()` fans out to all clients, removes dead ones
+- Thread-safe with `asyncio.Lock`
+
+### Step 3: `session_manager.py` — Engine lifecycle
+
+- `EngineSessionManager(provider, model, config_path, ...)` — creates & manages AvatarEngine
+- `ensure_started()`, `shutdown()` — lifecycle
+- Exposes `.engine` and `.ws_bridge` properties
+
+### Step 4: `server.py` — FastAPI routes
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/avatar/health` | Health check |
+| GET | `/api/avatar/capabilities` | Provider capabilities |
+| GET | `/api/avatar/sessions` | List sessions |
+| GET | `/api/avatar/history` | Conversation history |
+| GET | `/api/avatar/usage` | Usage/cost stats |
+| POST | `/api/avatar/chat` | Non-streaming chat |
+| POST | `/api/avatar/stop` | Stop engine |
+| POST | `/api/avatar/clear` | Clear history |
+| WS | `/api/avatar/ws` | Bidirectional streaming |
+
+- `create_app()` factory function — configurable provider, CORS origins, etc.
+- CORS middleware for React dev server (localhost:5173)
+- Startup/shutdown lifecycle hooks
+
+### Step 5: `__main__.py` — CLI entry point
+
+```bash
+python -m avatar_engine.web --provider gemini --port 8420
+# or
+avatar-web --provider claude --port 8420
+```
+
+### Step 6: `pyproject.toml` changes
+
+```toml
+[project.optional-dependencies]
+web = ["fastapi>=0.100", "uvicorn[standard]>=0.20"]
+
+[project.scripts]
+avatar-web = "avatar_engine.web.__main__:main"
+```
+
+---
+
+## React Implementation (examples/web-demo/)
+
+### Hooks
+
+**`useAvatarWebSocket(url)`** — Core hook:
+- Connects to WS, receives events
+- `useReducer` for state (connected, thinking, tools, cost, engineState)
+- Returns state + `sendMessage()` function
+- No external dependencies (pure React)
+
+**`useAvatarChat(wsUrl)`** — Chat layer on top:
+- Manages `messages[]` array (user + assistant)
+- Accumulates text from TextEvent into current assistant message
+- Tracks tools/thinking per message
+- Returns `{messages, sendMessage, isStreaming, ...avatarState}`
+
+### Components
+
+- **ChatPanel**: Message list with auto-scroll, input with Enter-to-send
+- **MessageBubble**: User (right, blue) / Assistant (left, gray), pre-wrap text
+- **ThinkingIndicator**: CSS-animated spinner, phase label, subject, elapsed time, color-coded by phase
+- **ToolActivity**: Tool list with status icons, name, params summary, elapsed time
+- **StatusBar**: Connection dot, provider badge, engine state, capability pills
+- **CostTracker**: Total USD, token counts (hidden when no cost_tracking)
+
+### Dependencies (minimal)
+
+```json
+"dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "lucide-react": "^0.300.0"
+}
+```
+
+TailwindCSS for styling. No TanStack Query (WS hook handles state). Same stack as Synapse.
+
+---
+
+## Implementation Order
+
+| # | What | Files |
+|---|------|-------|
+| 1 | Event protocol | `web/protocol.py` |
+| 2 | WS bridge adapter | `web/bridge.py` |
+| 3 | Session manager | `web/session_manager.py` |
+| 4 | FastAPI server | `web/server.py`, `web/__init__.py` |
+| 5 | CLI entry point | `web/__main__.py` |
+| 6 | pyproject.toml | Add `[web]` deps, script |
+| 7 | Unit tests (protocol) | `tests/test_web_protocol.py` |
+| 8 | Unit tests (bridge) | `tests/test_web_bridge.py` |
+| 9 | Unit tests (server) | `tests/test_web_server.py` |
+| 10 | Integration tests | `tests/integration/test_real_web.py` |
+| 11 | React scaffold | `examples/web-demo/` package.json, vite, tailwind |
+| 12 | TS types | `src/api/types.ts` |
+| 13 | Hooks | `src/hooks/useAvatarWebSocket.ts`, `useAvatarChat.ts` |
+| 14 | Components | `src/components/*.tsx` |
+| 15 | App assembly | `src/App.tsx`, `src/main.tsx` |
+
+Steps 1-10 (Python) first, then 11-15 (React). Steps 7-10 can overlap with 4-6.
+
+---
+
+## Testing Strategy
+
+### Unit tests (~25 tests)
+
+- **test_web_protocol.py**: All 8 event types serialize to JSON, enums become strings, unknown events return None, client message parsing
+- **test_web_bridge.py**: Client add/remove, broadcast fan-out, dead client cleanup, event forwarding (mock WS)
+- **test_web_server.py**: All REST endpoints via httpx TestClient, WS connect/chat/ping via TestClient
+
+### Integration tests (~5 tests)
+
+- **test_real_web.py**: Real provider, real `create_app()`, test health/chat/WS with httpx + websockets lib
+
+---
+
+## Key Design Decisions
+
+1. **One engine per server** — matches Synapse pattern (one user session). Multi-tenant is out of scope.
+2. **WebSocket for streaming** (not SSE) — bidirectional needed for chat + stop + ping.
+3. **JSON protocol** — simple, debuggable, small payloads (<1KB per event).
+4. **No state management lib** in React demo — pure useReducer. Synapse can wrap in TanStack Query.
+5. **Optional dependency** — `pip install avatar-engine[web]` adds FastAPI + uvicorn only.
+
+---
+
+## Verification
+
+1. `uv run pytest tests/test_web_*.py -x -q` — unit tests pass
+2. `uv run pytest tests/integration/test_real_web.py -v` — integration tests pass
+3. Manual: `python -m avatar_engine.web --provider gemini` → open `http://localhost:8420/api/avatar/health` → JSON response
+4. Manual: `cd examples/web-demo && pnpm install && pnpm dev` → open browser → type message → see streaming response with thinking/tool visualization
+5. `uv run pytest tests/ -x -q --ignore=tests/integration` — all existing unit tests still pass
+
+---
+
+## Critical Files to Modify/Read
+
+- `avatar_engine/events.py` — All event types + EventEmitter.on_any()
+- `avatar_engine/engine.py` — AvatarEngine.chat(), capabilities, health
+- `avatar_engine/types.py` — BridgeResponse, ProviderCapabilities, HealthStatus
+- `avatar_engine/cli/display.py` — Reference for how events drive UI (ThinkingDisplay, ToolGroupDisplay)
+- `pyproject.toml` — Add [web] optional deps
+- `avatar_engine/__init__.py` — Add web exports
