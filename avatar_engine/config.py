@@ -31,6 +31,7 @@ class AvatarConfig:
     # Provider-specific configs
     gemini_config: Dict[str, Any] = field(default_factory=dict)
     claude_config: Dict[str, Any] = field(default_factory=dict)
+    codex_config: Dict[str, Any] = field(default_factory=dict)
 
     # Engine settings
     max_history: int = 100
@@ -93,9 +94,15 @@ class AvatarConfig:
         # Get provider-specific config
         gemini_cfg = data.get("gemini", {})
         claude_cfg = data.get("claude", {})
+        codex_cfg = data.get("codex", {})
 
         # Get active provider config
-        active_cfg = gemini_cfg if provider == ProviderType.GEMINI else claude_cfg
+        provider_configs = {
+            ProviderType.GEMINI: gemini_cfg,
+            ProviderType.CLAUDE: claude_cfg,
+            ProviderType.CODEX: codex_cfg,
+        }
+        active_cfg = provider_configs.get(provider, gemini_cfg)
 
         # Engine settings
         engine_cfg = data.get("engine", data.get("avatar", {}))
@@ -116,6 +123,7 @@ class AvatarConfig:
             provider_kwargs=provider_kwargs,
             gemini_config=gemini_cfg,
             claude_config=claude_cfg,
+            codex_config=codex_cfg,
             max_history=engine_cfg.get("max_history", 100),
             auto_restart=engine_cfg.get("auto_restart", True),
             max_restarts=engine_cfg.get("max_restarts", 3),
@@ -142,6 +150,8 @@ class AvatarConfig:
         """
         if self.provider == ProviderType.GEMINI:
             return self.gemini_config
+        elif self.provider == ProviderType.CODEX:
+            return self.codex_config
         return self.claude_config
 
     def get_working_dir(self) -> str:
@@ -166,6 +176,7 @@ class AvatarConfig:
             "provider": self.provider.value,
             "gemini": self.gemini_config,
             "claude": self.claude_config,
+            "codex": self.codex_config,
             "engine": {
                 "working_dir": self.working_dir,
                 "max_history": self.max_history,

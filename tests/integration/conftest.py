@@ -21,6 +21,9 @@ def pytest_configure(config):
         "markers", "gemini: mark test as requiring Gemini CLI"
     )
     config.addinivalue_line(
+        "markers", "codex: mark test as requiring Codex CLI (codex-acp)"
+    )
+    config.addinivalue_line(
         "markers", "slow: mark test as slow (API calls)"
     )
 

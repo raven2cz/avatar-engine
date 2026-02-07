@@ -47,7 +47,7 @@ def find_config() -> str | None:
 @click.option("--no-config", is_flag=True, help="Disable config auto-loading")
 @click.option(
     "--provider", "-p",
-    type=click.Choice(["gemini", "claude"]),
+    type=click.Choice(["gemini", "claude", "codex"]),
     default="gemini",
     help="AI provider",
 )

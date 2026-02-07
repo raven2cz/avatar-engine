@@ -25,6 +25,11 @@ class TestAvatarEngineInit:
         engine = AvatarEngine(provider="claude")
         assert engine._provider == ProviderType.CLAUDE
 
+    def test_codex_provider_string(self):
+        """Should accept 'codex' as string."""
+        engine = AvatarEngine(provider="codex")
+        assert engine._provider == ProviderType.CODEX
+
     def test_provider_enum(self):
         """Should accept ProviderType enum."""
         engine = AvatarEngine(provider=ProviderType.CLAUDE)
@@ -89,6 +94,44 @@ class TestAvatarEngineProperties:
         """max_restarts should default to 3."""
         engine = AvatarEngine()
         assert engine.max_restarts == 3
+
+
+class TestAvatarEngineBridgeCreation:
+    """Tests for bridge creation."""
+
+    def test_create_codex_bridge(self):
+        """Should create CodexBridge for codex provider."""
+        from avatar_engine.bridges.codex import CodexBridge
+        engine = AvatarEngine(provider="codex")
+        bridge = engine._create_bridge()
+        assert isinstance(bridge, CodexBridge)
+        assert bridge.provider_name == "codex"
+
+    def test_create_codex_bridge_with_config(self):
+        """Should create CodexBridge from config."""
+        from avatar_engine.bridges.codex import CodexBridge
+        config = AvatarConfig.from_dict({
+            "provider": "codex",
+            "codex": {
+                "auth_method": "openai-api-key",
+                "approval_mode": "auto",
+                "sandbox_mode": "read-only",
+            },
+        })
+        engine = AvatarEngine(config=config)
+        bridge = engine._create_bridge()
+        assert isinstance(bridge, CodexBridge)
+        assert bridge.auth_method == "openai-api-key"
+        assert bridge.approval_mode == "auto"
+        assert bridge.sandbox_mode == "read-only"
+
+    def test_create_codex_bridge_with_model(self):
+        """Should pass model to CodexBridge."""
+        from avatar_engine.bridges.codex import CodexBridge
+        engine = AvatarEngine(provider="codex", model="o3")
+        bridge = engine._create_bridge()
+        assert isinstance(bridge, CodexBridge)
+        assert bridge.model == "o3"
 
 
 class TestAvatarEngineHealth:
