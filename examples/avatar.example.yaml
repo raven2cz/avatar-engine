@@ -3,7 +3,7 @@
 # Copy this file and customize for your application.
 # Usage: engine = AvatarEngine.from_config("config.yaml")
 
-provider: "gemini"  # gemini | claude
+provider: "gemini"  # gemini | claude | codex
 
 # === Gemini Configuration ===
 gemini:
@@ -48,6 +48,19 @@ claude:
     # - "mcp__avatar-tools__*"
 
   # MCP servers for Claude
+  mcp_servers: {}
+
+# === Codex Configuration ===
+codex:
+  executable: "npx"
+  executable_args: ["@zed-industries/codex-acp"]
+  model: ""  # Empty = use Codex CLI default (e.g., gpt-5.3-codex)
+  timeout: 120
+  auth_method: "chatgpt"  # chatgpt | codex-api-key | openai-api-key
+  approval_mode: "auto"  # auto | manual
+  sandbox_mode: "workspace-write"  # workspace-write | full
+
+  # MCP servers for Codex
   mcp_servers: {}
 
 # === Engine Settings ===

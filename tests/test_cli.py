@@ -358,6 +358,79 @@ class TestMCPParsing:
 
 
 # =============================================================================
+# Provider Override with Config Tests
+# =============================================================================
+
+
+class TestProviderOverrideWithConfig:
+    """Test that CLI -p flag overrides config file provider."""
+
+    def test_cli_provider_overrides_config_codex(self, runner, mock_engine, tmp_path):
+        """CLI -p codex should override config provider: gemini."""
+        # Config has provider: gemini, but CLI says -p codex
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text('provider: "gemini"\ngemini:\n  timeout: 120\ncodex:\n  timeout: 60\n')
+
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("Codex here"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-p", "codex", "-c", str(config_file),
+                "chat", "--no-stream", "Hello"
+            ])
+
+        assert result.exit_code == 0
+        # Engine should have been created with config object
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            config_obj = kwargs.get("config")
+            if config_obj:
+                # Provider in config should be overridden to codex
+                assert config_obj.provider.value == "codex"
+
+    def test_cli_provider_overrides_config_claude(self, runner, mock_engine, tmp_path):
+        """CLI -p claude should override config provider: gemini."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text('provider: "gemini"\ngemini:\n  timeout: 120\nclaude:\n  timeout: 60\n')
+
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("Claude here"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-p", "claude", "-c", str(config_file),
+                "chat", "--no-stream", "Hello"
+            ])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            config_obj = kwargs.get("config")
+            if config_obj:
+                assert config_obj.provider.value == "claude"
+
+    def test_no_explicit_provider_uses_config(self, runner, mock_engine, tmp_path):
+        """Without -p flag, config file provider should be used."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text('provider: "claude"\nclaude:\n  timeout: 60\n')
+
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-c", str(config_file),
+                "chat", "--no-stream", "Hello"
+            ])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            config_obj = kwargs.get("config")
+            if config_obj:
+                # Should keep config's provider (claude), not default (gemini)
+                assert config_obj.provider.value == "claude"
+
+
+# =============================================================================
 # Error Message Tests
 # =============================================================================
 

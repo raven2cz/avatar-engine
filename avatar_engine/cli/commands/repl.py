@@ -6,8 +6,10 @@ import click
 from rich.console import Console
 from rich.prompt import Prompt
 
+from ...config import AvatarConfig
 from ...engine import AvatarEngine
 from ...events import ToolEvent, ThinkingEvent
+from ...types import ProviderType
 
 console = Console()
 
@@ -21,7 +23,7 @@ console = Console()
     help="Inline MCP server: 'name:command arg1 arg2'",
 )
 @click.option("--thinking-level", type=click.Choice(["minimal", "low", "medium", "high"]))
-@click.option("--yolo", is_flag=True, help="Auto-approve tool calls (Gemini)")
+@click.option("--yolo", is_flag=True, help="Auto-approve tool calls (Gemini/Codex)")
 @click.option("--timeout", "-t", type=int, default=120, help="Request timeout")
 @click.pass_context
 def repl(
@@ -49,6 +51,7 @@ def repl(
     """
     provider = ctx.obj["provider"]
     config_path = ctx.obj.get("config")
+    provider_explicit = ctx.obj.get("provider_explicit", False)
     verbose = ctx.obj.get("verbose", False)
 
     # Parse inline MCP servers
@@ -58,6 +61,7 @@ def repl(
         provider=provider,
         model=model,
         config_path=config_path,
+        provider_explicit=provider_explicit,
         verbose=verbose,
         mcp_servers=mcp_servers,
         thinking_level=thinking_level,
@@ -70,6 +74,7 @@ async def _repl_async(
     provider: str,
     model: str,
     config_path: str,
+    provider_explicit: bool,
     verbose: bool,
     mcp_servers: dict,
     thinking_level: str,
@@ -93,10 +98,21 @@ async def _repl_async(
     elif provider == "claude":
         if mcp_servers:
             kwargs["mcp_servers"] = mcp_servers
+    elif provider == "codex":
+        if mcp_servers:
+            kwargs["mcp_servers"] = mcp_servers
+        if yolo:
+            kwargs["auto_approve"] = True
 
     # Create engine
     if config_path:
-        engine = AvatarEngine.from_config(config_path)
+        config = AvatarConfig.load(config_path)
+        # CLI flags override config file
+        if provider_explicit:
+            config.provider = ProviderType(provider)
+        if model:
+            config.model = model
+        engine = AvatarEngine(config=config)
     else:
         engine = AvatarEngine(provider=provider, model=model, **kwargs)
 

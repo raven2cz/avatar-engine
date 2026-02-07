@@ -16,9 +16,9 @@ set -gx PYTHONPATH "$PYTHONPATH:(pwd)"
 # Info
 echo ""
 echo "Avatar Engine ready!"
-set -l provider (grep '^provider:' config.yaml 2>/dev/null | awk '{print $2}')
+set -l provider (grep '^provider:' .avatar.yaml 2>/dev/null | awk '{print $2}')
 if test -n "$provider"
-    echo "  Provider from config.yaml: $provider"
+    echo "  Provider from .avatar.yaml: $provider"
 end
 echo ""
 echo "Run examples:"

@@ -23,10 +23,15 @@ class TestProviderType:
         """CLAUDE should have correct value."""
         assert ProviderType.CLAUDE.value == "claude"
 
+    def test_codex_value(self):
+        """CODEX should have correct value."""
+        assert ProviderType.CODEX.value == "codex"
+
     def test_from_string(self):
         """Should be constructable from string."""
         assert ProviderType("gemini") == ProviderType.GEMINI
         assert ProviderType("claude") == ProviderType.CLAUDE
+        assert ProviderType("codex") == ProviderType.CODEX
 
     def test_invalid_provider(self):
         """Should raise ValueError for invalid provider."""

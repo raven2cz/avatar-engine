@@ -14,6 +14,7 @@ class ProviderType(Enum):
     """Supported AI provider types."""
     GEMINI = "gemini"
     CLAUDE = "claude"
+    CODEX = "codex"
 
 
 class BridgeState(Enum):

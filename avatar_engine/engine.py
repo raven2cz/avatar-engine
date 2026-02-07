@@ -1,10 +1,11 @@
 """
 Avatar Engine — unified interface for AI CLI bridges.
 
-Provides a single API for both:
+Provides a single API for:
 - Claude Code (persistent warm session via --input-format stream-json)
 - Gemini CLI (persistent warm session via ACP --experimental-acp with OAuth,
               oneshot fallback with context injection)
+- Codex CLI (persistent warm session via ACP codex-acp adapter)
 
 The engine hides the difference — you always just call chat()/chat_stream().
 """
@@ -18,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
 
-from .bridges import BaseBridge, ClaudeBridge, GeminiBridge
+from .bridges import BaseBridge, ClaudeBridge, CodexBridge, GeminiBridge
 from .config import AvatarConfig
 from .utils.logging import setup_logging
 from .utils.rate_limit import RateLimiter
@@ -41,7 +42,7 @@ class AvatarEngine(EventEmitter):
     """
     Avatar Engine — AI assistant integration library.
 
-    Provides a unified interface to Claude Code and Gemini CLI
+    Provides a unified interface to Gemini CLI, Claude Code, and Codex CLI
     with event-driven architecture for GUI integration.
 
     Usage (async):
@@ -81,8 +82,8 @@ class AvatarEngine(EventEmitter):
         Initialize Avatar Engine.
 
         Args:
-            provider: AI provider ("gemini" or "claude")
-            model: Model name (e.g., "gemini-3-pro-preview", "claude-sonnet-4-5")
+            provider: AI provider ("gemini", "claude", or "codex")
+            model: Model name (e.g., "gemini-3-pro-preview", "claude-sonnet-4-5", "gpt-5.3-codex")
             working_dir: Working directory for the AI session
             timeout: Request timeout in seconds
             system_prompt: System prompt for the AI
@@ -436,6 +437,17 @@ class AvatarEngine(EventEmitter):
                 resume_session_id=session_cfg.get("resume_id"),
                 fallback_model=pcfg.get("fallback_model"),
                 debug=pcfg.get("debug", False),
+                **common,
+            )
+        elif self._provider == ProviderType.CODEX:
+            pcfg = self._config.codex_config if self._config else self._kwargs
+            return CodexBridge(
+                executable=pcfg.get("executable", "npx"),
+                executable_args=pcfg.get("executable_args", ["@zed-industries/codex-acp"]),
+                model=self._model or pcfg.get("model", ""),
+                auth_method=pcfg.get("auth_method", "chatgpt"),
+                approval_mode=pcfg.get("approval_mode", "auto"),
+                sandbox_mode=pcfg.get("sandbox_mode", "workspace-write"),
                 **common,
             )
         else:

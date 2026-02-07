@@ -1,30 +1,36 @@
-<svg width="840" height="180" viewBox="0 0 840 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="840" height="210" viewBox="0 0 840 210" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="ico" x1="0" y1="0" x2="80" y2="80">
       <stop offset="0%" stop-color="#0969da"/>
       <stop offset="100%" stop-color="#8250df"/>
     </linearGradient>
   </defs>
-  <rect width="840" height="180" rx="12" fill="#ffffff"/>
-  <rect width="840" height="180" rx="12" stroke="#d0d7de" stroke-width="1" fill="none"/>
+  <rect width="840" height="210" rx="12" fill="#ffffff"/>
+  <rect width="840" height="210" rx="12" stroke="#d0d7de" stroke-width="1" fill="none"/>
 
   <!-- Gemini node -->
-  <g transform="translate(64, 44)">
+  <g transform="translate(64, 38)">
     <rect x="-40" y="-18" width="80" height="36" rx="10" fill="#ffffff" stroke="#4285f4" stroke-width="2"/>
     <text x="0" y="5" text-anchor="middle" fill="#4285f4" font-size="14" font-weight="600" font-family="system-ui, sans-serif">Gemini</text>
   </g>
   <!-- Claude node -->
-  <g transform="translate(64, 136)">
+  <g transform="translate(64, 105)">
     <rect x="-40" y="-18" width="80" height="36" rx="10" fill="#ffffff" stroke="#bf8b5e" stroke-width="2"/>
     <text x="0" y="5" text-anchor="middle" fill="#bf8b5e" font-size="14" font-weight="600" font-family="system-ui, sans-serif">Claude</text>
   </g>
+  <!-- Codex node -->
+  <g transform="translate(64, 172)">
+    <rect x="-40" y="-18" width="80" height="36" rx="10" fill="#ffffff" stroke="#0d8a6a" stroke-width="2"/>
+    <text x="0" y="5" text-anchor="middle" fill="#0d8a6a" font-size="14" font-weight="600" font-family="system-ui, sans-serif">Codex</text>
+  </g>
 
   <!-- Connection lines -->
-  <path d="M104 44 C160 44 180 90 230 90" stroke="#4285f4" stroke-width="2" fill="none" opacity="0.3" stroke-dasharray="6 4"/>
-  <path d="M104 136 C160 136 180 90 230 90" stroke="#bf8b5e" stroke-width="2" fill="none" opacity="0.3" stroke-dasharray="6 4"/>
+  <path d="M104 38 C160 38 180 105 230 105" stroke="#4285f4" stroke-width="2" fill="none" opacity="0.3" stroke-dasharray="6 4"/>
+  <path d="M104 105 C160 105 190 105 230 105" stroke="#bf8b5e" stroke-width="2" fill="none" opacity="0.3" stroke-dasharray="6 4"/>
+  <path d="M104 172 C160 172 180 105 230 105" stroke="#0d8a6a" stroke-width="2" fill="none" opacity="0.3" stroke-dasharray="6 4"/>
 
   <!-- CENTER ICON -->
-  <g transform="translate(270, 90)">
+  <g transform="translate(270, 105)">
     <circle r="38" fill="#ffffff" stroke="url(#ico)" stroke-width="2.5"/>
     <rect x="-20" y="-14" width="40" height="30" rx="8" fill="url(#ico)" opacity="0.08"/>
     <rect x="-20" y="-14" width="40" height="30" rx="8" stroke="url(#ico)" stroke-width="1.5" fill="none"/>
@@ -36,14 +42,14 @@
   </g>
 
   <!-- Arrow right -->
-  <path d="M308 90 L370 90" stroke="url(#ico)" stroke-width="2" opacity="0.25" stroke-dasharray="6 4"/>
+  <path d="M308 105 L370 105" stroke="url(#ico)" stroke-width="2" opacity="0.25" stroke-dasharray="6 4"/>
 
   <!-- Title -->
-  <text x="385" y="48" fill="#1f2328" font-size="32" font-weight="700" font-family="system-ui, -apple-system, sans-serif">Avatar Engine</text>
-  <text x="385" y="72" fill="#656d76" font-size="14" font-family="system-ui, -apple-system, sans-serif">AI assistant integration library for Python</text>
+  <text x="385" y="55" fill="#1f2328" font-size="32" font-weight="700" font-family="system-ui, -apple-system, sans-serif">Avatar Engine</text>
+  <text x="385" y="79" fill="#656d76" font-size="14" font-family="system-ui, -apple-system, sans-serif">AI assistant integration library for Python</text>
 
   <!-- Tags -->
-  <g transform="translate(385, 86)">
+  <g transform="translate(385, 95)">
     <rect x="0" y="0" width="80" height="20" rx="4" fill="#dafbe1"/>
     <text x="40" y="14" text-anchor="middle" fill="#1a7f37" font-size="10" font-family="system-ui, sans-serif">ACP Sessions</text>
 
@@ -61,11 +67,23 @@
   </g>
 
   <!-- pip install box -->
-  <g transform="translate(385, 120)">
+  <g transform="translate(385, 133)">
     <rect x="0" y="0" width="220" height="28" rx="6" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1"/>
     <text x="12" y="19" fill="#1a7f37" font-size="13" font-family="'Courier New', Consolas, monospace">pip install avatar-engine</text>
   </g>
 
+  <!-- Provider badges -->
+  <g transform="translate(385, 172)">
+    <rect x="0" y="0" width="55" height="18" rx="4" fill="#eaf3fc"/>
+    <text x="27" y="13" text-anchor="middle" fill="#4285f4" font-size="9" font-family="system-ui, sans-serif">Gemini</text>
+
+    <rect x="61" y="0" width="52" height="18" rx="4" fill="#fdf0e6"/>
+    <text x="87" y="13" text-anchor="middle" fill="#bf8b5e" font-size="9" font-family="system-ui, sans-serif">Claude</text>
+
+    <rect x="119" y="0" width="50" height="18" rx="4" fill="#e6f7f1"/>
+    <text x="144" y="13" text-anchor="middle" fill="#0d8a6a" font-size="9" font-family="system-ui, sans-serif">Codex</text>
+  </g>
+
   <!-- Footer -->
-  <text x="385" y="168" fill="#8c959f" font-size="11" font-family="system-ui, sans-serif">Python 3.10+  ·  asyncio  ·  Apache 2.0</text>
+  <text x="385" y="205" fill="#8c959f" font-size="11" font-family="system-ui, sans-serif">Python 3.10+  ·  asyncio  ·  Apache 2.0</text>
 </svg>

@@ -4,7 +4,7 @@
 # Headless JSON mode: no PTY, no ANSI, no ASCII art.
 # Clean JSON communication via --output-format stream-json.
 
-# Active provider ("gemini" or "claude")
+# Active provider ("gemini", "claude", or "codex")
 provider: "gemini"
 
 # =============================================================================
@@ -91,6 +91,38 @@ claude:
     Use MCP tools to control the avatar.
 
   # MCP servers (written to mcp_servers.json for --mcp-config)
+  mcp_servers:
+    avatar-tools:
+      command: "/home/box/git/github/avatar-engine/.venv/bin/python"
+      args: ["/home/box/git/github/avatar-engine/mcp_tools.py"]
+
+  env: {}
+
+# =============================================================================
+# CODEX CLI (OpenAI)
+# =============================================================================
+codex:
+  executable: "npx"
+  executable_args: ["@zed-industries/codex-acp"]
+  # Models: gpt-5.3-codex (default), o3 (reasoning)
+  model: ""  # Empty = Codex default (gpt-5.3-codex)
+  timeout: 120
+
+  # Authentication: "chatgpt" (browser OAuth), "codex-api-key", "openai-api-key"
+  auth_method: "chatgpt"
+
+  # Auto-approve tool calls (required for non-interactive use)
+  approval_mode: "auto"
+
+  # Sandbox: "read-only", "workspace-write", "danger-full-access"
+  sandbox_mode: "workspace-write"
+
+  # System prompt
+  system_prompt: |
+    You are an AI avatar. Respond concisely and naturally.
+    Use MCP tools to control the avatar.
+
+  # MCP servers (passed per-session to codex-acp via ACP protocol)
   mcp_servers:
     avatar-tools:
       command: "/home/box/git/github/avatar-engine/.venv/bin/python"

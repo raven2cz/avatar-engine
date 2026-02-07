@@ -47,7 +47,7 @@ def find_config() -> str | None:
 @click.option("--no-config", is_flag=True, help="Disable config auto-loading")
 @click.option(
     "--provider", "-p",
-    type=click.Choice(["gemini", "claude"]),
+    type=click.Choice(["gemini", "claude", "codex"]),
     default="gemini",
     help="AI provider",
 )
@@ -90,6 +90,9 @@ def cli(ctx: click.Context, config: str, no_config: bool, provider: str, verbose
 
     ctx.obj["config"] = config
     ctx.obj["provider"] = provider
+    ctx.obj["provider_explicit"] = (
+        ctx.get_parameter_source("provider") == click.core.ParameterSource.COMMANDLINE
+    )
     ctx.obj["verbose"] = verbose
     ctx.obj["debug"] = debug
 

@@ -50,6 +50,12 @@ async def _check_cli_versions() -> None:
     gemini_detail = gemini_info.version if gemini_info.version else (gemini_info.error or "not found")
     table.add_row("gemini", gemini_status, gemini_detail)
 
+    # Check Codex ACP (via npx)
+    codex_info = await check_cli_version("npx")
+    codex_status = "[green]✓[/green]" if codex_info.available else "[red]✗[/red]"
+    codex_detail = "npx available (codex-acp)" if codex_info.available else "npx not found (install Node.js)"
+    table.add_row("codex-acp", codex_status, codex_detail)
+
     console.print(table)
 
 

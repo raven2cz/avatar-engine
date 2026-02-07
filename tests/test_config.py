@@ -34,6 +34,11 @@ class TestAvatarConfigFromDict:
         config = AvatarConfig.from_dict({"provider": "claude"})
         assert config.provider == ProviderType.CLAUDE
 
+    def test_provider_codex(self):
+        """Should parse codex provider correctly."""
+        config = AvatarConfig.from_dict({"provider": "codex"})
+        assert config.provider == ProviderType.CODEX
+
     def test_provider_case_insensitive(self):
         """Provider should be case-insensitive."""
         config = AvatarConfig.from_dict({"provider": "GEMINI"})
@@ -77,6 +82,47 @@ class TestAvatarConfigFromDict:
         assert config.timeout == 90
         assert config.claude_config["permission_mode"] == "acceptEdits"
         assert config.claude_config["allowed_tools"] == ["Read", "Edit"]
+
+    def test_codex_config(self):
+        """Should extract codex-specific config."""
+        data = {
+            "provider": "codex",
+            "codex": {
+                "model": "",
+                "timeout": 90,
+                "auth_method": "chatgpt",
+                "approval_mode": "auto",
+                "sandbox_mode": "workspace-write",
+                "executable": "npx",
+                "executable_args": ["@zed-industries/codex-acp"],
+            },
+        }
+        config = AvatarConfig.from_dict(data)
+
+        assert config.provider == ProviderType.CODEX
+        assert config.timeout == 90
+        assert config.codex_config["auth_method"] == "chatgpt"
+        assert config.codex_config["approval_mode"] == "auto"
+        assert config.codex_config["sandbox_mode"] == "workspace-write"
+
+    def test_codex_config_active_provider(self):
+        """get_provider_config should return codex config for codex provider."""
+        config = AvatarConfig.from_dict({
+            "provider": "codex",
+            "codex": {"model": "o3"},
+        })
+        pcfg = config.get_provider_config()
+        assert pcfg["model"] == "o3"
+
+    def test_codex_in_to_dict(self):
+        """to_dict should include codex config."""
+        config = AvatarConfig.from_dict({
+            "provider": "codex",
+            "codex": {"model": "o3"},
+        })
+        result = config.to_dict()
+        assert "codex" in result
+        assert result["codex"]["model"] == "o3"
 
     def test_engine_config(self):
         """Should extract engine settings."""

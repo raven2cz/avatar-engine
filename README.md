@@ -22,7 +22,7 @@ Avatar Engine is designed for embedding a dedicated AI avatar into a specific ap
 - **Application-defined behavior** — Your app controls avatar behavior through explicit configuration (model, prompts, permissions, tool policy, safety limits).
 - **Application-provided context** — Your app supplies domain context and source data so the avatar can reason over real project information.
 - **MCP for complex operations** — For tasks that are hard to encode as deterministic algorithms, the avatar can call MCP tools to inspect data, run analyses, and assist with larger changes.
-- **Provider abstraction as infrastructure** — Claude Code and Gemini CLI support is an implementation layer that enables the avatar runtime, not the product goal itself.
+- **Provider abstraction as infrastructure** — Gemini CLI, Claude Code, and Codex CLI support is an implementation layer that enables the avatar runtime, not the product goal itself.
 
 ## Features
 
@@ -30,7 +30,7 @@ Avatar Engine is designed for embedding a dedicated AI avatar into a specific ap
 - **Configurable Behavior** — Fine-grained control of model, prompts, permissions, and execution policy
 - **Context-Aware Operation** — Designed to consume application context and source data
 - **MCP Orchestration** — Tool-based execution path for complex analysis and non-trivial edits
-- **Provider Abstraction** — Single integration surface for Claude Code and Gemini CLI
+- **Provider Abstraction** — Single integration surface for Gemini CLI, Claude Code, and Codex CLI
 - **Warm Sessions** — ACP / stream-json persistent subprocess for instant responses
 - **Zero Footprint** — No config files written to your project directory
 - **Event System** — Callbacks for GUI integration (text, tools, state changes)
@@ -51,13 +51,29 @@ pip install avatar-engine[dev,cli]
 
 ### Prerequisites
 
-```bash
-# Gemini CLI
-npm install -g @google/gemini-cli
-gemini  # Run once to authenticate with Google
+Install only the providers you need. All providers use **account-based authentication** (no API keys required):
 
-# Claude Code
+```bash
+# Gemini CLI (Google account — free tier available)
+npm install -g @google/gemini-cli
+gemini  # Run once to authenticate with Google account
+
+# Claude Code (Anthropic account)
 npm install -g @anthropic-ai/claude-code
+claude  # Run once to authenticate
+
+# Codex CLI (ChatGPT account via ACP adapter)
+# Auto-fetched via npx on first use, or pre-cache:
+npx @zed-industries/codex-acp --help
+codex  # Run once to authenticate with ChatGPT account
+```
+
+Or use the interactive install script:
+
+```bash
+./install.sh          # Interactive — choose which providers to install
+./install.sh --all    # Install everything
+./install.sh --check  # Check what's installed
 ```
 
 ## Quick Start
@@ -67,7 +83,7 @@ npm install -g @anthropic-ai/claude-code
 ```python
 from avatar_engine import AvatarEngine
 
-# Synchronous
+# Synchronous — any provider: "gemini", "claude", or "codex"
 engine = AvatarEngine(provider="gemini")
 engine.start_sync()
 response = engine.chat_sync("Hello!")
@@ -78,7 +94,7 @@ engine.stop_sync()
 import asyncio
 
 async def main():
-    engine = AvatarEngine(provider="claude")
+    engine = AvatarEngine(provider="codex")  # or "claude", "gemini"
     await engine.start()
 
     # Streaming
@@ -93,13 +109,17 @@ asyncio.run(main())
 ### CLI Usage
 
 ```bash
-# Single message
+# Single message (provider flag -p goes BEFORE the subcommand)
 avatar chat "What is 2+2?"
-avatar chat -p claude "Write a haiku"
+avatar -p claude chat "Write a haiku"
+avatar -p codex chat "Refactor this function"
 
 # Interactive REPL
 avatar repl
-avatar repl -p gemini
+avatar -p codex repl
+
+# With config file: -p overrides config's provider
+avatar -p codex chat "Hello"     # uses codex even if .avatar.yaml says gemini
 
 # Health check
 avatar health --check-cli
@@ -161,6 +181,12 @@ claude:
     max_turns: 10
     max_budget_usd: 5.0
 
+codex:
+  model: ""  # Empty = CLI default
+  auth_method: "chatgpt"  # chatgpt | codex-api-key | openai-api-key
+  approval_mode: "auto"
+  sandbox_mode: "workspace-write"
+
 engine:
   auto_restart: true
   max_restarts: 3
@@ -206,7 +232,8 @@ avatar-engine/
 │   ├── bridges/         # Provider implementations
 │   │   ├── base.py      # Abstract bridge
 │   │   ├── claude.py    # Claude Code bridge
-│   │   └── gemini.py    # Gemini CLI bridge
+│   │   ├── gemini.py    # Gemini CLI bridge
+│   │   └── codex.py     # Codex CLI bridge (ACP)
 │   ├── utils/           # Utilities
 │   │   ├── logging.py   # Logging configuration
 │   │   ├── metrics.py   # Metrics collection
@@ -221,7 +248,7 @@ avatar-engine/
 
 ## Warm Session Architecture
 
-Both providers support **persistent warm sessions**:
+All three providers support **persistent warm sessions**:
 
 ```
 CLAUDE CODE (stream-json)
@@ -238,23 +265,32 @@ start()  →  spawn: gemini --experimental-acp
 chat()   →  prompt(session_id, message)
 chat()   →  same session, same process
 stop()   →  exit ACP context
+
+CODEX CLI (ACP via codex-acp)
+─────────────────────────────
+start()  →  spawn: npx @zed-industries/codex-acp
+         →  initialize → authenticate → new_session
+chat()   →  prompt(session_id, message) + session_update stream
+chat()   →  same session, same process
+stop()   →  exit ACP context
 ```
 
 ## Examples
 
 See the `examples/` directory:
 
-- `basic_chat.py` — Simple sync/async usage
+- `basic_chat.py` — Simple sync/async usage (supports `--provider gemini|claude|codex`)
 - `gui_integration.py` — Event-driven GUI pattern
 - `streaming_avatar.py` — Real-time avatar with TTS
-- `config_example.yaml` — Full configuration reference
+- `avatar.example.yaml` — Full configuration reference with all providers
 
 Run examples:
 
 ```bash
 python examples/basic_chat.py
 python examples/basic_chat.py --provider claude --async
-python examples/streaming_avatar.py --interactive
+python examples/basic_chat.py --provider codex
+python examples/streaming_avatar.py --provider codex --interactive
 ```
 
 ## Testing
@@ -266,7 +302,7 @@ pytest tests/ -v
 # Run with coverage
 pytest tests/ --cov=avatar_engine
 
-# Current: 334 unit tests + 40 integration tests
+# Current: 517 tests (unit + integration)
 ```
 
 ## API Reference
@@ -310,7 +346,7 @@ class AvatarEngine:
 TextEvent      # Text chunk from AI
 ToolEvent      # Tool execution (started/completed/failed)
 StateEvent     # Bridge state change
-ThinkingEvent  # AI thinking (Gemini 3)
+ThinkingEvent  # AI thinking (Gemini 3 / Codex)
 CostEvent      # Cost/usage update
 ErrorEvent     # Error occurred
 ```
@@ -321,7 +357,7 @@ ErrorEvent     # Error occurred
 BridgeResponse  # Chat response with content, success, duration, etc.
 HealthStatus    # Health check result
 Message         # Conversation message
-ProviderType    # GEMINI | CLAUDE
+ProviderType    # GEMINI | CLAUDE | CODEX
 BridgeState     # DISCONNECTED | WARMING_UP | READY | BUSY | ERROR
 ```
 
@@ -334,13 +370,15 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 This project is a **wrapper** that communicates with external AI CLI tools via their documented interfaces. It does not include or redistribute code from these tools.
 
 **User Responsibilities:**
-- Install external tools separately (`gemini`, `claude`)
+- Install external tools separately (`gemini`, `claude`, `codex-acp`)
 - Accept terms of service for each provider
-- Obtain proper authentication (Google account / Anthropic API)
+- Authenticate with your account (Google / Anthropic / OpenAI-ChatGPT)
 
 **External Tools:**
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli) — Apache 2.0
 - [Claude Code](https://github.com/anthropics/claude-code) — Anthropic Terms
+- [Codex CLI](https://github.com/openai/codex) — Apache 2.0
+- [codex-acp](https://github.com/nicolo-ribaudo/codex-acp) — ACP wrapper for Codex
 - [ACP SDK](https://github.com/agentclientprotocol/python-sdk) — Apache 2.0
 
 ## Author
