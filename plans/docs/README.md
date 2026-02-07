@@ -20,6 +20,13 @@ This directory contains reference documentation for building and maintaining the
 | [claude-code-headless.md](./claude-code-headless.md) | Headless mode, stream-json input/output, session management |
 | [claude-code-cli-reference.md](./claude-code-cli-reference.md) | Complete CLI flags reference, permission modes, MCP config |
 
+### Codex CLI (OpenAI)
+
+| File | Description |
+|------|-------------|
+| [codex-cli-reference.md](./codex-cli-reference.md) | CLI reference, app-server protocol, auth, sandbox modes |
+| [codex-acp-adapter.md](./codex-acp-adapter.md) | codex-acp adapter architecture, ACP protocol details, integration guide |
+
 ### ACP (Agent Client Protocol)
 
 | File | Description |
@@ -40,6 +47,12 @@ gemini --experimental-acp --yolo --model gemini-3-pro-preview
 claude -p --input-format stream-json --output-format stream-json --verbose
 ```
 
+### Codex ACP Warm Session
+
+```bash
+npx @zed-industries/codex-acp
+```
+
 ### Key Configuration Files
 
 | Provider | File | Purpose |
@@ -49,6 +62,7 @@ claude -p --input-format stream-json --output-format stream-json --verbose
 | Claude | `mcp_servers.json` | MCP config for `--mcp-config` |
 | Claude | `CLAUDE.md` | System prompt |
 | Gemini | `GEMINI.md` | System prompt |
+| Codex | `~/.codex/config.toml` | Model config, MCP servers, sandbox |
 
 ### Model Selection
 
@@ -59,6 +73,8 @@ claude -p --input-format stream-json --output-format stream-json --verbose
 | Claude | `claude-opus-4-5` | Best quality, slower |
 | Claude | `claude-sonnet-4-5` | Fast, good for most use cases |
 | Claude | `claude-haiku-3-5` | Fastest, lowest cost |
+| Codex | `gpt-5.3-codex` | Latest Codex model |
+| Codex | `o3` | Reasoning-focused |
 
 ### Thinking Configuration (Gemini 3)
 
@@ -75,3 +91,5 @@ claude -p --input-format stream-json --output-format stream-json --verbose
 - Claude Code: https://code.claude.com/docs
 - ACP SDK: https://agentclientprotocol.github.io/python-sdk/
 - Gemini API: https://ai.google.dev/gemini-api/docs
+- Codex CLI: https://github.com/openai/codex
+- Codex ACP: https://github.com/zed-industries/codex-acp

@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>Python library for integrating AI assistants (Claude Code, Gemini CLI) into applications.</strong>
+  <strong>Python library for building application-specific AI avatars with configurable behavior, context-aware reasoning, and MCP-powered task execution.</strong>
 </p>
 
 <p align="center">
@@ -15,14 +15,26 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-green.svg" alt="License: Apache 2.0"></a>
 </p>
 
+## Project Intent
+
+Avatar Engine is designed for embedding a dedicated AI avatar into a specific application domain, not as a generic chatbot wrapper.
+
+- **Application-defined behavior** — Your app controls avatar behavior through explicit configuration (model, prompts, permissions, tool policy, safety limits).
+- **Application-provided context** — Your app supplies domain context and source data so the avatar can reason over real project information.
+- **MCP for complex operations** — For tasks that are hard to encode as deterministic algorithms, the avatar can call MCP tools to inspect data, run analyses, and assist with larger changes.
+- **Provider abstraction as infrastructure** — Claude Code and Gemini CLI support is an implementation layer that enables the avatar runtime, not the product goal itself.
+
 ## Features
 
-- **Unified API** — Single interface for Claude Code and Gemini CLI
+- **Avatar Runtime API** — Stable interface for embedding a domain-specific avatar into your app
+- **Configurable Behavior** — Fine-grained control of model, prompts, permissions, and execution policy
+- **Context-Aware Operation** — Designed to consume application context and source data
+- **MCP Orchestration** — Tool-based execution path for complex analysis and non-trivial edits
+- **Provider Abstraction** — Single integration surface for Claude Code and Gemini CLI
 - **Warm Sessions** — ACP / stream-json persistent subprocess for instant responses
 - **Zero Footprint** — No config files written to your project directory
 - **Event System** — Callbacks for GUI integration (text, tools, state changes)
 - **Streaming** — Real-time response streaming
-- **MCP Support** — Model Context Protocol tools for both providers
 - **Production Ready** — Rate limiting, metrics, auto-restart, graceful shutdown
 
 ## Installation

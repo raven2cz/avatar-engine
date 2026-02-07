@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "avatar-engine"
 version = "0.1.0"
-description = "AI assistant integration library for Claude Code and Gemini CLI"
+description = "Application-specific AI avatar runtime with configurable behavior, context-aware reasoning, and MCP tool orchestration"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [
     { name = "Antonin Stefanutti" }
 ]
-keywords = ["ai", "claude", "gemini", "assistant", "avatar", "llm", "agent"]
+keywords = ["ai", "avatar", "agent", "mcp", "context-aware", "tool-orchestration", "claude", "gemini", "application-integration"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

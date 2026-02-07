@@ -55,9 +55,10 @@ def find_config() -> str | None:
 @click.option("--debug", is_flag=True, help="Debug mode")
 @click.pass_context
 def cli(ctx: click.Context, config: str, no_config: bool, provider: str, verbose: bool, debug: bool) -> None:
-    """Avatar Engine — AI CLI Bridge.
+    """Avatar Engine — application-specific AI avatar runtime.
 
-    A unified interface for Claude Code and Gemini CLI.
+    Build and run configurable AI avatars inside your application.
+    Your app controls behavior and context; CLI providers are runtime backends.
 
     Config file locations (in priority order):
 

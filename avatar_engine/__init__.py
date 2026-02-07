@@ -1,8 +1,10 @@
 """
-Avatar Engine — AI assistant integration library.
+Avatar Engine — application-specific AI avatar runtime.
 
-A Python library for integrating AI assistants (Claude Code, Gemini CLI)
-into applications with event-driven architecture for GUI integration.
+A Python library for embedding configurable AI avatars into applications.
+Applications provide behavior configuration, domain context, and source data.
+The avatar can orchestrate MCP tools for complex analysis and larger edits.
+Claude Code and Gemini CLI are supported as provider backends.
 
 Basic Usage:
     from avatar_engine import AvatarEngine
