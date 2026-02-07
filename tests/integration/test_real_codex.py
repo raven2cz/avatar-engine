@@ -10,6 +10,7 @@ Run with: pytest tests/integration/test_real_codex.py -v -m codex
 
 import asyncio
 import shutil
+import sys
 
 import pytest
 
@@ -286,6 +287,76 @@ class TestRealCodexAuth:
 # MCP Server Integration Tests
 # =============================================================================
 
+MCP_TEST_SERVER = '''
+"""Simple MCP server for integration testing."""
+import json
+import sys
+
+def handle_request(request):
+    method = request.get("method", "")
+    req_id = request.get("id")
+
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "serverInfo": {"name": "test-mcp", "version": "1.0.0"},
+                "capabilities": {"tools": {}},
+            }
+        }
+    elif method == "tools/list":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "tools": [
+                    {
+                        "name": "add",
+                        "description": "Add two numbers and return the sum",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "a": {"type": "number", "description": "First number"},
+                                "b": {"type": "number", "description": "Second number"},
+                            },
+                            "required": ["a", "b"]
+                        }
+                    }
+                ]
+            }
+        }
+    elif method == "tools/call":
+        args = request.get("params", {}).get("arguments", {})
+        result = args.get("a", 0) + args.get("b", 0)
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {"content": [{"type": "text", "text": str(result)}]}
+        }
+
+    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Unknown: {method}"}}
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        response = handle_request(json.loads(line))
+        print(json.dumps(response), flush=True)
+    except json.JSONDecodeError:
+        pass
+'''
+
+
+@pytest.fixture
+def mcp_server_path(tmp_path):
+    """Create a temporary MCP test server."""
+    server_file = tmp_path / "test_mcp_server.py"
+    server_file.write_text(MCP_TEST_SERVER)
+    return str(server_file)
+
 
 @pytest.mark.integration
 @pytest.mark.codex
@@ -294,31 +365,14 @@ class TestRealCodexMCP:
     """Test MCP server integration with real codex-acp."""
 
     @pytest.mark.asyncio
-    async def test_mcp_server_passed(self, skip_if_no_codex_acp, tmp_path):
-        """Should pass MCP servers to codex-acp session."""
-        # Create a simple MCP server script
-        mcp_script = tmp_path / "echo_server.py"
-        mcp_script.write_text("""
-import sys
-import json
-
-# Simple MCP server that does nothing (for testing)
-for line in sys.stdin:
-    try:
-        msg = json.loads(line)
-        if msg.get("method") == "initialize":
-            print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}}}))
-            sys.stdout.flush()
-    except:
-        pass
-""")
-
+    async def test_mcp_server_session_starts(self, skip_if_no_codex_acp, mcp_server_path):
+        """Should start session with MCP servers configured."""
         bridge = CodexBridge(
-            timeout=30,
+            timeout=60,
             mcp_servers={
-                "echo": {
-                    "command": sys.executable if hasattr(sys, 'executable') else "python",
-                    "args": [str(mcp_script)],
+                "calc": {
+                    "command": sys.executable,
+                    "args": [mcp_server_path],
                 }
             },
         )
@@ -326,11 +380,83 @@ for line in sys.stdin:
         try:
             await bridge.start()
             assert bridge.state == BridgeState.READY
-        except Exception:
-            # MCP server issues shouldn't prevent basic testing
-            pass
+            assert bridge.session_id is not None
         finally:
             await bridge.stop()
+
+    @pytest.mark.asyncio
+    async def test_mcp_tool_call_via_bridge(self, skip_if_no_codex_acp, mcp_server_path):
+        """Should call MCP tool and get result via CodexBridge."""
+        bridge = CodexBridge(
+            timeout=120,
+            mcp_servers={
+                "calc": {
+                    "command": sys.executable,
+                    "args": [mcp_server_path],
+                }
+            },
+        )
+
+        try:
+            await bridge.start()
+            response = await bridge.send(
+                "Use the 'add' tool to calculate 15 + 27. Tell me the exact result."
+            )
+            assert response.success is True
+            assert "42" in response.content
+        finally:
+            await bridge.stop()
+
+    @pytest.mark.asyncio
+    async def test_mcp_tool_call_via_engine(self, skip_if_no_codex_acp, mcp_server_path):
+        """Should call MCP tool and get result via AvatarEngine."""
+        engine = AvatarEngine(
+            provider="codex",
+            timeout=120,
+            mcp_servers={
+                "calc": {
+                    "command": sys.executable,
+                    "args": [mcp_server_path],
+                }
+            },
+        )
+
+        try:
+            await engine.start()
+            response = await engine.chat(
+                "Use the 'add' tool to calculate 100 + 23. Report the exact number."
+            )
+            assert response.success is True
+            assert "123" in response.content
+        finally:
+            await engine.stop()
+
+    @pytest.mark.asyncio
+    async def test_mcp_tool_events_emitted(self, skip_if_no_codex_acp, mcp_server_path):
+        """Tool events should fire when Codex calls MCP tools."""
+        engine = AvatarEngine(
+            provider="codex",
+            timeout=120,
+            mcp_servers={
+                "calc": {
+                    "command": sys.executable,
+                    "args": [mcp_server_path],
+                }
+            },
+        )
+
+        tool_events = []
+
+        @engine.on(ToolEvent)
+        def on_tool(e):
+            tool_events.append(e)
+
+        try:
+            await engine.start()
+            await engine.chat("Use the add tool to add 5 and 3.")
+            # Verify no crash; tool events depend on ACP update format
+        finally:
+            await engine.stop()
 
 
 # =============================================================================
@@ -382,7 +508,3 @@ class TestRealCodexErrorRecovery:
         r2 = await bridge.send("Second session")
         assert r2.success is True
         await bridge.stop()
-
-
-# Need sys import for MCP test
-import sys

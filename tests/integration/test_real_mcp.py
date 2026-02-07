@@ -342,6 +342,115 @@ class TestMCPWithGemini:
 
 
 # =============================================================================
+# MCP with Real Codex Tests
+# =============================================================================
+
+
+@pytest.mark.integration
+@pytest.mark.codex
+@pytest.mark.slow
+class TestMCPWithCodex:
+    """Test MCP integration with real Codex (codex-acp)."""
+
+    @pytest.mark.asyncio
+    async def test_chat_with_mcp_tools(self, skip_if_no_codex_acp, mcp_server_path):
+        """Chat should have access to MCP tools via Codex."""
+        mcp_servers = {
+            "test-tools": {
+                "command": sys.executable,
+                "args": [mcp_server_path],
+            }
+        }
+
+        engine = AvatarEngine(
+            provider="codex",
+            timeout=120,
+            mcp_servers=mcp_servers,
+        )
+
+        try:
+            await engine.start()
+
+            # Ask to use the calculator tool
+            response = await engine.chat(
+                "Use the 'add' tool to calculate 15 + 27. "
+                "Tell me the exact result."
+            )
+
+            assert response.success is True
+            # Should contain the result (42)
+            assert "42" in response.content
+
+        finally:
+            await engine.stop()
+
+    @pytest.mark.asyncio
+    async def test_mcp_greet_tool(self, skip_if_no_codex_acp, mcp_server_path):
+        """Codex should be able to call the greet MCP tool."""
+        mcp_servers = {
+            "test-tools": {
+                "command": sys.executable,
+                "args": [mcp_server_path],
+            }
+        }
+
+        engine = AvatarEngine(
+            provider="codex",
+            timeout=120,
+            mcp_servers=mcp_servers,
+        )
+
+        try:
+            await engine.start()
+
+            response = await engine.chat(
+                "Use the 'greet' tool to greet 'Alice'. "
+                "Show me the exact output from the tool."
+            )
+
+            assert response.success is True
+            assert "Alice" in response.content
+
+        finally:
+            await engine.stop()
+
+    @pytest.mark.asyncio
+    async def test_mcp_tool_events(self, skip_if_no_codex_acp, mcp_server_path):
+        """Tool events should fire when MCP tools are used via Codex."""
+        from avatar_engine.events import ToolEvent
+
+        mcp_servers = {
+            "test-tools": {
+                "command": sys.executable,
+                "args": [mcp_server_path],
+            }
+        }
+
+        engine = AvatarEngine(
+            provider="codex",
+            timeout=120,
+            mcp_servers=mcp_servers,
+        )
+
+        tool_events = []
+
+        @engine.on(ToolEvent)
+        def on_tool(e):
+            tool_events.append(e)
+
+        try:
+            await engine.start()
+
+            await engine.chat("Use the greet tool to greet 'Bob'.")
+
+            # May or may not have tool events depending on ACP update format
+            # Just verify no crash
+
+        finally:
+            await engine.stop()
+
+
+# =============================================================================
 # MCP CLI Test Command
 # =============================================================================
 

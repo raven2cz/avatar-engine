@@ -47,11 +47,28 @@ def skip_if_no_claude(claude_available):
         pytest.skip("Claude CLI not installed")
 
 
+@pytest.fixture(scope="session")
+def codex_acp_available():
+    """Check if codex-acp is available via npx."""
+    try:
+        from avatar_engine.bridges.codex import _ACP_AVAILABLE
+        return shutil.which("npx") is not None and _ACP_AVAILABLE
+    except ImportError:
+        return False
+
+
 @pytest.fixture
 def skip_if_no_gemini(gemini_available):
     """Skip test if Gemini CLI not available."""
     if not gemini_available:
         pytest.skip("Gemini CLI not installed")
+
+
+@pytest.fixture
+def skip_if_no_codex_acp(codex_acp_available):
+    """Skip test if codex-acp is not available."""
+    if not codex_acp_available:
+        pytest.skip("codex-acp not available (npx or ACP SDK missing)")
 
 
 @pytest.fixture(scope="session")
