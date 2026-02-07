@@ -86,6 +86,23 @@ class ClaudeBridge(BaseBridge):
         # Session capabilities — Claude supports resume and continue via CLI flags
         self._session_capabilities.can_load = True
         self._session_capabilities.can_continue_last = True
+
+        # Budget tracking
+        self._max_budget_usd = max_budget_usd
+
+        # Provider capabilities
+        self._provider_capabilities.thinking_supported = False  # Claude CLI doesn't export thinking
+        self._provider_capabilities.thinking_structured = False
+        self._provider_capabilities.cost_tracking = True
+        self._provider_capabilities.budget_enforcement = True
+        self._provider_capabilities.system_prompt_method = "native"  # --append-system-prompt
+        self._provider_capabilities.streaming = True
+        self._provider_capabilities.parallel_tools = True
+        self._provider_capabilities.cancellable = False
+        self._provider_capabilities.mcp_supported = True
+        self._provider_capabilities.can_list_sessions = False
+        self._provider_capabilities.can_load_session = True
+        self._provider_capabilities.can_continue_last = True
         self._total_cost_usd = 0.0
 
     @property

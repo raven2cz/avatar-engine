@@ -15,10 +15,12 @@ import dataclasses
 import logging
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
 
+from .activity import ActivityTracker
 from .bridges import BaseBridge, ClaudeBridge, CodexBridge, GeminiBridge
 from .config import AvatarConfig
 from .utils.logging import setup_logging
@@ -32,10 +34,16 @@ from .events import (
     ErrorEvent,
     CostEvent,
     ThinkingEvent,
+    DiagnosticEvent,
+    ActivityEvent,
+    ThinkingPhase,
+    ActivityStatus,
+    extract_bold_subject,
+    classify_thinking,
 )
 from .types import (
     BridgeResponse, BridgeState, HealthStatus, Message, ProviderType,
-    SessionInfo, SessionCapabilitiesInfo,
+    SessionInfo, SessionCapabilitiesInfo, ProviderCapabilities, ToolPolicy,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,6 +130,18 @@ class AvatarEngine(EventEmitter):
         self._original_sigterm = None
         self._original_sigint = None
         self._sync_loop: Optional[asyncio.AbstractEventLoop] = None  # For sync wrappers
+        self._sync_loop_lock = threading.Lock()  # RC-1: protect loop creation
+
+        # Activity tracker for parallel operations (GUI visualization)
+        self._activity_tracker = ActivityTracker(self)
+
+        # Tool policy for engine-level filtering (GAP-8)
+        self._tool_policy: Optional[ToolPolicy] = None
+
+        # Thinking state cache (GAP-10: optimize high-frequency events)
+        self._current_thinking_block_id = ""
+        self._current_thinking_subject = ""
+        self._current_thinking_phase = ThinkingPhase.GENERAL
 
         # Rate limiter
         if config:
@@ -210,11 +230,16 @@ class AvatarEngine(EventEmitter):
     # === Lifecycle (sync wrappers) ===
 
     def _get_sync_loop(self) -> asyncio.AbstractEventLoop:
-        """Get or create the event loop for sync operations."""
-        if self._sync_loop is None or self._sync_loop.is_closed():
-            self._sync_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._sync_loop)
-        return self._sync_loop
+        """Get or create the event loop for sync operations.
+
+        RC-1 fix: uses lock to prevent race when multiple threads call
+        sync wrappers. Does NOT call asyncio.set_event_loop() which is
+        thread-unsafe and would overwrite loops in other threads.
+        """
+        with self._sync_loop_lock:
+            if self._sync_loop is None or self._sync_loop.is_closed():
+                self._sync_loop = asyncio.new_event_loop()
+            return self._sync_loop
 
     def start_sync(self) -> None:
         """Start the engine (sync wrapper)."""
@@ -223,14 +248,17 @@ class AvatarEngine(EventEmitter):
 
     def stop_sync(self) -> None:
         """Stop the engine (sync wrapper)."""
-        if self._sync_loop is None or self._sync_loop.is_closed():
-            return  # Already stopped or never started
+        with self._sync_loop_lock:
+            if self._sync_loop is None or self._sync_loop.is_closed():
+                return  # Already stopped or never started
+            loop = self._sync_loop
         try:
-            self._sync_loop.run_until_complete(self.stop())
+            loop.run_until_complete(self.stop())
         finally:
-            if self._sync_loop and not self._sync_loop.is_closed():
-                self._sync_loop.close()
-            self._sync_loop = None
+            with self._sync_loop_lock:
+                if self._sync_loop and not self._sync_loop.is_closed():
+                    self._sync_loop.close()
+                self._sync_loop = None
 
     # === Chat API (async) ===
 
@@ -246,6 +274,23 @@ class AvatarEngine(EventEmitter):
         """
         if not self._started:
             await self.start()
+
+        # GAP-6: Pre-request budget check
+        if self._bridge.is_over_budget():
+            usage = self._bridge.get_usage()
+            spent = usage.get("total_cost_usd", 0)
+            limit = getattr(self._bridge, "_max_budget_usd", 0)
+            error_msg = f"Budget exceeded: ${spent:.2f} / ${limit:.2f}"
+            self.emit(ErrorEvent(
+                provider=self._provider.value,
+                error=error_msg,
+                recoverable=False,
+            ))
+            return BridgeResponse(
+                content="",
+                success=False,
+                error=error_msg,
+            )
 
         # Apply rate limiting
         wait_time = await self._rate_limiter.acquire()
@@ -283,6 +328,19 @@ class AvatarEngine(EventEmitter):
         """
         if not self._started:
             await self.start()
+
+        # GAP-6: Pre-request budget check
+        if self._bridge.is_over_budget():
+            usage = self._bridge.get_usage()
+            spent = usage.get("total_cost_usd", 0)
+            limit = getattr(self._bridge, "_max_budget_usd", 0)
+            error_msg = f"Budget exceeded: ${spent:.2f} / ${limit:.2f}"
+            self.emit(ErrorEvent(
+                provider=self._provider.value,
+                error=error_msg,
+                recoverable=False,
+            ))
+            return
 
         # Apply rate limiting
         wait_time = await self._rate_limiter.acquire()
@@ -403,6 +461,32 @@ class AvatarEngine(EventEmitter):
         """Get rate limiter statistics."""
         return self._rate_limiter.get_stats()
 
+    @property
+    def activity_tracker(self) -> ActivityTracker:
+        """Get the activity tracker for parallel operation monitoring."""
+        return self._activity_tracker
+
+    # === Capabilities & Policy ===
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        """Get full provider capabilities for GUI adaptation."""
+        if self._bridge:
+            return self._bridge.provider_capabilities
+        return ProviderCapabilities()
+
+    @property
+    def tool_policy(self) -> Optional[ToolPolicy]:
+        """Get the current tool policy (if set)."""
+        return self._tool_policy
+
+    @tool_policy.setter
+    def tool_policy(self, policy: Optional[ToolPolicy]) -> None:
+        """Set a tool policy for engine-level tool filtering."""
+        self._tool_policy = policy
+        if self._bridge:
+            self._bridge.tool_policy = policy
+
     # === Session management ===
 
     @property
@@ -439,6 +523,12 @@ class AvatarEngine(EventEmitter):
             pcfg = self._config.get_provider_config()
             common["mcp_servers"] = pcfg.get("mcp_servers", {})
             common["env"] = pcfg.get("env", {})
+        else:
+            # Propagate mcp_servers/env from kwargs when no config file
+            if self._kwargs.get("mcp_servers"):
+                common["mcp_servers"] = self._kwargs["mcp_servers"]
+            if self._kwargs.get("env"):
+                common["env"] = self._kwargs["env"]
 
         if self._provider == ProviderType.CLAUDE:
             pcfg = self._config.claude_config if self._config else self._kwargs
@@ -454,8 +544,8 @@ class AvatarEngine(EventEmitter):
                 allowed_tools=pcfg.get("allowed_tools", []),
                 permission_mode=pcfg.get("permission_mode", "acceptEdits"),
                 strict_mcp_config=pcfg.get("strict_mcp_config", False),
-                max_turns=cost_cfg.get("max_turns"),
-                max_budget_usd=cost_cfg.get("max_budget_usd"),
+                max_turns=cost_cfg.get("max_turns") or pcfg.get("max_turns"),
+                max_budget_usd=cost_cfg.get("max_budget_usd") or pcfg.get("max_budget_usd"),
                 json_schema=struct_cfg.get("schema") if struct_cfg.get("enabled") else None,
                 continue_session=session_cfg.get("continue_last", False) or self._kwargs.get("continue_last", False),
                 resume_session_id=session_cfg.get("resume_id") or self._kwargs.get("resume_session_id"),
@@ -511,37 +601,128 @@ class AvatarEngine(EventEmitter):
         self._bridge.on_state_change(on_state_change)
 
         # Raw event callback
-        self._bridge.on_event(self._handle_raw_event)
+        self._bridge.on_event(self._process_event)
 
-    def _handle_raw_event(self, event: Dict[str, Any]) -> None:
-        """Process raw events from bridge and emit typed events."""
+    def _process_event(self, event: Dict[str, Any]) -> None:
+        """Process raw events from bridge and emit typed events.
+
+        GAP-10: Optimized for high-frequency events with thinking state caching.
+        """
         event_type = event.get("type", "")
 
-        # Thinking events (Gemini 3 with include_thoughts=True)
+        # Thinking events (Gemini 3 with include_thoughts, Codex reasoning)
         if event_type == "thinking":
+            thought = event.get("thought", "")
+            block_id = event.get("block_id", "")
+
+            # GAP-10 Optimization: Only re-extract subject/phase if needed
+            if block_id != self._current_thinking_block_id:
+                # New block - full re-processing
+                self._current_thinking_subject, _ = extract_bold_subject(thought)
+                self._current_thinking_phase = classify_thinking(thought)
+                self._current_thinking_block_id = block_id
+            else:
+                # Same block - only update if we haven't found a subject yet
+                # or if we are still in GENERAL phase and might find a better one
+                if not self._current_thinking_subject:
+                    self._current_thinking_subject, _ = extract_bold_subject(thought)
+                
+                if self._current_thinking_phase == ThinkingPhase.GENERAL:
+                    self._current_thinking_phase = classify_thinking(thought)
+
             self.emit(ThinkingEvent(
                 provider=self._provider.value,
-                thought=event.get("thought", ""),
+                thought=thought,
+                phase=self._current_thinking_phase,
+                subject=self._current_thinking_subject,
+                is_start=event.get("is_start", False),
+                is_complete=event.get("is_complete", False),
+                block_id=block_id,
             ))
 
-        # Tool events
+        # Tool events — also emit synthetic ThinkingEvent for Claude
         elif event_type == "tool_use":
+            tool_name = event.get("tool_name", event.get("name", ""))
+            tool_id = event.get("tool_id", event.get("id", ""))
+
+            # Synthetic thinking for Claude (which doesn't emit thinking events)
+            if self._provider == ProviderType.CLAUDE:
+                self.emit(ThinkingEvent(
+                    provider=self._provider.value,
+                    thought=f"Using {tool_name}",
+                    phase=ThinkingPhase.TOOL_PLANNING,
+                    subject=tool_name,
+                    is_start=True,
+                    is_complete=True,
+                ))
+
             self.emit(ToolEvent(
                 provider=self._provider.value,
-                tool_name=event.get("tool_name", event.get("name", "")),
-                tool_id=event.get("tool_id", event.get("id", "")),
+                tool_name=tool_name,
+                tool_id=tool_id,
                 parameters=event.get("parameters", event.get("input", {})),
                 status="started",
             ))
+
+            # Track as activity for parallel operation visualization
+            if tool_id:
+                self._activity_tracker.start_activity(
+                    tool_id,
+                    name=tool_name,
+                    activity_type="tool_use",
+                    concurrent_group=event.get("parallel_group", ""),
+                )
+
         elif event_type == "tool_result":
+            tool_id = event.get("tool_id", "")
+            success = event.get("success", True)
             self.emit(ToolEvent(
                 provider=self._provider.value,
                 tool_name=event.get("tool_name", ""),
-                tool_id=event.get("tool_id", ""),
-                status="completed" if event.get("success", True) else "failed",
+                tool_id=tool_id,
+                status="completed" if success else "failed",
                 result=event.get("result"),
                 error=event.get("error"),
             ))
+
+            # Complete activity tracking
+            if tool_id:
+                if success:
+                    self._activity_tracker.complete_activity(tool_id)
+                else:
+                    self._activity_tracker.fail_activity(
+                        tool_id, detail=event.get("error", "")
+                    )
+
+        # GAP-7: Diagnostic events from stderr
+        elif event_type == "diagnostic":
+            self.emit(DiagnosticEvent(
+                provider=self._provider.value,
+                message=event.get("message", ""),
+                level=event.get("level", "info"),
+                source=event.get("source", ""),
+            ))
+
+        elif event_type == "tool_call":
+            # ACP-style tool call (from Codex bridge)
+            tool_id = event.get("tool_id", "")
+            tool_name = event.get("tool_name", "")
+            status = event.get("status", "started")
+
+            self.emit(ToolEvent(
+                provider=self._provider.value,
+                tool_name=tool_name,
+                tool_id=tool_id,
+                parameters=event.get("parameters", {}),
+                status=status,
+            ))
+
+            if tool_id and status == "started":
+                self._activity_tracker.start_activity(
+                    tool_id,
+                    name=tool_name,
+                    activity_type="tool_use",
+                )
 
     def _should_restart(self) -> bool:
         """Check if auto-restart is allowed."""
@@ -679,22 +860,30 @@ class AvatarEngine(EventEmitter):
         logger.debug("Signal handlers removed")
 
     def _initiate_shutdown(self) -> None:
-        """Initiate graceful shutdown from signal handler."""
+        """Initiate graceful shutdown from signal handler.
+
+        RC-5/6 fix: Signal handlers MUST NOT call asyncio.create_task()
+        or asyncio.run() — both take internal event loop locks which
+        can deadlock when called from a signal handler context.
+
+        Instead, just set the flag. The health check loop and
+        run_until_signal() will detect it and perform clean shutdown.
+        For immediate shutdown, use loop.call_soon_threadsafe() which
+        is the only asyncio function safe to call from signal handlers.
+        """
         self._shutting_down = True
 
-        # Try to stop gracefully in an async context
         try:
             loop = asyncio.get_running_loop()
-            # We're in an async context, schedule the stop
-            asyncio.create_task(self._graceful_shutdown())
+            # call_soon_threadsafe is the ONLY asyncio function safe
+            # to call from signal handlers (per Python docs)
+            loop.call_soon_threadsafe(
+                loop.create_task, self._graceful_shutdown()
+            )
         except RuntimeError:
-            # No running loop, use sync shutdown
-            try:
-                asyncio.run(self._graceful_shutdown())
-            except Exception as e:
-                logger.error(f"Shutdown error: {e}")
-                # Force exit if graceful shutdown fails
-                sys.exit(1)
+            # No running loop — the flag is enough; sync callers will
+            # see _shutting_down=True and exit their loops
+            pass
 
     async def _graceful_shutdown(self) -> None:
         """Perform graceful shutdown."""

@@ -5,6 +5,7 @@ Provides protection against API rate limits.
 """
 
 import asyncio
+import threading
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -216,6 +217,7 @@ class RateLimiterSync:
 
         self._tokens = float(burst)
         self._last_update = time.monotonic()
+        self._lock = threading.Lock()  # RC-12: thread-safe token bucket
 
     def acquire(self) -> float:
         """
@@ -227,22 +229,26 @@ class RateLimiterSync:
         if not self._enabled:
             return 0.0
 
-        now = time.monotonic()
-        elapsed = now - self._last_update
-        self._last_update = now
+        with self._lock:
+            now = time.monotonic()
+            elapsed = now - self._last_update
+            self._last_update = now
 
-        refill_rate = self._rpm / 60.0
-        self._tokens = min(self._burst, self._tokens + elapsed * refill_rate)
+            refill_rate = self._rpm / 60.0
+            self._tokens = min(self._burst, self._tokens + elapsed * refill_rate)
 
-        if self._tokens >= 1.0:
-            self._tokens -= 1.0
-            return 0.0
+            if self._tokens >= 1.0:
+                self._tokens -= 1.0
+                return 0.0
 
-        wait_time = (1.0 - self._tokens) / refill_rate
+            wait_time = (1.0 - self._tokens) / refill_rate
+
+        # Sleep OUTSIDE lock to avoid blocking other threads
         time.sleep(wait_time)
 
-        self._tokens = 0.0
-        self._last_update = time.monotonic()
+        with self._lock:
+            self._tokens = 0.0
+            self._last_update = time.monotonic()
         return wait_time
 
     def try_acquire(self) -> bool:
@@ -250,15 +256,16 @@ class RateLimiterSync:
         if not self._enabled:
             return True
 
-        now = time.monotonic()
-        elapsed = now - self._last_update
-        self._last_update = now
+        with self._lock:
+            now = time.monotonic()
+            elapsed = now - self._last_update
+            self._last_update = now
 
-        refill_rate = self._rpm / 60.0
-        self._tokens = min(self._burst, self._tokens + elapsed * refill_rate)
+            refill_rate = self._rpm / 60.0
+            self._tokens = min(self._burst, self._tokens + elapsed * refill_rate)
 
-        if self._tokens >= 1.0:
-            self._tokens -= 1.0
-            return True
+            if self._tokens >= 1.0:
+                self._tokens -= 1.0
+                return True
 
-        return False
+            return False

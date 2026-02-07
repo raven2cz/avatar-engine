@@ -79,6 +79,60 @@ class SessionCapabilitiesInfo:
 
 
 @dataclass
+class ToolPolicy:
+    """Per-tool allow/deny rules applied at engine level.
+
+    If allow is set, only listed tools can execute.
+    If deny is set, listed tools are blocked.
+    deny takes precedence over allow.
+    """
+    allow: List[str] = field(default_factory=list)
+    deny: List[str] = field(default_factory=list)
+
+    def is_allowed(self, tool_name: str) -> bool:
+        """Check if a tool is allowed by this policy."""
+        if self.deny and tool_name in self.deny:
+            return False
+        if self.allow:
+            return tool_name in self.allow
+        return True
+
+
+@dataclass
+class ProviderCapabilities:
+    """Full provider capability declaration for GUI adaptation.
+
+    Each bridge sets its own capabilities during construction.
+    GUI uses this to decide which panels/widgets to display.
+    """
+    # Session
+    can_list_sessions: bool = False
+    can_load_session: bool = False
+    can_continue_last: bool = False
+
+    # Thinking
+    thinking_supported: bool = False
+    thinking_structured: bool = False
+
+    # Cost
+    cost_tracking: bool = False
+    budget_enforcement: bool = False
+
+    # System prompt
+    system_prompt_method: str = "unsupported"  # "native" | "injected" | "unsupported"
+
+    # Streaming
+    streaming: bool = True
+    parallel_tools: bool = False
+
+    # Control
+    cancellable: bool = False
+
+    # MCP
+    mcp_supported: bool = False
+
+
+@dataclass
 class HealthStatus:
     """Health check result."""
     healthy: bool

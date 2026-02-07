@@ -11,10 +11,12 @@ Events are emitted during AI interactions for:
 """
 
 import logging
+import re
+import threading
 from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 import time
 
 from .types import BridgeState
@@ -31,6 +33,36 @@ class EventType(Enum):
     ERROR = "error"
     THINKING = "thinking"
     COST = "cost"
+    ACTIVITY = "activity"
+
+
+class ThinkingPhase(Enum):
+    """Phase of AI thinking — drives avatar animation in GUI."""
+    GENERAL = "general"
+    ANALYZING = "analyzing"
+    PLANNING = "planning"
+    CODING = "coding"
+    REVIEWING = "reviewing"
+    TOOL_PLANNING = "tool_planning"
+
+
+class ActivityStatus(Enum):
+    """Status of a concurrent activity (tool, agent, background task)."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class EngineState(Enum):
+    """High-level engine state — drives CLI display and GUI avatar animations."""
+    IDLE = "idle"
+    THINKING = "thinking"
+    RESPONDING = "responding"
+    TOOL_EXECUTING = "tool_executing"
+    WAITING_APPROVAL = "waiting_approval"
+    ERROR = "error"
 
 
 @dataclass
@@ -80,11 +112,21 @@ class StateEvent(AvatarEvent):
 @dataclass
 class ThinkingEvent(AvatarEvent):
     """
-    Model thinking event (Gemini 3 with include_thoughts=True).
+    Model thinking event — structured for GUI visualization.
 
-    Use this to show AI reasoning process.
+    Emitted during model's internal reasoning process (Gemini thinking,
+    Codex reasoning, or synthetic events for Claude).
+
+    GUI should use phase/subject to drive avatar animations and status display.
     """
     thought: str = ""
+    phase: ThinkingPhase = ThinkingPhase.GENERAL
+    subject: str = ""          # Extracted bold header (e.g. "Analyzing imports")
+    is_start: bool = False     # First chunk of thinking block
+    is_complete: bool = False  # Last chunk of thinking block
+    block_id: str = ""         # Groups chunks into logical blocks
+    token_count: int = 0       # Tokens consumed by thinking
+    category: str = ""         # Freeform category hint
 
 
 @dataclass
@@ -110,6 +152,39 @@ class CostEvent(AvatarEvent):
     output_tokens: int = 0
 
 
+@dataclass
+class DiagnosticEvent(AvatarEvent):
+    """
+    Diagnostic information from subprocess stderr, warnings, deprecations.
+
+    GUI can show in debug panel or status bar.
+    CLI can show in verbose mode.
+    """
+    message: str = ""
+    level: str = "info"     # "info", "warning", "error", "debug"
+    source: str = ""        # "stderr", "acp", "health_check"
+
+
+@dataclass
+class ActivityEvent(AvatarEvent):
+    """
+    Tracks concurrent activities — tool executions, background tasks, agents.
+
+    GUI uses this to show a tree of parallel operations with progress.
+    """
+    activity_id: str = ""
+    parent_activity_id: str = ""
+    activity_type: str = ""           # "tool_use", "agent", "background_task"
+    name: str = ""
+    status: ActivityStatus = ActivityStatus.PENDING
+    progress: float = 0.0             # 0.0-1.0 (if estimable)
+    detail: str = ""
+    concurrent_group: str = ""        # Groups parallel activities
+    is_cancellable: bool = False
+    started_at: float = 0.0
+    completed_at: float = 0.0
+
+
 # Type variable for event handlers
 E = TypeVar("E", bound=AvatarEvent)
 
@@ -133,6 +208,7 @@ class EventEmitter:
     def __init__(self) -> None:
         self._handlers: Dict[Type[AvatarEvent], List[Callable[..., None]]] = {}
         self._global_handlers: List[Callable[[AvatarEvent], None]] = []
+        self._lock = threading.Lock()  # Thread-safe for GUI integration (RC-2)
 
     def on(self, event_type: Type[E]) -> Callable[[Callable[[E], None]], Callable[[E], None]]:
         """
@@ -150,9 +226,10 @@ class EventEmitter:
                 gui.update_text(event.text)
         """
         def decorator(func: Callable[[E], None]) -> Callable[[E], None]:
-            if event_type not in self._handlers:
-                self._handlers[event_type] = []
-            self._handlers[event_type].append(func)
+            with self._lock:
+                if event_type not in self._handlers:
+                    self._handlers[event_type] = []
+                self._handlers[event_type].append(func)
             return func
         return decorator
 
@@ -166,7 +243,8 @@ class EventEmitter:
         Returns:
             The handler function (for decorator use)
         """
-        self._global_handlers.append(func)
+        with self._lock:
+            self._global_handlers.append(func)
         return func
 
     def add_handler(
@@ -181,32 +259,38 @@ class EventEmitter:
             event_type: The event class to handle
             handler: Handler function
         """
-        if event_type not in self._handlers:
-            self._handlers[event_type] = []
-        self._handlers[event_type].append(handler)
+        with self._lock:
+            if event_type not in self._handlers:
+                self._handlers[event_type] = []
+            self._handlers[event_type].append(handler)
 
     def emit(self, event: AvatarEvent) -> None:
         """
         Emit an event to all registered handlers.
 
+        Thread-safe: snapshots handler lists under lock, then calls
+        handlers WITHOUT lock so handlers can safely register new handlers.
+
         Args:
             event: The event to emit
         """
-        # Global handlers first
-        for handler in self._global_handlers:
+        # Snapshot handlers under lock (RC-2 fix)
+        with self._lock:
+            global_snapshot = list(self._global_handlers)
+            specific_snapshot = list(self._handlers.get(type(event), []))
+
+        # Call handlers WITHOUT lock — handler may register/remove handlers
+        for handler in global_snapshot:
             try:
                 handler(event)
             except Exception as e:
                 logger.error(f"Event handler error (global): {e}")
 
-        # Type-specific handlers
-        event_type = type(event)
-        if event_type in self._handlers:
-            for handler in self._handlers[event_type]:
-                try:
-                    handler(event)
-                except Exception as e:
-                    logger.error(f"Event handler error ({event_type.__name__}): {e}")
+        for handler in specific_snapshot:
+            try:
+                handler(event)
+            except Exception as e:
+                logger.error(f"Event handler error ({type(event).__name__}): {e}")
 
     def remove_handler(
         self,
@@ -220,10 +304,11 @@ class EventEmitter:
             event_type: The event class
             handler: The handler function to remove
         """
-        if event_type in self._handlers:
-            self._handlers[event_type] = [
-                h for h in self._handlers[event_type] if h != handler
-            ]
+        with self._lock:
+            if event_type in self._handlers:
+                self._handlers[event_type] = [
+                    h for h in self._handlers[event_type] if h != handler
+                ]
 
     def clear_handlers(self, event_type: Optional[Type[E]] = None) -> None:
         """
@@ -233,11 +318,12 @@ class EventEmitter:
             event_type: If provided, clear only handlers for this type.
                        If None, clear all handlers.
         """
-        if event_type is not None:
-            self._handlers[event_type] = []
-        else:
-            self._handlers.clear()
-            self._global_handlers.clear()
+        with self._lock:
+            if event_type is not None:
+                self._handlers[event_type] = []
+            else:
+                self._handlers.clear()
+                self._global_handlers.clear()
 
     def handler_count(self, event_type: Optional[Type[E]] = None) -> int:
         """
@@ -250,6 +336,61 @@ class EventEmitter:
         Returns:
             Number of handlers
         """
-        if event_type is not None:
-            return len(self._handlers.get(event_type, []))
-        return sum(len(h) for h in self._handlers.values()) + len(self._global_handlers)
+        with self._lock:
+            if event_type is not None:
+                return len(self._handlers.get(event_type, []))
+            return sum(len(h) for h in self._handlers.values()) + len(self._global_handlers)
+
+
+# =========================================================================
+# Thinking utilities — bold parser + phase classifier
+# Pattern adopted from Gemini CLI (parseThought) and Codex (extract_first_bold)
+# =========================================================================
+
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+
+# Pre-compiled regex for classification (GAP-10 optimization)
+_PHASE_PATTERNS = [
+    (ThinkingPhase.ANALYZING, re.compile(r"analyz|look at|examin|reading|inspect", re.I)),
+    (ThinkingPhase.PLANNING, re.compile(r"plan|approach|strategy|steps|design", re.I)),
+    (ThinkingPhase.CODING, re.compile(r"write|implement|code|function|class|def ", re.I)),
+    (ThinkingPhase.REVIEWING, re.compile(r"check|verify|review|test|validate", re.I)),
+    (ThinkingPhase.TOOL_PLANNING, re.compile(r"tool|call|execut|run |invok", re.I)),
+]
+
+
+def extract_bold_subject(text: str) -> Tuple[str, str]:
+    """
+    Extract the first **bold** subject from thinking text.
+
+    Both Gemini CLI and Codex use this pattern: the first ``**bold text**``
+    in a thinking/reasoning stream is used as a status header in the UI.
+
+    Args:
+        text: Raw thinking text from model
+
+    Returns:
+        (subject, description) — subject is the bold text,
+        description is everything else (stripped).
+        If no bold marker found, subject is empty, description is the full text.
+    """
+    match = _BOLD_RE.search(text)
+    if match:
+        subject = match.group(1).strip()
+        # Description = text with the bold marker removed
+        desc = (text[:match.start()] + text[match.end():]).strip()
+        return subject, desc
+    return "", text.strip()
+
+
+def classify_thinking(thought: str) -> ThinkingPhase:
+    """
+    Heuristic classification of thinking content for GUI display.
+
+    Providers don't send explicit phases, so we classify based on keywords.
+    (GAP-10: Optimized using pre-compiled regex)
+    """
+    for phase, pattern in _PHASE_PATTERNS:
+        if pattern.search(thought):
+            return phase
+    return ThinkingPhase.GENERAL

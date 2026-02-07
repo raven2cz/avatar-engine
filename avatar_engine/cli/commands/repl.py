@@ -12,6 +12,7 @@ from ...config import AvatarConfig
 from ...engine import AvatarEngine
 from ...events import ToolEvent, ThinkingEvent
 from ...types import ProviderType
+from ..display import DisplayManager
 
 console = Console()
 
@@ -149,18 +150,14 @@ async def _repl_async(
     else:
         engine = AvatarEngine(provider=provider, model=model, **kwargs)
 
-    # Event handlers
-    @engine.on(ToolEvent)
-    def on_tool(event: ToolEvent) -> None:
-        if event.status == "started":
-            console.print(f"[yellow]  {event.tool_name}[/yellow]")
-        elif event.status == "completed":
-            console.print(f"[green]  {event.tool_name}[/green]")
+    # DisplayManager handles all event visualization
+    display = DisplayManager(engine, console=console, verbose=verbose)
 
-    @engine.on(ThinkingEvent)
-    def on_thinking(event: ThinkingEvent) -> None:
-        if verbose:
-            console.print(f"[dim italic]  {event.thought[:80]}...[/dim italic]")
+    async def _update_display_loop():
+        """Background task to animate spinners."""
+        while True:
+            display.update_live()
+            await asyncio.sleep(0.125)  # 8 FPS
 
     console.print(f"[bold]Avatar Engine REPL[/bold] ({provider})")
     console.print("Type '/exit' to quit, '/help' for commands\n")
@@ -171,8 +168,15 @@ async def _repl_async(
         if verbose:
             console.print(f"[dim]Session: {engine.session_id}[/dim]\n")
 
+        # Start live display for animated spinners
+        display.start_live()
+        update_task = asyncio.create_task(_update_display_loop())
+
         while True:
             try:
+                # In live mode, we must use display.live.console.print or similar
+                # if we want to print while Live is active.
+                # Rich's Prompt.ask works by temporarily stopping Live if needed.
                 user_input = Prompt.ask("[bold blue]You[/bold blue]")
 
                 # Handle commands
@@ -277,10 +281,12 @@ async def _repl_async(
                     continue
 
                 # Send message and stream response
+                display.on_response_start()
                 console.print("[bold green]Assistant[/bold green]:")
                 async for chunk in engine.chat_stream(user_input):
                     console.print(chunk, end="")
                 console.print("\n")
+                display.on_response_end()
 
             except KeyboardInterrupt:
                 console.print("\n[dim]Use '/exit' to quit[/dim]")
@@ -293,6 +299,10 @@ async def _repl_async(
         console.print(f"[red]Error: {e}[/red]")
 
     finally:
+        if "update_task" in locals():
+            update_task.cancel()
+        display.stop_live()
+        display.unregister()
         await engine.stop()
         console.print("[dim]Session ended[/dim]")
 

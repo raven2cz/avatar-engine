@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import shutil
+import threading
 import time
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
@@ -130,6 +131,18 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         # Collected events from ACP session_update notifications
         self._acp_events: List[Dict[str, Any]] = []
         self._acp_text_buffer: str = ""
+        self._acp_buffer_lock = threading.Lock()  # RC-3/4: sync callback vs main thread
+
+        # Provider capabilities
+        self._provider_capabilities.thinking_supported = True
+        self._provider_capabilities.thinking_structured = True
+        self._provider_capabilities.cost_tracking = False
+        self._provider_capabilities.budget_enforcement = False
+        self._provider_capabilities.system_prompt_method = "injected"  # ACP: prepend; oneshot: env var
+        self._provider_capabilities.streaming = True
+        self._provider_capabilities.parallel_tools = True
+        self._provider_capabilities.cancellable = False
+        self._provider_capabilities.mcp_supported = True
 
     @property
     def provider_name(self) -> str:
@@ -288,7 +301,10 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         self._acp_session_id = None
 
     def _handle_acp_update(self, session_id: str, update: Any) -> None:
-        """Callback for ACP session/update notifications (streaming text + thinking)."""
+        """Callback for ACP session/update notifications (streaming text + thinking).
+
+        Called from ACP SDK thread — all buffer writes protected by lock (RC-3/4).
+        """
         event = {"type": "acp_update", "session_id": session_id, "raw": str(update)}
 
         # Extract thinking content from update (Gemini 3 with include_thoughts=True)
@@ -299,7 +315,8 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 "session_id": session_id,
                 "thought": thinking,
             }
-            self._acp_events.append(thinking_event)
+            with self._acp_buffer_lock:
+                self._acp_events.append(thinking_event)
             if self._on_event:
                 self._on_event(thinking_event)
 
@@ -307,11 +324,13 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         text = _extract_text_from_update(update)
         if text:
             event["text"] = text
-            self._acp_text_buffer += text
+            with self._acp_buffer_lock:
+                self._acp_text_buffer += text
             if self._on_output:
                 self._on_output(text)
 
-        self._acp_events.append(event)
+        with self._acp_buffer_lock:
+            self._acp_events.append(event)
         if self._on_event:
             self._on_event(event)
 
@@ -347,16 +366,20 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
 
     async def _send_acp(self, prompt: str) -> BridgeResponse:
         """Send a prompt through the ACP warm session."""
+        # GAP-5: Inject system prompt into first ACP message
+        effective_prompt = self._prepend_system_prompt(prompt)
+
         self._set_state(BridgeState.BUSY)
         t0 = time.time()
-        self._acp_events.clear()
-        self._acp_text_buffer = ""
+        with self._acp_buffer_lock:  # RC-3/4
+            self._acp_events.clear()
+            self._acp_text_buffer = ""
 
         try:
             result = await asyncio.wait_for(
                 self._acp_conn.prompt(
                     session_id=self._acp_session_id,
-                    prompt=[text_block(prompt)],
+                    prompt=[text_block(effective_prompt)],
                 ),
                 timeout=self.timeout,
             )
@@ -365,28 +388,35 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
 
             # Parse response content — prefer accumulated streaming buffer,
             # fallback to extracting from the final result object
-            content = self._acp_text_buffer or _extract_text_from_result(result)
+            with self._acp_buffer_lock:  # RC-3/4
+                content = self._acp_text_buffer or _extract_text_from_result(result)
+                events_copy = self._acp_events.copy()
 
-            self.history.append(Message(role="user", content=prompt))
-            self.history.append(Message(role="assistant", content=content))
+            with self._history_lock:  # RC-9
+                self.history.append(Message(role="user", content=prompt))
+                self.history.append(Message(role="assistant", content=content))
             self._set_state(BridgeState.READY)
 
-            return BridgeResponse(
+            response = BridgeResponse(
                 content=content,
-                raw_events=self._acp_events.copy(),
+                raw_events=events_copy,
                 duration_ms=elapsed,
                 session_id=self._acp_session_id,
                 success=True,
             )
+            self._update_stats(response)
+            return response
 
         except asyncio.TimeoutError:
             self._set_state(BridgeState.ERROR)
-            return BridgeResponse(
+            response = BridgeResponse(
                 content="",
                 duration_ms=int((time.time() - t0) * 1000),
                 success=False,
                 error=f"ACP timeout ({self.timeout}s)",
             )
+            self._update_stats(response)
+            return response
         except Exception as exc:
             logger.error(f"ACP send failed: {exc}", exc_info=True)
             self._set_state(BridgeState.ERROR)
@@ -397,18 +427,24 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 self._acp_mode = False
                 return await super().send(prompt)
 
-            return BridgeResponse(
+            response = BridgeResponse(
                 content="",
                 duration_ms=int((time.time() - t0) * 1000),
                 success=False,
                 error=str(exc),
             )
+            self._update_stats(response)
+            return response
 
     async def _stream_acp(self, prompt: str) -> AsyncIterator[str]:
         """Stream response from ACP warm session."""
+        # GAP-5: Inject system prompt into first ACP message
+        effective_prompt = self._prepend_system_prompt(prompt)
+
         self._set_state(BridgeState.BUSY)
-        self._acp_events.clear()
-        self._acp_text_buffer = ""
+        with self._acp_buffer_lock:  # RC-3/4
+            self._acp_events.clear()
+            self._acp_text_buffer = ""
 
         # ACP SDK streams via the session_update callback set on the client.
         # The prompt() call blocks until the model finishes its turn, but text
@@ -428,7 +464,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             try:
                 await self._acp_conn.prompt(
                     session_id=self._acp_session_id,
-                    prompt=[text_block(prompt)],
+                    prompt=[text_block(effective_prompt)],
                 )
             finally:
                 await queue.put(None)  # Signal completion
@@ -444,8 +480,9 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 full_text += chunk
                 yield chunk
 
-            self.history.append(Message(role="user", content=prompt))
-            self.history.append(Message(role="assistant", content=full_text))
+            with self._history_lock:  # RC-9
+                self.history.append(Message(role="user", content=prompt))
+                self.history.append(Message(role="assistant", content=full_text))
             self._set_state(BridgeState.READY)
         except asyncio.TimeoutError:
             task.cancel()

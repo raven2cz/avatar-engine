@@ -34,7 +34,12 @@ Avatar Engine is designed for embedding a dedicated AI avatar into a specific ap
 - **Session Management** — Resume, continue, and list sessions across all providers
 - **Warm Sessions** — ACP / stream-json persistent subprocess for instant responses
 - **Zero Footprint** — No config files written to your project directory
-- **Event System** — Callbacks for GUI integration (text, tools, state changes)
+- **Event System** — Callbacks for GUI integration (text, tools, thinking, diagnostics, state changes)
+- **Activity Tracking** — Concurrent operation tracking for GUI visualization (parallel tools, agents)
+- **Provider Capabilities** — Runtime capability detection per provider (thinking, cost tracking, MCP)
+- **Tool Policy** — Engine-level allow/deny rules for tool filtering
+- **Budget Control** — Pre-request budget enforcement with cost tracking (Claude)
+- **CLI Display** — Rich-based display with thinking spinner, tool group panels, status line
 - **Streaming** — Real-time response streaming
 - **Production Ready** — Rate limiting, metrics, auto-restart, graceful shutdown
 
@@ -173,6 +178,52 @@ engine.start_sync()
 engine.chat_async("Analyze this file", callback=gui.show_result)
 ```
 
+### Activity Tracking & Diagnostics
+
+```python
+from avatar_engine import AvatarEngine, ActivityTracker
+from avatar_engine.events import (
+    ThinkingEvent, ActivityEvent, DiagnosticEvent, CostEvent
+)
+
+engine = AvatarEngine(provider="gemini")
+
+@engine.on(ThinkingEvent)
+def on_thinking(event):
+    """AI thinking — drive avatar animation"""
+    print(f"[{event.phase.value}] {event.subject}: {event.thought[:80]}")
+
+@engine.on(DiagnosticEvent)
+def on_diag(event):
+    """Stderr/warnings — show in debug panel"""
+    print(f"[{event.level}] {event.source}: {event.message}")
+
+@engine.on(ActivityEvent)
+def on_activity(event):
+    """Concurrent operations — show progress tree"""
+    print(f"  {event.name}: {event.status.value} ({event.progress:.0%})")
+```
+
+### Provider Capabilities & Tool Policy
+
+```python
+from avatar_engine import AvatarEngine, ToolPolicy
+
+engine = AvatarEngine(provider="claude", max_budget_usd=5.0)
+engine.start_sync()
+
+# Check provider capabilities at runtime
+caps = engine.capabilities
+print(f"Thinking: {caps.thinking_supported}")
+print(f"Cost tracking: {caps.cost_tracking}")
+print(f"System prompt: {caps.system_prompt_method}")
+
+# Restrict which tools the AI can use
+engine.tool_policy = ToolPolicy(allow=["Read", "Grep", "Glob"])
+# or deny specific tools:
+engine.tool_policy = ToolPolicy(deny=["Bash", "Write"])
+```
+
 ## Configuration
 
 ### YAML Config File
@@ -250,8 +301,9 @@ avatar-engine/
 │   ├── __init__.py      # Public API
 │   ├── engine.py        # AvatarEngine class
 │   ├── config.py        # Configuration
-│   ├── events.py        # Event system
-│   ├── types.py         # Type definitions
+│   ├── events.py        # Event system (TextEvent, ThinkingEvent, DiagnosticEvent, ...)
+│   ├── activity.py      # ActivityTracker for concurrent operation visualization
+│   ├── types.py         # Type definitions (ProviderCapabilities, ToolPolicy, ...)
 │   ├── config_sandbox.py # Zero Footprint config (temp files)
 │   ├── bridges/         # Provider implementations
 │   │   ├── base.py      # Abstract bridge
@@ -265,6 +317,7 @@ avatar-engine/
 │   │   └── rate_limit.py# Rate limiting
 │   └── cli/             # CLI application
 │       ├── app.py       # Main CLI
+│       ├── display.py   # Rich-based display (ThinkingDisplay, ToolGroupDisplay)
 │       └── commands/    # CLI commands
 ├── examples/            # Usage examples
 ├── tests/               # Test suite
@@ -383,7 +436,7 @@ pytest tests/ -v
 # Run with coverage
 pytest tests/ --cov=avatar_engine
 
-# Current: 581+ tests (unit + integration)
+# Current: 700+ unit tests, 110+ integration tests
 ```
 
 ## API Reference
@@ -424,17 +477,21 @@ class AvatarEngine:
     session_id: Optional[str]
     current_provider: str
     is_warm: bool
+    capabilities: ProviderCapabilities  # Runtime provider feature flags
+    tool_policy: Optional[ToolPolicy]   # Allow/deny tool filtering
 ```
 
 ### Events
 
 ```python
-TextEvent      # Text chunk from AI
-ToolEvent      # Tool execution (started/completed/failed)
-StateEvent     # Bridge state change
-ThinkingEvent  # AI thinking (Gemini 3 / Codex)
-CostEvent      # Cost/usage update
-ErrorEvent     # Error occurred
+TextEvent        # Text chunk from AI
+ToolEvent        # Tool execution (started/completed/failed)
+StateEvent       # Bridge state change
+ThinkingEvent    # AI thinking with phase/subject (Gemini / Codex / synthetic Claude)
+CostEvent        # Cost/usage update
+ErrorEvent       # Error occurred
+DiagnosticEvent  # Stderr warnings, deprecations, debug info
+ActivityEvent    # Concurrent operation tracking (tools, agents, background tasks)
 ```
 
 ### Types
@@ -445,8 +502,12 @@ HealthStatus            # Health check result
 Message                 # Conversation message
 ProviderType            # GEMINI | CLAUDE | CODEX
 BridgeState             # DISCONNECTED | WARMING_UP | READY | BUSY | ERROR
+EngineState             # IDLE | THINKING | RESPONDING | TOOL_EXECUTING | WAITING_APPROVAL | ERROR
 SessionInfo             # Session metadata (id, provider, cwd, title, updated_at)
 SessionCapabilitiesInfo # What session ops are supported (can_list, can_load, can_continue_last)
+ProviderCapabilities    # Per-provider feature flags (thinking, cost, MCP, system prompt)
+ToolPolicy              # Allow/deny rules for tool filtering
+ActivityStatus          # PENDING | RUNNING | COMPLETED | FAILED | CANCELLED
 ```
 
 ## License

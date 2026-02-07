@@ -603,10 +603,12 @@ class TestBridgeGetUsage:
 
     def test_claude_bridge_get_usage_with_budget(self):
         """ClaudeBridge.get_usage() should include cost and budget."""
+        import threading
         from avatar_engine.bridges.claude import ClaudeBridge
         bridge = MagicMock(spec=ClaudeBridge)
         bridge.provider_name = "claude"
         bridge.session_id = "claude-sess"
+        bridge._stats_lock = threading.Lock()
         bridge._stats = {
             "total_requests": 3,
             "successful_requests": 3,
@@ -625,10 +627,12 @@ class TestBridgeGetUsage:
 
     def test_claude_bridge_get_usage_no_budget(self):
         """ClaudeBridge.get_usage() without budget should not include budget keys."""
+        import threading
         from avatar_engine.bridges.claude import ClaudeBridge
         bridge = MagicMock(spec=ClaudeBridge)
         bridge.provider_name = "claude"
         bridge.session_id = None
+        bridge._stats_lock = threading.Lock()
         bridge._stats = {
             "total_requests": 0,
             "successful_requests": 0,

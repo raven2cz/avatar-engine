@@ -12,6 +12,7 @@ from ...config import AvatarConfig
 from ...engine import AvatarEngine
 from ...events import TextEvent, ToolEvent, ThinkingEvent
 from ...types import ProviderType
+from ..display import DisplayManager
 
 console = Console()
 
@@ -166,21 +167,14 @@ async def _chat_async(
     else:
         engine = AvatarEngine(provider=provider, model=model, **kwargs)
 
-    # Verbose/debug event handlers
-    if verbose or debug:
+    # DisplayManager handles event visualization (always active for tool/thinking display)
+    display = DisplayManager(engine, console=console, verbose=verbose or debug)
+
+    # Debug-only raw text logging
+    if debug:
         @engine.on(TextEvent)
-        def on_text(event: TextEvent) -> None:
-            if debug:
-                console.print(f"[dim]TEXT:[/dim] {event.text[:80]}...")
-
-        @engine.on(ToolEvent)
-        def on_tool(event: ToolEvent) -> None:
-            status_color = "green" if event.status == "completed" else "yellow"
-            console.print(f"[{status_color}]TOOL: {event.tool_name} ({event.status})[/{status_color}]")
-
-        @engine.on(ThinkingEvent)
-        def on_thinking(event: ThinkingEvent) -> None:
-            console.print(f"[dim italic]THINKING: {event.thought[:100]}...[/dim italic]")
+        def on_text_debug(event: TextEvent) -> None:
+            console.print(f"[dim]TEXT:[/dim] {event.text[:80]}...")
 
     try:
         await engine.start()
@@ -190,11 +184,13 @@ async def _chat_async(
 
         if stream and not json_output:
             # Streaming output
+            display.on_response_start()
             full_response = ""
             async for chunk in engine.chat_stream(message):
                 console.print(chunk, end="")
                 full_response += chunk
             console.print()  # Final newline
+            display.on_response_end()
         else:
             # Complete response
             response = await engine.chat(message)
@@ -223,6 +219,7 @@ async def _chat_async(
         raise SystemExit(1)
 
     finally:
+        display.unregister()
         await engine.stop()
 
 

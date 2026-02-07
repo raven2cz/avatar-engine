@@ -49,6 +49,9 @@ __version__ = "0.1.0"
 # Main engine class
 from .engine import AvatarEngine
 
+# Activity tracking
+from .activity import ActivityTracker
+
 # Configuration
 from .config import AvatarConfig
 
@@ -58,22 +61,31 @@ from .types import (
     BridgeState,
     HealthStatus,
     Message,
+    ProviderCapabilities,
     ProviderType,
     SessionCapabilitiesInfo,
     SessionInfo,
+    ToolPolicy,
 )
 
 # Event system
 from .events import (
+    ActivityEvent,
+    ActivityStatus,
     AvatarEvent,
     CostEvent,
+    DiagnosticEvent,
+    EngineState,
     ErrorEvent,
     EventEmitter,
     EventType,
     StateEvent,
     TextEvent,
     ThinkingEvent,
+    ThinkingPhase,
     ToolEvent,
+    extract_bold_subject,
+    classify_thinking,
 )
 
 # Bridge classes (for advanced usage)
@@ -89,6 +101,8 @@ __all__ = [
     "__version__",
     # Main class
     "AvatarEngine",
+    # Activity tracking
+    "ActivityTracker",
     # Configuration
     "AvatarConfig",
     # Types
@@ -96,19 +110,28 @@ __all__ = [
     "BridgeState",
     "HealthStatus",
     "Message",
+    "ProviderCapabilities",
     "ProviderType",
     "SessionCapabilitiesInfo",
     "SessionInfo",
+    "ToolPolicy",
     # Events
+    "ActivityEvent",
+    "ActivityStatus",
     "AvatarEvent",
     "CostEvent",
+    "DiagnosticEvent",
+    "EngineState",
     "ErrorEvent",
     "EventEmitter",
     "EventType",
     "StateEvent",
     "TextEvent",
     "ThinkingEvent",
+    "ThinkingPhase",
     "ToolEvent",
+    "extract_bold_subject",
+    "classify_thinking",
     # Bridges
     "BaseBridge",
     "ClaudeBridge",

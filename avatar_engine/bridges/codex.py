@@ -29,6 +29,7 @@ Requirements:
 import asyncio
 import logging
 import shutil
+import threading
 import time
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
@@ -138,6 +139,18 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         # Collected events from ACP session_update notifications
         self._acp_events: List[Dict[str, Any]] = []
         self._acp_text_buffer: str = ""
+        self._acp_buffer_lock = threading.Lock()  # RC-3/4: sync callback vs main thread
+
+        # Provider capabilities
+        self._provider_capabilities.thinking_supported = True   # Codex reasoning
+        self._provider_capabilities.thinking_structured = True
+        self._provider_capabilities.cost_tracking = False
+        self._provider_capabilities.budget_enforcement = False
+        self._provider_capabilities.system_prompt_method = "injected"  # ACP prepend
+        self._provider_capabilities.streaming = True
+        self._provider_capabilities.parallel_tools = False
+        self._provider_capabilities.cancellable = False
+        self._provider_capabilities.mcp_supported = True
 
     @property
     def provider_name(self) -> str:
@@ -282,7 +295,10 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         self._acp_session_id = None
 
     def _handle_acp_update(self, session_id: str, update: Any) -> None:
-        """Callback for ACP session/update notifications (streaming text + thinking)."""
+        """Callback for ACP session/update notifications (streaming text + thinking).
+
+        Called from ACP SDK thread — all buffer writes protected by lock (RC-3/4).
+        """
         event = {"type": "acp_update", "session_id": session_id, "raw": str(update)}
 
         # Extract thinking content
@@ -293,7 +309,8 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 "session_id": session_id,
                 "thought": thinking,
             }
-            self._acp_events.append(thinking_event)
+            with self._acp_buffer_lock:
+                self._acp_events.append(thinking_event)
             if self._on_event:
                 self._on_event(thinking_event)
 
@@ -301,7 +318,8 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         tool_event = _extract_tool_event_from_update(update)
         if tool_event:
             tool_event["session_id"] = session_id
-            self._acp_events.append(tool_event)
+            with self._acp_buffer_lock:
+                self._acp_events.append(tool_event)
             if self._on_event:
                 self._on_event(tool_event)
 
@@ -309,11 +327,13 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         text = _extract_text_from_update(update)
         if text:
             event["text"] = text
-            self._acp_text_buffer += text
+            with self._acp_buffer_lock:
+                self._acp_text_buffer += text
             if self._on_output:
                 self._on_output(text)
 
-        self._acp_events.append(event)
+        with self._acp_buffer_lock:
+            self._acp_events.append(event)
         if self._on_event:
             self._on_event(event)
 
@@ -329,16 +349,20 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         if not self._acp_conn or not self._acp_session_id:
             raise RuntimeError("Codex ACP session not active. Call start() first.")
 
+        # GAP-5: Inject system prompt into first ACP message
+        effective_prompt = self._prepend_system_prompt(prompt)
+
         self._set_state(BridgeState.BUSY)
         t0 = time.time()
-        self._acp_events.clear()
-        self._acp_text_buffer = ""
+        with self._acp_buffer_lock:  # RC-3/4
+            self._acp_events.clear()
+            self._acp_text_buffer = ""
 
         try:
             result = await asyncio.wait_for(
                 self._acp_conn.prompt(
                     session_id=self._acp_session_id,
-                    prompt=[text_block(prompt)],
+                    prompt=[text_block(effective_prompt)],
                 ),
                 timeout=self.timeout,
             )
@@ -346,15 +370,18 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             elapsed = int((time.time() - t0) * 1000)
 
             # Prefer accumulated streaming buffer, fallback to result
-            content = self._acp_text_buffer or _extract_text_from_result(result)
+            with self._acp_buffer_lock:  # RC-3/4
+                content = self._acp_text_buffer or _extract_text_from_result(result)
+                events_copy = self._acp_events.copy()
 
-            self.history.append(Message(role="user", content=prompt))
-            self.history.append(Message(role="assistant", content=content))
+            with self._history_lock:  # RC-9
+                self.history.append(Message(role="user", content=prompt))
+                self.history.append(Message(role="assistant", content=content))
             self._set_state(BridgeState.READY)
 
             response = BridgeResponse(
                 content=content,
-                raw_events=self._acp_events.copy(),
+                raw_events=events_copy,
                 duration_ms=elapsed,
                 session_id=self._acp_session_id,
                 success=True,
@@ -392,9 +419,13 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         if not self._acp_conn or not self._acp_session_id:
             raise RuntimeError("Codex ACP session not active. Call start() first.")
 
+        # GAP-5: Inject system prompt into first ACP message
+        effective_prompt = self._prepend_system_prompt(prompt)
+
         self._set_state(BridgeState.BUSY)
-        self._acp_events.clear()
-        self._acp_text_buffer = ""
+        with self._acp_buffer_lock:  # RC-3/4
+            self._acp_events.clear()
+            self._acp_text_buffer = ""
 
         # Bridge callback → async iterator via Queue
         queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
@@ -411,7 +442,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             try:
                 await self._acp_conn.prompt(
                     session_id=self._acp_session_id,
-                    prompt=[text_block(prompt)],
+                    prompt=[text_block(effective_prompt)],
                 )
             finally:
                 await queue.put(None)  # Signal completion
@@ -427,8 +458,9 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 full_text += chunk
                 yield chunk
 
-            self.history.append(Message(role="user", content=prompt))
-            self.history.append(Message(role="assistant", content=full_text))
+            with self._history_lock:  # RC-9
+                self.history.append(Message(role="user", content=prompt))
+                self.history.append(Message(role="assistant", content=full_text))
             self._set_state(BridgeState.READY)
         except asyncio.TimeoutError:
             task.cancel()

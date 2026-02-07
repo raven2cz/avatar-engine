@@ -15,13 +15,14 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
-from ..types import SessionInfo, SessionCapabilitiesInfo
+from ..types import SessionInfo, SessionCapabilitiesInfo, ProviderCapabilities
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,18 @@ class BridgeResponse:
     error: Optional[str] = None
 
 
+def _classify_stderr_level(text: str) -> str:
+    """Classify stderr line into diagnostic level."""
+    lower = text.lower()
+    if any(w in lower for w in ["error", "fatal", "critical", "failed", "exception"]):
+        return "error"
+    if any(w in lower for w in ["warn", "deprecated", "expir"]):
+        return "warning"
+    if any(w in lower for w in ["debug", "trace"]):
+        return "debug"
+    return "info"
+
+
 class BaseBridge(ABC):
     """Abstract base class supporting persistent and oneshot modes."""
 
@@ -75,6 +88,7 @@ class BaseBridge(ABC):
         self.system_prompt = system_prompt
         self.env = env or {}
         self.mcp_servers = mcp_servers or {}
+        self.tool_policy: Optional[ToolPolicy] = None  # GAP-8: Engine-level tool policy
 
         self.state = BridgeState.DISCONNECTED
         self.history: List[Message] = []
@@ -82,8 +96,10 @@ class BaseBridge(ABC):
 
         self._proc: Optional[asyncio.subprocess.Process] = None
         self._read_lock = asyncio.Lock()
+        self._stdin_lock = asyncio.Lock()  # RC-7: protect concurrent stdin writes
         self._stderr_task: Optional[asyncio.Task] = None
         self._stderr_buffer: List[str] = []
+        self._stderr_lock = threading.Lock()  # RC-8: protect stderr buffer
 
         self._on_output: Optional[Callable[[str], None]] = None
         self._on_state_change: Optional[Callable[[BridgeState], None]] = None
@@ -92,6 +108,13 @@ class BaseBridge(ABC):
 
         # Session capabilities (populated during start by subclasses)
         self._session_capabilities = SessionCapabilitiesInfo()
+
+        # Provider capabilities (set by subclass constructors)
+        self._provider_capabilities = ProviderCapabilities()
+
+        # RC-9/10: Locks for history and stats
+        self._history_lock = threading.Lock()
+        self._stats_lock = threading.Lock()
 
         # Usage statistics
         self._stats = {
@@ -173,11 +196,13 @@ class BaseBridge(ABC):
 
     def get_stderr_buffer(self) -> List[str]:
         """Get accumulated stderr output."""
-        return list(self._stderr_buffer)
+        with self._stderr_lock:  # RC-8: safe concurrent access
+            return list(self._stderr_buffer)
 
     def clear_stderr_buffer(self) -> None:
         """Clear accumulated stderr output."""
-        self._stderr_buffer.clear()
+        with self._stderr_lock:  # RC-8: safe concurrent access
+            self._stderr_buffer.clear()
 
     # === Session management ===============================================
 
@@ -185,6 +210,11 @@ class BaseBridge(ABC):
     def session_capabilities(self) -> SessionCapabilitiesInfo:
         """What session operations this bridge supports."""
         return self._session_capabilities
+
+    @property
+    def provider_capabilities(self) -> ProviderCapabilities:
+        """Full provider capability declaration for GUI adaptation."""
+        return self._provider_capabilities
 
     async def list_sessions(self) -> List[SessionInfo]:
         """List available sessions. Override in subclass if supported."""
@@ -290,10 +320,19 @@ class BaseBridge(ABC):
                     break
                 text = line.decode(errors="replace").strip()
                 if text:
-                    self._stderr_buffer.append(text)
+                    with self._stderr_lock:  # RC-8: safe concurrent access
+                        self._stderr_buffer.append(text)
                     logger.debug(f"stderr: {text}")
                     if self._on_stderr:
                         self._on_stderr(text)
+                    # GAP-7: Surface stderr as diagnostic event
+                    if self._on_event:
+                        self._on_event({
+                            "type": "diagnostic",
+                            "message": text,
+                            "level": _classify_stderr_level(text),
+                            "source": "stderr",
+                        })
         except asyncio.CancelledError:
             pass
         except Exception as exc:
@@ -323,8 +362,9 @@ class BaseBridge(ABC):
 
             if sid:
                 self.session_id = sid
-            self.history.append(Message(role="user", content=prompt))
-            self.history.append(Message(role="assistant", content=content, tool_calls=tools))
+            with self._history_lock:  # RC-9
+                self.history.append(Message(role="user", content=prompt))
+                self.history.append(Message(role="assistant", content=content, tool_calls=tools))
 
             self._set_state(BridgeState.READY)
             response = BridgeResponse(
@@ -378,8 +418,9 @@ class BaseBridge(ABC):
             sid = self._parse_session_id(all_events)
             if sid:
                 self.session_id = sid
-            self.history.append(Message(role="user", content=prompt))
-            self.history.append(Message(role="assistant", content=full))
+            with self._history_lock:  # RC-9
+                self.history.append(Message(role="user", content=prompt))
+                self.history.append(Message(role="assistant", content=full))
             self._set_state(BridgeState.READY)
         except Exception:
             self._set_state(BridgeState.ERROR)
@@ -392,16 +433,18 @@ class BaseBridge(ABC):
             raise RuntimeError("Persistent process not running")
         line = self._format_user_message(prompt)
         logger.debug(f"stdin> {line.strip()}")
-        self._proc.stdin.write((line + "\n").encode())
-        await self._proc.stdin.drain()
+        async with self._stdin_lock:  # RC-7: prevent garbled input
+            self._proc.stdin.write((line + "\n").encode())
+            await self._proc.stdin.drain()
         return await self._read_until_turn_complete()
 
     async def _stream_persistent(self, prompt: str) -> AsyncIterator[Dict[str, Any]]:
         if not self._proc or self._proc.returncode is not None:
             raise RuntimeError("Persistent process not running")
         line = self._format_user_message(prompt)
-        self._proc.stdin.write((line + "\n").encode())
-        await self._proc.stdin.drain()
+        async with self._stdin_lock:  # RC-7: prevent garbled input
+            self._proc.stdin.write((line + "\n").encode())
+            await self._proc.stdin.drain()
         async for event in self._read_events():
             yield event
             if self._is_turn_complete(event):
@@ -474,7 +517,12 @@ class BaseBridge(ABC):
             if not line:
                 continue
             try:
-                events.append(json.loads(line))
+                event = json.loads(line)
+                events.append(event)
+                # Emit raw events (GAP-3: ensures thinking events
+                # are emitted in oneshot mode for GUI ThinkingEvent)
+                if self._on_event:
+                    self._on_event(event)
             except json.JSONDecodeError:
                 logger.debug(f"non-json: {line[:200]}")
 
@@ -514,10 +562,12 @@ class BaseBridge(ABC):
     # === History ========================================================
 
     def get_history(self) -> List[Message]:
-        return list(self.history)
+        with self._history_lock:  # RC-9
+            return list(self.history)
 
     def clear_history(self) -> None:
-        self.history.clear()
+        with self._history_lock:  # RC-9
+            self.history.clear()
         self.session_id = None
 
     # === Health =========================================================
@@ -535,55 +585,95 @@ class BaseBridge(ABC):
 
     def check_health(self) -> Dict[str, Any]:
         """Detailed health check with diagnostics."""
+        with self._history_lock:  # RC-9
+            history_len = len(self.history)
         health: Dict[str, Any] = {
             "healthy": self.is_healthy(),
             "state": self.state.value,
             "provider": self.provider_name,
             "session_id": self.session_id,
-            "history_length": len(self.history),
+            "history_length": history_len,
         }
         if self._proc:
             health["pid"] = self._proc.pid
             health["returncode"] = self._proc.returncode
         # Include usage stats
-        health.update(self._stats)
+        with self._stats_lock:  # RC-10
+            health.update(self._stats)
         return health
+
+    # === System Prompt Injection =========================================
+
+    def _prepend_system_prompt(self, prompt: str) -> str:
+        """Prepend system prompt to the first user message.
+
+        For ACP bridges where the protocol has no native system prompt
+        parameter. Only prepends on the very first request (total_requests == 0).
+        Claude bridge doesn't need this (uses --append-system-prompt flag).
+        Gemini oneshot doesn't need this (uses GEMINI_SYSTEM_MD env var).
+        """
+        with self._stats_lock:
+            is_first = self._stats["total_requests"] == 0
+        if is_first and self.system_prompt:
+            return (
+                f"[SYSTEM INSTRUCTIONS]\n{self.system_prompt}\n"
+                f"[END INSTRUCTIONS]\n\n{prompt}"
+            )
+        return prompt
+
+    # === Budget Control ==================================================
+
+    def is_over_budget(self) -> bool:
+        """Check if accumulated cost exceeds the configured budget.
+
+        Subclasses that support budget limits (e.g. ClaudeBridge) should
+        set self._max_budget_usd. Returns False if no budget is set.
+        """
+        max_budget = getattr(self, "_max_budget_usd", None)
+        if not max_budget:
+            return False
+        with self._stats_lock:
+            return self._stats["total_cost_usd"] >= max_budget
 
     # === Usage Stats ====================================================
 
     def get_usage(self) -> Dict[str, Any]:
         """Get usage summary for display (e.g. /usage REPL command)."""
-        stats = dict(self._stats)
+        with self._stats_lock:  # RC-10
+            stats = dict(self._stats)
         stats["provider"] = self.provider_name
         stats["session_id"] = self.session_id
         return stats
 
     def get_stats(self) -> Dict[str, Any]:
         """Get usage statistics."""
-        return dict(self._stats)
+        with self._stats_lock:  # RC-10
+            return dict(self._stats)
 
     def reset_stats(self) -> None:
         """Reset usage statistics."""
-        self._stats = {
-            "total_requests": 0,
-            "successful_requests": 0,
-            "failed_requests": 0,
-            "total_duration_ms": 0,
-            "total_cost_usd": 0.0,
-            "total_input_tokens": 0,
-            "total_output_tokens": 0,
-        }
+        with self._stats_lock:  # RC-10
+            self._stats = {
+                "total_requests": 0,
+                "successful_requests": 0,
+                "failed_requests": 0,
+                "total_duration_ms": 0,
+                "total_cost_usd": 0.0,
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+            }
 
     def _update_stats(self, response: BridgeResponse) -> None:
         """Update stats from a response."""
-        self._stats["total_requests"] += 1
-        if response.success:
-            self._stats["successful_requests"] += 1
-        else:
-            self._stats["failed_requests"] += 1
-        self._stats["total_duration_ms"] += response.duration_ms
-        if response.cost_usd:
-            self._stats["total_cost_usd"] += response.cost_usd
-        if response.token_usage:
-            self._stats["total_input_tokens"] += response.token_usage.get("input", 0)
-            self._stats["total_output_tokens"] += response.token_usage.get("output", 0)
+        with self._stats_lock:  # RC-10
+            self._stats["total_requests"] += 1
+            if response.success:
+                self._stats["successful_requests"] += 1
+            else:
+                self._stats["failed_requests"] += 1
+            self._stats["total_duration_ms"] += response.duration_ms
+            if response.cost_usd:
+                self._stats["total_cost_usd"] += response.cost_usd
+            if response.token_usage:
+                self._stats["total_input_tokens"] += response.token_usage.get("input", 0)
+                self._stats["total_output_tokens"] += response.token_usage.get("output", 0)
