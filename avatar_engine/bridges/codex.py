@@ -52,7 +52,10 @@ except ImportError:
     )
 
 
-class CodexBridge(BaseBridge):
+from ._acp_session import ACPSessionMixin
+
+
+class CodexBridge(ACPSessionMixin, BaseBridge):
     """
     Codex CLI bridge via ACP adapter (codex-acp).
 
@@ -83,6 +86,8 @@ class CodexBridge(BaseBridge):
         sandbox_mode: str = "workspace-write",  # read-only | workspace-write | danger-full-access
         env: Optional[Dict[str, str]] = None,
         mcp_servers: Optional[Dict[str, Any]] = None,
+        resume_session_id: Optional[str] = None,
+        continue_last: bool = False,
     ):
         """
         Args:
@@ -105,6 +110,8 @@ class CodexBridge(BaseBridge):
                 - "danger-full-access" — Full filesystem access
             env: Extra environment variables for the subprocess.
             mcp_servers: MCP server configurations (passed per-session).
+            resume_session_id: Resume a specific session by ID (via ACP load_session).
+            continue_last: Continue the most recent session (via ACP list+load).
         """
         super().__init__(
             executable=executable,
@@ -119,6 +126,8 @@ class CodexBridge(BaseBridge):
         self.auth_method = auth_method
         self.approval_mode = approval_mode
         self.sandbox_mode = sandbox_mode
+        self.resume_session_id = resume_session_id
+        self.continue_last = continue_last
 
         # ACP state
         self._acp_conn = None
@@ -214,6 +223,7 @@ class CodexBridge(BaseBridge):
             timeout=self.timeout,
         )
         logger.debug(f"ACP initialized: {init_resp}")
+        self._store_acp_capabilities(init_resp)
 
         # Step 2: Authenticate
         try:
@@ -239,19 +249,9 @@ class CodexBridge(BaseBridge):
                     f"If session fails, check your Codex credentials."
                 )
 
-        # Step 3: Create a new session
+        # Step 3: Create or resume session
         mcp_servers_acp = self._build_mcp_servers_acp()
-
-        session_resp = await asyncio.wait_for(
-            self._acp_conn.new_session(
-                cwd=self.working_dir,
-                mcp_servers=mcp_servers_acp,
-            ),
-            timeout=self.timeout,
-        )
-        self._acp_session_id = session_resp.session_id
-        self.session_id = self._acp_session_id
-        self._set_state(BridgeState.READY)
+        await self._create_or_resume_acp_session(mcp_servers_acp)
 
     def _build_mcp_servers_acp(self) -> list:
         """Convert MCP servers dict to ACP format."""

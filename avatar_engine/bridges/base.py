@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
+from ..types import SessionInfo, SessionCapabilitiesInfo
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,6 +89,9 @@ class BaseBridge(ABC):
         self._on_state_change: Optional[Callable[[BridgeState], None]] = None
         self._on_event: Optional[Callable[[Dict[str, Any]], None]] = None
         self._on_stderr: Optional[Callable[[str], None]] = None
+
+        # Session capabilities (populated during start by subclasses)
+        self._session_capabilities = SessionCapabilitiesInfo()
 
         # Usage statistics
         self._stats = {
@@ -173,6 +178,25 @@ class BaseBridge(ABC):
     def clear_stderr_buffer(self) -> None:
         """Clear accumulated stderr output."""
         self._stderr_buffer.clear()
+
+    # === Session management ===============================================
+
+    @property
+    def session_capabilities(self) -> SessionCapabilitiesInfo:
+        """What session operations this bridge supports."""
+        return self._session_capabilities
+
+    async def list_sessions(self) -> List[SessionInfo]:
+        """List available sessions. Override in subclass if supported."""
+        return []
+
+    async def resume_session(self, session_id: str) -> bool:
+        """Resume a specific session. Override in subclass if supported."""
+        raise NotImplementedError(
+            f"{self.provider_name} does not support session resume"
+        )
+
+    # === State ===========================================================
 
     def _set_state(self, state: BridgeState) -> None:
         old = self.state

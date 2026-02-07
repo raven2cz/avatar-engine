@@ -82,6 +82,10 @@ class ClaudeBridge(BaseBridge):
 
         # Track whether we're in persistent mode (can fall back to oneshot)
         self._persistent_mode = True
+
+        # Session capabilities — Claude supports resume and continue via CLI flags
+        self._session_capabilities.can_load = True
+        self._session_capabilities.can_continue_last = True
         self._total_cost_usd = 0.0
 
     @property
@@ -91,6 +95,16 @@ class ClaudeBridge(BaseBridge):
     @property
     def is_persistent(self) -> bool:
         return self._persistent_mode
+
+    # === Session management ===============================================
+
+    async def resume_session(self, session_id: str) -> bool:
+        """Resume a Claude session by restarting with --resume <id>."""
+        await self.stop()
+        self.resume_session_id = session_id
+        self.continue_session = False
+        await self.start()
+        return True
 
     # === Start override (no warm-up wait for Claude stream-json) =========
 

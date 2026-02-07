@@ -33,7 +33,10 @@ from .events import (
     CostEvent,
     ThinkingEvent,
 )
-from .types import BridgeResponse, BridgeState, HealthStatus, Message, ProviderType
+from .types import (
+    BridgeResponse, BridgeState, HealthStatus, Message, ProviderType,
+    SessionInfo, SessionCapabilitiesInfo,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -400,6 +403,27 @@ class AvatarEngine(EventEmitter):
         """Get rate limiter statistics."""
         return self._rate_limiter.get_stats()
 
+    # === Session management ===
+
+    @property
+    def session_capabilities(self) -> SessionCapabilitiesInfo:
+        """Get session capabilities of the current bridge."""
+        if self._bridge:
+            return self._bridge.session_capabilities
+        return SessionCapabilitiesInfo()
+
+    async def list_sessions(self) -> List[SessionInfo]:
+        """List available sessions from the provider."""
+        if self._bridge:
+            return await self._bridge.list_sessions()
+        return []
+
+    async def resume_session(self, session_id: str) -> bool:
+        """Resume a specific session by ID."""
+        if not self._bridge:
+            raise RuntimeError("Engine not started")
+        return await self._bridge.resume_session(session_id)
+
     # === Internal ===
 
     def _create_bridge(self) -> BaseBridge:
@@ -433,14 +457,15 @@ class AvatarEngine(EventEmitter):
                 max_turns=cost_cfg.get("max_turns"),
                 max_budget_usd=cost_cfg.get("max_budget_usd"),
                 json_schema=struct_cfg.get("schema") if struct_cfg.get("enabled") else None,
-                continue_session=session_cfg.get("continue_last", False),
-                resume_session_id=session_cfg.get("resume_id"),
+                continue_session=session_cfg.get("continue_last", False) or self._kwargs.get("continue_last", False),
+                resume_session_id=session_cfg.get("resume_id") or self._kwargs.get("resume_session_id"),
                 fallback_model=pcfg.get("fallback_model"),
                 debug=pcfg.get("debug", False),
                 **common,
             )
         elif self._provider == ProviderType.CODEX:
             pcfg = self._config.codex_config if self._config else self._kwargs
+            session_cfg = pcfg.get("session", {})
             return CodexBridge(
                 executable=pcfg.get("executable", "npx"),
                 executable_args=pcfg.get("executable_args", ["@zed-industries/codex-acp"]),
@@ -448,10 +473,13 @@ class AvatarEngine(EventEmitter):
                 auth_method=pcfg.get("auth_method", "chatgpt"),
                 approval_mode=pcfg.get("approval_mode", "auto"),
                 sandbox_mode=pcfg.get("sandbox_mode", "workspace-write"),
+                resume_session_id=session_cfg.get("resume_id") or self._kwargs.get("resume_session_id"),
+                continue_last=session_cfg.get("continue_last", False) or self._kwargs.get("continue_last", False),
                 **common,
             )
         else:
             pcfg = self._config.gemini_config if self._config else self._kwargs
+            session_cfg = pcfg.get("session", {})
             return GeminiBridge(
                 executable=pcfg.get("executable", "gemini"),
                 model=self._model or pcfg.get("model", ""),  # Empty = Gemini CLI default
@@ -461,6 +489,8 @@ class AvatarEngine(EventEmitter):
                 context_messages=pcfg.get("context_messages", 20),
                 context_max_chars=pcfg.get("context_max_chars", 500),
                 generation_config=pcfg.get("generation_config", {}),
+                resume_session_id=session_cfg.get("resume_id") or self._kwargs.get("resume_session_id"),
+                continue_last=session_cfg.get("continue_last", False) or self._kwargs.get("continue_last", False),
                 **common,
             )
 

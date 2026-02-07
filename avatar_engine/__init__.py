@@ -59,6 +59,8 @@ from .types import (
     HealthStatus,
     Message,
     ProviderType,
+    SessionCapabilitiesInfo,
+    SessionInfo,
 )
 
 # Event system
@@ -95,6 +97,8 @@ __all__ = [
     "HealthStatus",
     "Message",
     "ProviderType",
+    "SessionCapabilitiesInfo",
+    "SessionInfo",
     # Events
     "AvatarEvent",
     "CostEvent",

@@ -98,10 +98,11 @@ def cli(ctx: click.Context, config: str, no_config: bool, provider: str, verbose
 
 
 # Import and register commands
-from .commands import chat, repl, health, version, mcp
+from .commands import chat, repl, health, version, mcp, session
 
 cli.add_command(chat.chat)
 cli.add_command(repl.repl)
 cli.add_command(health.health)
 cli.add_command(version.version)
 cli.add_command(mcp.mcp)
+cli.add_command(session.session)

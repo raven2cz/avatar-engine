@@ -31,6 +31,7 @@ Avatar Engine is designed for embedding a dedicated AI avatar into a specific ap
 - **Context-Aware Operation** — Designed to consume application context and source data
 - **MCP Orchestration** — Tool-based execution path for complex analysis and non-trivial edits
 - **Provider Abstraction** — Single integration surface for Gemini CLI, Claude Code, and Codex CLI
+- **Session Management** — Resume, continue, and list sessions across all providers
 - **Warm Sessions** — ACP / stream-json persistent subprocess for instant responses
 - **Zero Footprint** — No config files written to your project directory
 - **Event System** — Callbacks for GUI integration (text, tools, state changes)
@@ -118,6 +119,13 @@ avatar -p codex chat "Refactor this function"
 avatar repl
 avatar -p codex repl
 
+# Session management
+avatar chat --continue "Continue where we left off"
+avatar chat --resume abc123 "Back to this session"
+avatar repl --continue
+avatar session list
+avatar session info abc123
+
 # With config file: -p overrides config's provider
 avatar -p codex chat "Hello"     # uses codex even if .avatar.yaml says gemini
 
@@ -169,6 +177,9 @@ gemini:
   model: ""  # Empty = CLI default
   approval_mode: "yolo"
   acp_enabled: true
+  session:
+    # resume_id: ""        # Resume specific session by ID
+    # continue_last: false # Continue most recent session
   mcp_servers:
     tools:
       command: "python"
@@ -177,6 +188,9 @@ gemini:
 claude:
   model: "claude-sonnet-4-5"
   permission_mode: "acceptEdits"
+  session:
+    # resume_id: ""
+    # continue_last: false
   cost_control:
     max_turns: 10
     max_budget_usd: 5.0
@@ -186,6 +200,9 @@ codex:
   auth_method: "chatgpt"  # chatgpt | codex-api-key | openai-api-key
   approval_mode: "auto"
   sandbox_mode: "workspace-write"
+  session:
+    # resume_id: ""
+    # continue_last: false
 
 engine:
   auto_restart: true
@@ -231,6 +248,7 @@ avatar-engine/
 │   ├── config_sandbox.py # Zero Footprint config (temp files)
 │   ├── bridges/         # Provider implementations
 │   │   ├── base.py      # Abstract bridge
+│   │   ├── _acp_session.py # Shared ACP session mixin
 │   │   ├── claude.py    # Claude Code bridge
 │   │   ├── gemini.py    # Gemini CLI bridge
 │   │   └── codex.py     # Codex CLI bridge (ACP)
@@ -275,6 +293,58 @@ chat()   →  same session, same process
 stop()   →  exit ACP context
 ```
 
+## Session Management
+
+All three providers support **session persistence** — resume previous conversations or continue the last session:
+
+```python
+import asyncio
+from avatar_engine import AvatarEngine
+
+async def main():
+    # Resume a specific session by ID
+    engine = AvatarEngine(provider="codex", resume_session_id="abc123")
+    await engine.start()
+    response = await engine.chat("Continue our work")
+    await engine.stop()
+
+    # Continue the most recent session
+    engine = AvatarEngine(provider="gemini", continue_last=True)
+    await engine.start()
+    response = await engine.chat("Where were we?")
+    await engine.stop()
+
+    # List available sessions
+    engine = AvatarEngine(provider="codex")
+    await engine.start()
+    sessions = await engine.list_sessions()
+    for s in sessions:
+        print(f"{s.session_id[:12]}  {s.title or '-'}")
+    await engine.stop()
+
+asyncio.run(main())
+```
+
+**REPL session commands:**
+
+```
+/sessions     — List available sessions
+/session      — Show current session ID
+/resume ID    — Resume a session by ID
+```
+
+**How it works:**
+
+| Provider | Persistence | Where | Mechanism |
+|----------|-------------|-------|-----------|
+| Codex | Auto-save after each message | `~/.codex/sessions/` | ACP `load_session` / `list_sessions` |
+| Gemini | Auto-save | `~/.gemini/` | ACP `load_session` / `list_sessions` |
+| Claude | Auto-save | `~/.claude/projects/` | CLI `--resume` / `--continue` flags |
+
+Sessions are **per-project** (filtered by working directory). **Zero Footprint** is preserved — session data lives in provider home directories, not in your project.
+
+Capabilities are detected at runtime from the provider — use `engine.session_capabilities` to check what's available.
+
 ## Examples
 
 See the `examples/` directory:
@@ -302,7 +372,7 @@ pytest tests/ -v
 # Run with coverage
 pytest tests/ --cov=avatar_engine
 
-# Current: 517 tests (unit + integration)
+# Current: 561+ tests (unit + integration)
 ```
 
 ## API Reference
@@ -321,6 +391,11 @@ class AvatarEngine:
     async def chat(message: str) -> BridgeResponse
     async def chat_stream(message: str) -> AsyncIterator[str]
     def chat_sync(message: str) -> BridgeResponse
+
+    # Sessions
+    async def list_sessions() -> List[SessionInfo]
+    async def resume_session(session_id: str) -> bool
+    session_capabilities: SessionCapabilitiesInfo  # property
 
     # Events
     def on(event_type) -> Callable  # Decorator
@@ -354,11 +429,13 @@ ErrorEvent     # Error occurred
 ### Types
 
 ```python
-BridgeResponse  # Chat response with content, success, duration, etc.
-HealthStatus    # Health check result
-Message         # Conversation message
-ProviderType    # GEMINI | CLAUDE | CODEX
-BridgeState     # DISCONNECTED | WARMING_UP | READY | BUSY | ERROR
+BridgeResponse          # Chat response with content, success, duration, etc.
+HealthStatus            # Health check result
+Message                 # Conversation message
+ProviderType            # GEMINI | CLAUDE | CODEX
+BridgeState             # DISCONNECTED | WARMING_UP | READY | BUSY | ERROR
+SessionInfo             # Session metadata (id, provider, cwd, title, updated_at)
+SessionCapabilitiesInfo # What session ops are supported (can_list, can_load, can_continue_last)
 ```
 
 ## License

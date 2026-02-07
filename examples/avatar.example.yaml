@@ -14,6 +14,11 @@ gemini:
   auth_method: "oauth-personal"
   acp_enabled: true
 
+  # Session management (ACP)
+  session:
+    # resume_id: ""          # Resume specific session by ID
+    # continue_last: false   # Continue most recent session
+
   generation_config:
     temperature: 1.0
     top_p: 0.95
@@ -37,6 +42,11 @@ claude:
   permission_mode: "acceptEdits"
   strict_mcp_config: true
 
+  # Session management
+  session:
+    # resume_id: ""          # Resume specific session by ID
+    # continue_last: false   # Continue most recent session
+
   cost_control:
     max_turns: 10
     max_budget_usd: 5.0
@@ -59,6 +69,11 @@ codex:
   auth_method: "chatgpt"  # chatgpt | codex-api-key | openai-api-key
   approval_mode: "auto"  # auto | manual
   sandbox_mode: "workspace-write"  # workspace-write | full
+
+  # Session management (ACP)
+  session:
+    # resume_id: ""          # Resume specific session by ID
+    # continue_last: false   # Continue most recent session
 
   # MCP servers for Codex
   mcp_servers: {}

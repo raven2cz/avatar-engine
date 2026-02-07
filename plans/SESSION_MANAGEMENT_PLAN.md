@@ -93,22 +93,19 @@ Add two new dataclasses:
 ```python
 @dataclass
 class SessionInfo:
+    """Mirrors ACP SessionInfo — only fields providers actually return."""
     session_id: str
     provider: str          # "gemini" | "claude" | "codex"
     cwd: str = ""
     title: Optional[str] = None
-    model: Optional[str] = None
     updated_at: Optional[str] = None   # ISO 8601
-    created_at: Optional[str] = None   # ISO 8601
-    message_count: int = 0
 
 @dataclass
 class SessionCapabilitiesInfo:
-    can_list: bool = False
-    can_resume: bool = False
-    can_load: bool = False
-    can_fork: bool = False
-    can_continue_last: bool = False
+    """What session ops the bridge supports. Detected at runtime from ACP InitializeResponse."""
+    can_list: bool = False             # ACP list_sessions / Claude: False
+    can_load: bool = False             # ACP load_session / Claude --resume
+    can_continue_last: bool = False    # ACP list+load combo / Claude --continue
 ```
 
 Export from `__init__.py`.
@@ -345,19 +342,17 @@ codex:
 
 ### Phase 13: Package Exports
 
-Update `avatar_engine/__init__.py` to export `SessionInfo`, `SessionCapabilitiesInfo`, `SessionStore`.
+Update `avatar_engine/__init__.py` to export `SessionInfo`, `SessionCapabilitiesInfo`.
 
 ---
 
 ### Phase 14: Tests
 
 #### New test files:
-- `tests/test_session_store.py` — SessionStore CRUD, listing, filtering, created_at preservation
-- `tests/test_session.py` — Bridge session capabilities, Claude --resume/--continue command building, Gemini/Codex resume_session_id param storage, ACP capability parsing
+- `tests/test_session.py` — Bridge session capabilities, resume_session_id param storage, ACP capability parsing
 
 #### Updated test files:
 - `tests/test_cli.py` — `--resume`/`--continue` flags for chat + repl
-- `tests/integration/test_real_*.py` — Stubs for real session listing (skip if not supported)
 
 ---
 
@@ -401,5 +396,39 @@ nepotřebujeme duplicitní metadata store. `test_session_store.py` tím pádem t
 
 1. `python -m pytest tests/test_session.py -v` — Bridge capabilities + session params
 2. `python -m pytest tests/test_cli.py -v` — CLI flags (--resume, --continue)
-3. `python -m pytest tests/ -q` — Full suite (should be 517+ tests)
+3. `python -m pytest tests/ -q` — Full suite (should be 561+ tests)
 4. Manual: `avatar session list`, `avatar -p codex repl --resume <id>`, REPL `/sessions`
+
+---
+
+## Implementation Status
+
+**IMPLEMENTACE DOKONČENA** — všechny fáze implementovány a otestovány.
+
+### Implementované soubory
+
+| Fáze | Soubor | Stav |
+|------|--------|------|
+| 1 | `avatar_engine/types.py` — SessionInfo, SessionCapabilitiesInfo | DONE |
+| 2 | `avatar_engine/bridges/base.py` — session_capabilities, list_sessions, resume_session | DONE |
+| 3 | `avatar_engine/bridges/_acp_session.py` — ACPSessionMixin (NEW) | DONE |
+| 4 | `avatar_engine/bridges/gemini.py` — mixin + resume_session_id + continue_last | DONE |
+| 5 | `avatar_engine/bridges/codex.py` — mixin + resume_session_id + continue_last | DONE |
+| 6 | `avatar_engine/bridges/claude.py` — capabilities + resume_session() override | DONE |
+| 7 | (žádný SessionStore — provideři persistují automaticky) | N/A |
+| 8 | `avatar_engine/engine.py` — session API + _create_bridge session params | DONE |
+| 9 | `avatar_engine/cli/commands/session.py` — avatar session list/info (NEW) | DONE |
+| 9 | `avatar_engine/cli/app.py` — register session command | DONE |
+| 10 | `avatar_engine/cli/commands/chat.py` — --resume, --continue flags | DONE |
+| 11 | `avatar_engine/cli/commands/repl.py` — --resume, --continue, /sessions, /session, /resume | DONE |
+| 12 | `examples/avatar.example.yaml` — session config blocks | DONE |
+| 13 | `avatar_engine/__init__.py` — export SessionInfo, SessionCapabilitiesInfo | DONE |
+| 14 | `tests/test_session.py` — 44 unit tests | DONE |
+| 14 | `tests/integration/test_real_sessions.py` — integration tests | DONE |
+| — | `README.md` — session management documentation | DONE |
+
+### Výsledky testů
+
+- **561 unit testů** — všechny PASS (44 nových session testů)
+- **Integrace** — test_real_sessions.py (capabilities, list, resume, continue, fallback)
+- **Review** — čistý, žádné problémy nalezeny

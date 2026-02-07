@@ -54,6 +54,31 @@ class BridgeResponse:
 
 
 @dataclass
+class SessionInfo:
+    """Session metadata for listing and resuming sessions.
+
+    Mirrors ACP SessionInfo — only fields that providers actually return.
+    """
+    session_id: str
+    provider: str  # "gemini" | "claude" | "codex"
+    cwd: str = ""
+    title: Optional[str] = None
+    updated_at: Optional[str] = None  # ISO 8601
+
+
+@dataclass
+class SessionCapabilitiesInfo:
+    """What session operations the current bridge supports.
+
+    Detected at runtime from ACP InitializeResponse or set
+    statically for Claude (which uses CLI flags instead of ACP).
+    """
+    can_list: bool = False           # ACP list_sessions
+    can_load: bool = False           # ACP load_session / Claude --resume
+    can_continue_last: bool = False  # ACP list+load combo / Claude --continue
+
+
+@dataclass
 class HealthStatus:
     """Health check result."""
     healthy: bool

@@ -32,6 +32,8 @@ console = Console()
 @click.option("--permission-mode", help="Permission mode (Claude)")
 @click.option("--max-turns", type=int, help="Max turns (Claude)")
 @click.option("--timeout", "-t", type=int, default=120, help="Request timeout")
+@click.option("--resume", "resume_id", help="Resume session by ID")
+@click.option("--continue", "continue_last", is_flag=True, help="Continue last session")
 @click.pass_context
 def chat(
     ctx: click.Context,
@@ -46,6 +48,8 @@ def chat(
     permission_mode: str,
     max_turns: int,
     timeout: int,
+    resume_id: str,
+    continue_last: bool,
 ) -> None:
     """Send a message and get a response.
 
@@ -82,6 +86,8 @@ def chat(
         permission_mode=permission_mode,
         max_turns=max_turns,
         timeout=timeout,
+        resume_id=resume_id,
+        continue_last=continue_last,
     ))
 
 
@@ -101,10 +107,18 @@ async def _chat_async(
     permission_mode: str,
     max_turns: int,
     timeout: int,
+    resume_id: str = None,
+    continue_last: bool = False,
 ) -> None:
     """Async chat implementation."""
     # Build engine kwargs
     kwargs = {"timeout": timeout}
+
+    # Session params (provider-agnostic — engine routes to correct bridge)
+    if resume_id:
+        kwargs["resume_session_id"] = resume_id
+    if continue_last:
+        kwargs["continue_last"] = True
 
     if provider == "gemini":
         if mcp_servers:

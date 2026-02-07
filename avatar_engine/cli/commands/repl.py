@@ -25,6 +25,8 @@ console = Console()
 @click.option("--thinking-level", type=click.Choice(["minimal", "low", "medium", "high"]))
 @click.option("--yolo", is_flag=True, help="Auto-approve tool calls (Gemini/Codex)")
 @click.option("--timeout", "-t", type=int, default=120, help="Request timeout")
+@click.option("--resume", "resume_id", help="Resume session by ID")
+@click.option("--continue", "continue_last", is_flag=True, help="Continue last session")
 @click.pass_context
 def repl(
     ctx: click.Context,
@@ -34,20 +36,26 @@ def repl(
     thinking_level: str,
     yolo: bool,
     timeout: int,
+    resume_id: str,
+    continue_last: bool,
 ) -> None:
     """Start an interactive chat session.
 
     Special commands:
 
-        /exit, /quit - Exit the session
+        /exit, /quit  - Exit the session
 
-        /clear - Clear conversation history
+        /clear        - Clear conversation history
 
-        /health - Show health status
+        /health       - Show health status
 
-        /stats - Show session statistics
+        /stats        - Show session statistics
 
-        /tools - List available MCP tools
+        /sessions     - List available sessions
+
+        /session      - Show current session ID
+
+        /resume ID    - Resume a session by ID
     """
     provider = ctx.obj["provider"]
     config_path = ctx.obj.get("config")
@@ -67,6 +75,8 @@ def repl(
         thinking_level=thinking_level,
         yolo=yolo,
         timeout=timeout,
+        resume_id=resume_id,
+        continue_last=continue_last,
     ))
 
 
@@ -80,10 +90,18 @@ async def _repl_async(
     thinking_level: str,
     yolo: bool,
     timeout: int,
+    resume_id: str = None,
+    continue_last: bool = False,
 ) -> None:
     """Async REPL implementation."""
     # Build engine kwargs
     kwargs = {"timeout": timeout}
+
+    # Session params
+    if resume_id:
+        kwargs["resume_session_id"] = resume_id
+    if continue_last:
+        kwargs["continue_last"] = True
 
     if provider == "gemini":
         if mcp_servers:
@@ -174,7 +192,49 @@ async def _repl_async(
                     console.print("  /clear        - Clear conversation history")
                     console.print("  /health       - Show health status")
                     console.print("  /stats        - Show session statistics")
+                    console.print("  /sessions     - List available sessions")
+                    console.print("  /session      - Show current session ID")
+                    console.print("  /resume ID    - Resume a session by ID")
                     console.print("  /help         - Show this help")
+                    continue
+
+                if user_input.lower() == "/session":
+                    console.print(f"[dim]Session: {engine.session_id or 'N/A'}[/dim]")
+                    continue
+
+                if user_input.lower() == "/sessions":
+                    caps = engine.session_capabilities
+                    if not caps.can_list:
+                        console.print(f"[yellow]{engine.current_provider} does not support session listing[/yellow]")
+                        continue
+                    sessions = await engine.list_sessions()
+                    if not sessions:
+                        console.print("[dim]No sessions found[/dim]")
+                    else:
+                        for s in sessions[:20]:
+                            title = f" — {s.title}" if s.title else ""
+                            console.print(f"  [cyan]{s.session_id[:12]}[/cyan]{title}")
+                        console.print(f"[dim]{len(sessions)} session(s)[/dim]")
+                    continue
+
+                if user_input.lower().startswith("/resume"):
+                    parts = user_input.split(maxsplit=1)
+                    if len(parts) < 2:
+                        console.print("[yellow]Usage: /resume <session-id>[/yellow]")
+                        continue
+                    sid = parts[1].strip()
+                    caps = engine.session_capabilities
+                    if not caps.can_load:
+                        console.print(f"[yellow]{engine.current_provider} does not support session resume[/yellow]")
+                        continue
+                    try:
+                        ok = await engine.resume_session(sid)
+                        if ok:
+                            console.print(f"[green]Resumed session: {sid}[/green]")
+                        else:
+                            console.print(f"[red]Failed to resume: {sid}[/red]")
+                    except Exception as e:
+                        console.print(f"[red]Error: {e}[/red]")
                     continue
 
                 if not user_input.strip():

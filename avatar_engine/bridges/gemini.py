@@ -51,7 +51,10 @@ except ImportError:
     )
 
 
-class GeminiBridge(BaseBridge):
+from ._acp_session import ACPSessionMixin
+
+
+class GeminiBridge(ACPSessionMixin, BaseBridge):
     """
     Gemini CLI bridge with hybrid ACP warm session / oneshot fallback.
 
@@ -80,6 +83,8 @@ class GeminiBridge(BaseBridge):
         generation_config: Optional[Dict[str, Any]] = None,
         env: Optional[Dict[str, str]] = None,
         mcp_servers: Optional[Dict[str, Any]] = None,
+        resume_session_id: Optional[str] = None,
+        continue_last: bool = False,
     ):
         """
         Args:
@@ -94,6 +99,8 @@ class GeminiBridge(BaseBridge):
                 - thinking_level: str ("minimal", "low", "medium", "high")
                 - include_thoughts: bool (show thinking in output)
                 - max_output_tokens: int (max response length)
+            resume_session_id: Resume a specific session by ID (via ACP load_session).
+            continue_last: Continue the most recent session (via ACP list+load).
         """
         super().__init__(
             executable=executable,
@@ -110,6 +117,8 @@ class GeminiBridge(BaseBridge):
         self.context_max_chars = context_max_chars
         self.acp_enabled = acp_enabled and _ACP_AVAILABLE
         self.generation_config = generation_config or {}
+        self.resume_session_id = resume_session_id
+        self.continue_last = continue_last
 
         # ACP state
         self._acp_conn = None
@@ -215,6 +224,7 @@ class GeminiBridge(BaseBridge):
             timeout=self.timeout,
         )
         logger.debug(f"ACP initialized: {init_resp}")
+        self._store_acp_capabilities(init_resp)
 
         # Step 2: Authenticate with OAuth (Google Pro account)
         # Note: Some Gemini CLI versions auto-detect cached credentials without
@@ -245,11 +255,15 @@ class GeminiBridge(BaseBridge):
                     f"If session fails, run 'gemini' interactively to refresh OAuth."
                 )
 
-        # Step 3: Create a new session
+        # Step 3: Create or resume session
+        mcp_servers_acp = self._build_mcp_servers_acp()
+        await self._create_or_resume_acp_session(mcp_servers_acp)
+
+    def _build_mcp_servers_acp(self) -> list:
+        """Convert MCP servers dict to ACP format."""
         mcp_servers_acp = []
         if self.mcp_servers:
             for name, srv in self.mcp_servers.items():
-                # Convert env dict to ACP's EnvVariable list format
                 env_dict = srv.get("env", {})
                 env_list = [{"name": k, "value": v} for k, v in env_dict.items()]
                 entry = {
@@ -259,17 +273,7 @@ class GeminiBridge(BaseBridge):
                     "env": env_list,  # List[EnvVariable] - required by ACP SDK
                 }
                 mcp_servers_acp.append(entry)
-
-        session_resp = await asyncio.wait_for(
-            self._acp_conn.new_session(
-                cwd=self.working_dir,
-                mcp_servers=mcp_servers_acp,
-            ),
-            timeout=self.timeout,
-        )
-        self._acp_session_id = session_resp.session_id
-        self.session_id = self._acp_session_id
-        self._set_state(BridgeState.READY)
+        return mcp_servers_acp
 
     async def _cleanup_acp(self) -> None:
         """Clean up ACP context manager and process."""
