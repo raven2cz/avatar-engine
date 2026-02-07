@@ -160,7 +160,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Streaming Avatar Example")
     parser.add_argument(
         "--provider", "-p",
-        choices=["gemini", "claude"],
+        choices=["gemini", "claude", "codex"],
         default="gemini",
         help="AI provider"
     )

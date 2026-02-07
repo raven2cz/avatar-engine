@@ -8,8 +8,10 @@ import click
 from rich.console import Console
 from rich.markdown import Markdown
 
+from ...config import AvatarConfig
 from ...engine import AvatarEngine
 from ...events import TextEvent, ToolEvent, ThinkingEvent
+from ...types import ProviderType
 
 console = Console()
 
@@ -26,7 +28,7 @@ console = Console()
     help="Inline MCP server: 'name:command arg1 arg2'",
 )
 @click.option("--thinking-level", type=click.Choice(["minimal", "low", "medium", "high"]))
-@click.option("--yolo", is_flag=True, help="Auto-approve tool calls (Gemini)")
+@click.option("--yolo", is_flag=True, help="Auto-approve tool calls (Gemini/Codex)")
 @click.option("--permission-mode", help="Permission mode (Claude)")
 @click.option("--max-turns", type=int, help="Max turns (Claude)")
 @click.option("--timeout", "-t", type=int, default=120, help="Request timeout")
@@ -51,12 +53,13 @@ def chat(
 
         avatar chat "What is 2+2?"
 
-        avatar chat -p claude "Write a haiku"
+        avatar -p claude chat "Write a haiku"
 
         avatar chat --json "Hello" | jq .content
     """
     provider = ctx.obj["provider"]
     config_path = ctx.obj.get("config")
+    provider_explicit = ctx.obj.get("provider_explicit", False)
     verbose = ctx.obj.get("verbose", False)
     debug = ctx.obj.get("debug", False)
 
@@ -68,6 +71,7 @@ def chat(
         provider=provider,
         model=model,
         config_path=config_path,
+        provider_explicit=provider_explicit,
         stream=stream,
         json_output=json_output,
         verbose=verbose,
@@ -86,6 +90,7 @@ async def _chat_async(
     provider: str,
     model: str,
     config_path: str,
+    provider_explicit: bool,
     stream: bool,
     json_output: bool,
     verbose: bool,
@@ -118,10 +123,21 @@ async def _chat_async(
             kwargs["permission_mode"] = permission_mode
         if max_turns:
             kwargs["max_turns"] = max_turns
+    elif provider == "codex":
+        if mcp_servers:
+            kwargs["mcp_servers"] = mcp_servers
+        if yolo:
+            kwargs["auto_approve"] = True
 
     # Create engine
     if config_path:
-        engine = AvatarEngine.from_config(config_path)
+        config = AvatarConfig.load(config_path)
+        # CLI flags override config file
+        if provider_explicit:
+            config.provider = ProviderType(provider)
+        if model:
+            config.model = model
+        engine = AvatarEngine(config=config)
     else:
         engine = AvatarEngine(provider=provider, model=model, **kwargs)
 

@@ -42,7 +42,7 @@ class AvatarEngine(EventEmitter):
     """
     Avatar Engine — AI assistant integration library.
 
-    Provides a unified interface to Claude Code and Gemini CLI
+    Provides a unified interface to Gemini CLI, Claude Code, and Codex CLI
     with event-driven architecture for GUI integration.
 
     Usage (async):
@@ -82,8 +82,8 @@ class AvatarEngine(EventEmitter):
         Initialize Avatar Engine.
 
         Args:
-            provider: AI provider ("gemini" or "claude")
-            model: Model name (e.g., "gemini-3-pro-preview", "claude-sonnet-4-5")
+            provider: AI provider ("gemini", "claude", or "codex")
+            model: Model name (e.g., "gemini-3-pro-preview", "claude-sonnet-4-5", "gpt-5.3-codex")
             working_dir: Working directory for the AI session
             timeout: Request timeout in seconds
             system_prompt: System prompt for the AI

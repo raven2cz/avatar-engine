@@ -17,7 +17,7 @@ export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 # Info
 echo ""
 echo "Avatar Engine ready!"
-echo "  Provider from config.yaml: $(grep '^provider:' config.yaml 2>/dev/null | awk '{print $2}')"
+echo "  Provider from .avatar.yaml: $(grep '^provider:' .avatar.yaml 2>/dev/null | awk '{print $2}')"
 echo ""
 echo "Run examples:"
 echo "  python examples.py basic"

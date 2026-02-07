@@ -65,7 +65,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Basic Avatar Engine chat example")
     parser.add_argument(
         "--provider", "-p",
-        choices=["gemini", "claude"],
+        choices=["gemini", "claude", "codex"],
         default="gemini",
         help="AI provider to use"
     )
