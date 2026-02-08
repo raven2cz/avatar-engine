@@ -470,11 +470,13 @@ class TestSettingsJsonConfig:
             (bridge._sandbox.root / "gemini-settings.json").read_text()
         )
 
-    def test_acp_mode_no_custom_aliases(self, tmp_path):
-        """ACP mode should NOT generate customAliases in sandbox settings.
+    def test_acp_mode_no_settings_override(self, tmp_path):
+        """ACP mode should NOT write settings that override gemini-cli defaults.
 
-        This is critical because customAliases causes "Internal error" in
-        Gemini CLI's ACP implementation.
+        ACP mode relies on gemini-cli's built-in alias chain (auto-gemini-3
+        → gemini-3-pro-preview) which carries proper generateContentConfig.
+        Setting model.name or customAliases as system settings (highest
+        priority) bypasses this chain and causes "Internal error".
         """
         bridge = GeminiBridge(
             model="gemini-3-pro-preview",
@@ -483,17 +485,14 @@ class TestSettingsJsonConfig:
             working_dir=str(tmp_path),
         )
         bridge._setup_config_files()
-        settings = self._read_sandbox_settings(bridge)
 
-        # CRITICAL: customAliases must NOT be present in ACP mode
-        assert "modelConfigs" not in settings, (
-            "ACP mode must not have modelConfigs with customAliases - "
-            "this causes 'Internal error' in Gemini CLI"
+        # ACP mode: no settings file written (let gemini-cli use defaults)
+        settings_path = bridge._sandbox.root / "gemini-settings.json"
+        assert not settings_path.exists(), (
+            "ACP mode should not write settings.json — gemini-cli's default "
+            "alias chain provides proper model config"
         )
-
-        # Model should still be set
-        assert settings.get("model", {}).get("name") == "gemini-3-pro-preview"
-        assert settings.get("previewFeatures") is True
+        assert bridge._gemini_settings_path is None
 
         # Zero Footprint: no files in working_dir
         assert not (tmp_path / ".gemini").exists()
@@ -524,30 +523,40 @@ class TestSettingsJsonConfig:
         assert gen_cfg.get("temperature") == 0.7
         bridge._sandbox.cleanup()
 
-    def test_acp_mode_still_sets_model_name(self, tmp_path):
-        """ACP mode should still set model name in sandbox settings."""
+    def test_acp_mode_does_not_set_model_name(self, tmp_path):
+        """ACP mode should NOT set model.name in settings.
+
+        Gemini-cli's default alias chain (auto-gemini-3 → gemini-3-pro-preview)
+        carries proper generateContentConfig. Overriding model.name as system
+        settings bypasses this chain.
+        """
         bridge = GeminiBridge(
             model="gemini-3-pro-preview",
             acp_enabled=True,
             working_dir=str(tmp_path),
         )
         bridge._setup_config_files()
-        settings = self._read_sandbox_settings(bridge)
 
-        assert settings.get("model", {}).get("name") == "gemini-3-pro-preview"
+        # No settings file in ACP mode
+        assert bridge._gemini_settings_path is None
         bridge._sandbox.cleanup()
 
-    def test_acp_mode_sets_preview_features(self, tmp_path):
-        """ACP mode should set previewFeatures for Gemini 3 models."""
+    def test_acp_mode_no_preview_features(self, tmp_path):
+        """ACP mode no longer sets previewFeatures (removed from gemini-cli).
+
+        previewFeatures was removed in gemini-cli commit 61d92c4a2
+        ("Remove previewFeatures and default to Gemini 3"). Gemini 3 is now
+        the default and no flag is needed.
+        """
         bridge = GeminiBridge(
             model="gemini-3-pro-preview",
             acp_enabled=True,
             working_dir=str(tmp_path),
         )
         bridge._setup_config_files()
-        settings = self._read_sandbox_settings(bridge)
 
-        assert settings.get("previewFeatures") is True
+        # No settings file in ACP mode
+        assert bridge._gemini_settings_path is None
         bridge._sandbox.cleanup()
 
     def test_oneshot_mode_includes_thinking_config(self, tmp_path):

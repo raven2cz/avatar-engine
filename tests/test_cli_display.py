@@ -337,12 +337,13 @@ class TestDisplayManager:
         assert dm.state == EngineState.THINKING
         assert dm.thinking.active is True
 
-    def test_thinking_complete_resets_state(self):
+    def test_thinking_complete_transitions_to_responding(self):
+        """After thinking completes, state should be RESPONDING (waiting for text)."""
         emitter = self._make_emitter()
         dm = DisplayManager(emitter, console=Console(file=MagicMock()))
         emitter.emit(ThinkingEvent(subject="test"))
         emitter.emit(ThinkingEvent(is_complete=True))
-        assert dm.state == EngineState.IDLE
+        assert dm.state == EngineState.RESPONDING
         assert dm.thinking.active is False
 
     def test_tool_started_changes_state(self):

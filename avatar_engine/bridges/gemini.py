@@ -40,8 +40,22 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _ACP_AVAILABLE = False
 try:
-    from acp import spawn_agent_process, text_block
+    from acp import PROTOCOL_VERSION, connect_to_agent, text_block
     from acp.interfaces import Client as ACPClient
+    from acp.schema import (
+        AgentMessageChunk,
+        AgentThoughtChunk,
+        AllowedOutcome,
+        ClientCapabilities,
+        DeniedOutcome,
+        FileSystemCapability,
+        PermissionOption,
+        RequestPermissionResponse,
+        TextContentBlock,
+        ToolCall,
+        ToolCallStart,
+        ToolCallProgress,
+    )
 
     _ACP_AVAILABLE = True
 except ImportError:
@@ -124,7 +138,6 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         # ACP state
         self._acp_conn = None
         self._acp_proc = None
-        self._acp_ctx = None
         self._acp_session_id: Optional[str] = None
         self._acp_mode = False  # True = running in ACP warm session
 
@@ -132,6 +145,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         self._acp_events: List[Dict[str, Any]] = []
         self._acp_text_buffer: str = ""
         self._acp_buffer_lock = threading.Lock()  # RC-3/4: sync callback vs main thread
+        self._was_thinking = False  # Track thinking→text transition for is_complete
 
         # Provider capabilities
         self._provider_capabilities.thinking_supported = True
@@ -196,7 +210,12 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
     # ======================================================================
 
     async def _start_acp(self) -> None:
-        """Spawn Gemini CLI in ACP mode, authenticate with OAuth, create session."""
+        """Spawn Gemini CLI in ACP mode via connect_to_agent (official SDK API).
+
+        Uses asyncio.create_subprocess_exec + connect_to_agent instead of the
+        deprecated spawn_agent_process. Passes ClientCapabilities so gemini-cli
+        knows our client supports file I/O and terminal operations.
+        """
         self._set_state(BridgeState.WARMING_UP)
 
         # Verify Gemini CLI is available
@@ -207,15 +226,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 "Install with: npm install -g @google/gemini-cli"
             )
 
-        # Build ACP client that handles permission requests
-        client = _AvatarACPClient(
-            auto_approve=(self.approval_mode == "yolo"),
-            on_update=self._handle_acp_update,
-        )
-
         # Build command args
-        # Note: Don't pass --model for ACP mode - model is set via .gemini/settings.json
-        # Passing both causes "Internal error" in Gemini CLI ACP implementation
         cmd_args = [gemini_bin, "--experimental-acp"]
         if self.approval_mode == "yolo":
             cmd_args.append("--yolo")
@@ -224,51 +235,45 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
 
         logger.info(f"Spawning ACP: {' '.join(cmd_args[:6])}…")
 
-        # spawn_agent_process is an async context manager — we enter it
-        # manually and store the context so we can exit it later in stop()
-        self._acp_ctx = spawn_agent_process(
-            client, *cmd_args, cwd=self.working_dir, env=env
+        # Spawn gemini process with stdio pipes
+        self._acp_proc = await asyncio.create_subprocess_exec(
+            *cmd_args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=None,
+            cwd=self.working_dir,
+            env=env,
         )
-        self._acp_conn, self._acp_proc = await self._acp_ctx.__aenter__()
 
-        # Step 1: Initialize protocol
+        # Build ACP client that handles permission requests and session updates
+        client = _AvatarACPClient(
+            auto_approve=(self.approval_mode == "yolo"),
+            on_update=self._handle_acp_update,
+        )
+
+        # Connect to agent via official SDK API
+        self._acp_conn = connect_to_agent(
+            client, self._acp_proc.stdin, self._acp_proc.stdout
+        )
+
+        # Step 1: Initialize protocol with client capabilities
         init_resp = await asyncio.wait_for(
-            self._acp_conn.initialize(protocol_version=1),
+            self._acp_conn.initialize(
+                protocol_version=PROTOCOL_VERSION,
+                client_capabilities=ClientCapabilities(
+                    fs=FileSystemCapability(
+                        read_text_file=True,
+                        write_text_file=True,
+                    ),
+                    terminal=True,
+                ),
+            ),
             timeout=self.timeout,
         )
-        logger.debug(f"ACP initialized: {init_resp}")
+        logger.debug(f"ACP initialized: protocol v{init_resp.protocol_version}")
         self._store_acp_capabilities(init_resp)
 
-        # Step 2: Authenticate with OAuth (Google Pro account)
-        # Note: Some Gemini CLI versions auto-detect cached credentials without
-        # explicit authenticate() call. PR #9410 fixed credential caching.
-        auth_success = False
-        try:
-            auth_resp = await asyncio.wait_for(
-                self._acp_conn.authenticate(method_id=self.auth_method),
-                timeout=self.timeout,
-            )
-            auth_success = True
-            logger.info(f"ACP authenticated via: {self.auth_method}")
-        except asyncio.TimeoutError:
-            # Timeout is a real problem - don't silently continue
-            logger.error(f"ACP authentication timed out after {self.timeout}s")
-            raise RuntimeError(
-                f"ACP authentication timed out. Ensure you have valid credentials "
-                f"cached (run 'gemini' interactively first) or check your network."
-            )
-        except Exception as exc:
-            # Other errors might be OK (e.g., method not supported, auto-detect)
-            exc_str = str(exc).lower()
-            if "not supported" in exc_str or "not implemented" in exc_str:
-                logger.info(f"ACP authenticate not required (auto-detect mode)")
-            else:
-                logger.warning(
-                    f"ACP authenticate issue: {exc} — continuing with cached creds. "
-                    f"If session fails, run 'gemini' interactively to refresh OAuth."
-                )
-
-        # Step 3: Create or resume session
+        # Step 2: Create or resume session (auth handled by gemini-cli internally)
         mcp_servers_acp = self._build_mcp_servers_acp()
         await self._create_or_resume_acp_session(mcp_servers_acp)
 
@@ -289,14 +294,43 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         return mcp_servers_acp
 
     async def _cleanup_acp(self) -> None:
-        """Clean up ACP context manager and process."""
-        if self._acp_ctx:
+        """Clean up ACP connection and terminate process.
+
+        Closes subprocess pipes and transport explicitly to prevent
+        'Event loop is closed' errors from BaseSubprocessTransport.__del__.
+        """
+        if self._acp_conn:
             try:
-                await self._acp_ctx.__aexit__(None, None, None)
+                await self._acp_conn.close()
             except Exception as exc:
-                logger.debug(f"ACP cleanup: {exc}")
-            self._acp_ctx = None
-        self._acp_conn = None
+                logger.debug(f"ACP conn close: {exc}")
+            self._acp_conn = None
+        if self._acp_proc:
+            # Close stdin to signal EOF to child process
+            if self._acp_proc.stdin:
+                try:
+                    self._acp_proc.stdin.close()
+                except Exception:
+                    pass
+            if self._acp_proc.returncode is None:
+                try:
+                    self._acp_proc.terminate()
+                    await asyncio.wait_for(self._acp_proc.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    self._acp_proc.kill()
+                    await self._acp_proc.wait()
+                except Exception as exc:
+                    logger.debug(f"ACP process cleanup: {exc}")
+            # Close the subprocess transport so pipe transports are cleaned up
+            # while the event loop is still running
+            try:
+                transport = getattr(self._acp_proc, "_transport", None)
+                if transport and hasattr(transport, "close"):
+                    transport.close()
+                # Give event loop a chance to process pipe close callbacks
+                await asyncio.sleep(0)
+            except Exception:
+                pass
         self._acp_proc = None
         self._acp_session_id = None
 
@@ -304,12 +338,77 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         """Callback for ACP session/update notifications (streaming text + thinking).
 
         Called from ACP SDK thread — all buffer writes protected by lock (RC-3/4).
+        Wrapped in try-except so exceptions don't propagate into ACP SDK internals.
         """
+        try:
+            self._handle_acp_update_inner(session_id, update)
+        except Exception as exc:
+            logger.debug(f"Error in ACP update handler: {exc}", exc_info=True)
+
+    def _handle_acp_update_inner(self, session_id: str, update: Any) -> None:
+        """Inner handler for ACP updates — uses typed SDK objects.
+
+        The ACP SDK delivers typed updates:
+        - AgentThoughtChunk → thinking event (spinner, NOT printed)
+        - AgentMessageChunk → response text (printed to output)
+        - ToolCallStart/ToolCallProgress → tool events
+        - Fallback: legacy attribute-based extraction
+        """
+        # --- Typed dispatch (ACP SDK 0.8+) ---
+        if _ACP_AVAILABLE and isinstance(update, AgentThoughtChunk):
+            thinking = _text_from_content(update.content)
+            if thinking:
+                self._was_thinking = True
+                thinking_event = {
+                    "type": "thinking",
+                    "session_id": session_id,
+                    "thought": thinking,
+                }
+                with self._acp_buffer_lock:
+                    self._acp_events.append(thinking_event)
+                if self._on_event:
+                    self._on_event(thinking_event)
+            return
+
+        if _ACP_AVAILABLE and isinstance(update, AgentMessageChunk):
+            text = _text_from_content(update.content)
+            if text:
+                # Thinking→text transition: emit is_complete so display stops spinner
+                if self._was_thinking:
+                    self._was_thinking = False
+                    complete_event = {
+                        "type": "thinking",
+                        "session_id": session_id,
+                        "thought": "",
+                        "is_complete": True,
+                    }
+                    if self._on_event:
+                        self._on_event(complete_event)
+
+                event = {"type": "acp_update", "session_id": session_id, "text": text}
+                with self._acp_buffer_lock:
+                    self._acp_text_buffer += text
+                    self._acp_events.append(event)
+                if self._on_output:
+                    self._on_output(text)
+                if self._on_event:
+                    self._on_event(event)
+            return
+
+        if _ACP_AVAILABLE and isinstance(update, (ToolCallStart, ToolCallProgress)):
+            tool_event = {"type": "tool", "session_id": session_id, "raw": str(update)}
+            with self._acp_buffer_lock:
+                self._acp_events.append(tool_event)
+            if self._on_event:
+                self._on_event(tool_event)
+            return
+
+        # --- Fallback: legacy attribute-based extraction ---
         event = {"type": "acp_update", "session_id": session_id, "raw": str(update)}
 
-        # Extract thinking content from update (Gemini 3 with include_thoughts=True)
         thinking = _extract_thinking_from_update(update)
         if thinking:
+            self._was_thinking = True
             thinking_event = {
                 "type": "thinking",
                 "session_id": session_id,
@@ -320,9 +419,19 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             if self._on_event:
                 self._on_event(thinking_event)
 
-        # Extract text content from update
-        text = _extract_text_from_update(update)
+        text = None if thinking else _extract_text_from_update(update)
         if text:
+            if self._was_thinking:
+                self._was_thinking = False
+                complete_event = {
+                    "type": "thinking",
+                    "session_id": session_id,
+                    "thought": "",
+                    "is_complete": True,
+                }
+                if self._on_event:
+                    self._on_event(complete_event)
+
             event["text"] = text
             with self._acp_buffer_lock:
                 self._acp_text_buffer += text
@@ -460,12 +569,17 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
 
         self._on_output = _stream_callback
 
+        prompt_error: Optional[Exception] = None
+
         async def _run_prompt():
+            nonlocal prompt_error
             try:
                 await self._acp_conn.prompt(
                     session_id=self._acp_session_id,
                     prompt=[text_block(effective_prompt)],
                 )
+            except Exception as exc:
+                prompt_error = exc
             finally:
                 await queue.put(None)  # Signal completion
 
@@ -479,6 +593,15 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                     break
                 full_text += chunk
                 yield chunk
+
+            # Check if ACP prompt failed (error was swallowed by _run_prompt)
+            if prompt_error is not None:
+                logger.error(f"ACP stream failed: {prompt_error}", exc_info=prompt_error)
+                self._set_state(BridgeState.ERROR)
+                if self.acp_enabled and not full_text:
+                    logger.warning("ACP error — falling back to oneshot for next request")
+                    self._acp_mode = False
+                raise prompt_error
 
             with self._history_lock:  # RC-9
                 self.history.append(Message(role="user", content=prompt))
@@ -511,12 +634,14 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
 
         settings: Dict[str, Any] = {}
 
-        # Model name (required for proper model selection)
-        if self.model:
+        # Model name — only set for oneshot mode.
+        # ACP mode: let gemini-cli use its default alias chain ("auto-gemini-3"
+        # → "gemini-3-pro-preview") which carries proper generateContentConfig
+        # (thinkingConfig, temperature, etc.). Setting model.name as system
+        # settings (highest priority) bypasses this chain and can cause
+        # "Internal error" from the API.
+        if not self.acp_enabled and self.model:
             settings["model"] = {"name": self.model}
-
-        # Enable preview features (required for Gemini 3 models)
-        settings["previewFeatures"] = True
 
         # MCP servers in settings (oneshot only — ACP passes via protocol)
         if not self.acp_enabled and self.mcp_servers:
@@ -543,7 +668,11 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                     }
                 }
 
-        self._gemini_settings_path = self._sandbox.write_gemini_settings(settings)
+        # Only write settings file if there's something to write
+        if settings:
+            self._gemini_settings_path = self._sandbox.write_gemini_settings(settings)
+        else:
+            self._gemini_settings_path = None
 
         # System prompt → temp file for GEMINI_SYSTEM_MD env var
         if self.system_prompt:
@@ -718,23 +847,41 @@ if _ACP_AVAILABLE:
             self._on_update = on_update
 
         async def request_permission(
-            self, options, session_id, tool_call, **kwargs
-        ):
+            self,
+            options: list,
+            session_id: str,
+            tool_call: "ToolCall",
+            **kwargs,
+        ) -> "RequestPermissionResponse":
             """Handle tool permission requests from Gemini CLI."""
             if self._auto_approve:
                 logger.debug(
                     f"Auto-approving tool call in session {session_id}"
                 )
-                # Return the first available option (typically "approve")
-                if hasattr(options, "options") and options.options:
-                    first_option = options.options[0]
-                    return {"outcome": first_option}
-                return {"outcome": {"outcome": "approved"}}
+                # Pick allow_once/allow_always, fallback to first option
+                for opt in options:
+                    if getattr(opt, "kind", "") in {"allow_once", "allow_always"}:
+                        return RequestPermissionResponse(
+                            outcome=AllowedOutcome(
+                                option_id=opt.option_id, outcome="selected"
+                            )
+                        )
+                if options:
+                    return RequestPermissionResponse(
+                        outcome=AllowedOutcome(
+                            option_id=options[0].option_id, outcome="selected"
+                        )
+                    )
+                return RequestPermissionResponse(
+                    outcome=DeniedOutcome(outcome="cancelled")
+                )
             else:
                 logger.warning(
                     f"Tool call denied (auto_approve=False): {tool_call}"
                 )
-                return {"outcome": {"outcome": "cancelled"}}
+                return RequestPermissionResponse(
+                    outcome=DeniedOutcome(outcome="cancelled")
+                )
 
         async def session_update(self, session_id, update, **kwargs):
             """Handle streaming session updates from Gemini CLI."""
@@ -752,6 +899,22 @@ else:
 # ==========================================================================
 # Helpers for extracting text from ACP response objects
 # ==========================================================================
+
+
+def _text_from_content(content: Any) -> Optional[str]:
+    """Extract text from a typed ACP content block (SDK 0.8+).
+
+    Handles TextContentBlock and plain strings.
+    """
+    if content is None:
+        return None
+    if _ACP_AVAILABLE and isinstance(content, TextContentBlock):
+        return content.text or None
+    if isinstance(content, str):
+        return content or None
+    if hasattr(content, "text"):
+        return content.text or None
+    return None
 
 
 def _extract_thinking_from_update(update: Any) -> Optional[str]:
@@ -804,19 +967,39 @@ def _extract_thinking_from_update(update: Any) -> Optional[str]:
     return None
 
 
+def _is_thinking_block(block: Any) -> bool:
+    """Return True if block is a thinking/reasoning content block."""
+    if hasattr(block, "type") and getattr(block, "type", None) == "thinking":
+        return True
+    if isinstance(block, dict) and block.get("type") == "thinking":
+        return True
+    # Only treat as thinking if .thinking has actual content (not None/False/"")
+    if hasattr(block, "thinking") and block.thinking:
+        return True
+    return False
+
+
 def _extract_text_from_update(update: Any) -> Optional[str]:
-    """Extract text content from an ACP session/update notification."""
+    """Extract text content from an ACP session/update notification.
+
+    Skips thinking/reasoning blocks — those are handled by
+    ``_extract_thinking_from_update`` and emitted as ThinkingEvents.
+    """
     try:
         # Direct content block (e.g., update.content = TextContentBlock)
         if hasattr(update, "content"):
             content = update.content
-            # Single TextContentBlock
-            if hasattr(content, "text"):
-                return content.text
-            # List of content blocks
+            # Single TextContentBlock (not a list)
+            if not isinstance(content, list) and hasattr(content, "text"):
+                if not _is_thinking_block(content):
+                    return content.text
+                return None
+            # List of content blocks — skip thinking blocks
             if isinstance(content, list):
                 parts = []
                 for block in content:
+                    if _is_thinking_block(block):
+                        continue
                     if hasattr(block, "text"):
                         parts.append(block.text)
                 return "".join(parts) if parts else None
@@ -827,6 +1010,8 @@ def _extract_text_from_update(update: Any) -> Optional[str]:
             if hasattr(msg, "content") and msg.content:
                 parts = []
                 for block in msg.content:
+                    if _is_thinking_block(block):
+                        continue
                     if hasattr(block, "text"):
                         parts.append(block.text)
                     elif isinstance(block, dict) and "text" in block:
@@ -839,8 +1024,11 @@ def _extract_text_from_update(update: Any) -> Optional[str]:
             content = msg.get("content", [])
             parts = []
             for block in content:
-                if isinstance(block, dict) and "text" in block:
-                    parts.append(block["text"])
+                if isinstance(block, dict):
+                    if block.get("type") == "thinking":
+                        continue
+                    if "text" in block:
+                        parts.append(block["text"])
             return "".join(parts) if parts else None
 
     except Exception as exc:
@@ -849,18 +1037,25 @@ def _extract_text_from_update(update: Any) -> Optional[str]:
 
 
 def _extract_text_from_result(result: Any) -> str:
-    """Extract text content from an ACP prompt result (PromptResponse)."""
+    """Extract text content from an ACP prompt result (PromptResponse).
+
+    Skips thinking/reasoning blocks.
+    """
     try:
         # PromptResponse may have content blocks
         if hasattr(result, "content"):
             content = result.content
             # Single TextContentBlock
-            if hasattr(content, "text"):
-                return content.text
-            # List of content blocks
+            if not isinstance(content, list) and hasattr(content, "text"):
+                if not _is_thinking_block(content):
+                    return content.text
+                return ""
+            # List of content blocks — skip thinking
             if isinstance(content, list):
                 parts = []
                 for block in content:
+                    if _is_thinking_block(block):
+                        continue
                     if hasattr(block, "text"):
                         parts.append(block.text)
                     elif isinstance(block, dict) and "text" in block:

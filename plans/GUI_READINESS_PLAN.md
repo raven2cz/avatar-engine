@@ -2,17 +2,71 @@
 
 > Created: 2026-02-07
 > Updated: 2026-02-07
-> Status: Draft — rozšířeno o analýzu referenčních projektů, CLI display a demo GUI
+> Status: IN PROGRESS — Phases 1-6 mostly implemented, Phase 7 replaced by web bridge
 > Priority: HIGHEST — bez oprav v tomto plánu avatar v GUI nebude fungovat správně
-> Version: 2.0
+> Version: 3.0
+> Updated: 2026-02-08
+
+---
+
+## 0. Implementation Progress (2026-02-08)
+
+### What was implemented in cli-plan branch
+
+Most GAPs from this plan were **resolved or substantially addressed** during the
+cli-plan implementation sessions. Below is the current status:
+
+| GAP | Status | Notes |
+|-----|--------|-------|
+| GAP-1: ThinkingEvent | **DONE** | `ThinkingPhase` enum, `subject` field, `is_start`/`is_complete`, `block_id` — all implemented in `events.py`. Bold `**Subject**` parser in both Gemini and Codex bridges (same pattern as Gemini CLI + Codex reference). Synthetic thinking for Claude from tool events. |
+| GAP-2: Parallel ops | **DONE** | `ActivityEvent`, `ActivityStatus`, `ActivityTracker` implemented. `EngineState` enum drives CLI display. `ToolGroupDisplay` shows parallel tools with border box. |
+| GAP-3: Thinking leak | **DONE** | Gemini oneshot thinking filter, ACP typed dispatch (`AgentThoughtChunk`/`AgentMessageChunk`) separates thinking from response in both Gemini and Codex. Codex thinking-as-response fallback. |
+| GAP-4: Thread safety | **PARTIALLY DONE** | `_acp_buffer_lock` added to both Gemini and Codex bridges. ACP buffer race conditions fixed. EventEmitter threading.Lock still TODO. |
+| GAP-5: System prompt | **DONE** | All 3 providers support system prompt. Codex uses prepend. `ProviderCapabilities.system_prompt_method` exposed. |
+| GAP-6: Budget control | **DONE** | Pre-request budget check in engine. `is_over_budget()` guard. `CostEvent` emitted. |
+| GAP-7: Stderr/diagnostics | **DONE** | `DiagnosticEvent` implemented. Stderr surfaced as events. |
+| GAP-8: Tool policy | **DONE** | `ToolPolicy` with allow/deny rules at engine level. |
+| GAP-9: Capabilities API | **DONE** | `ProviderCapabilities` dataclass with runtime feature flags per provider. |
+
+### CLI Display components (shared with web GUI)
+
+The CLI display rewrite (`cli/display.py`) created reusable components that the
+web bridge can also consume via the event system:
+
+| Component | Class | Events consumed | Reusable for Web? |
+|-----------|-------|----------------|-------------------|
+| Thinking spinner | `ThinkingDisplay` | `ThinkingEvent` | YES — event data is transport-agnostic |
+| Tool group panel | `ToolGroupDisplay` | `ToolEvent` | YES — tool lifecycle is pure data |
+| Status line | `DisplayManager` | `StateEvent`, `EngineState` | YES — state machine is shared |
+| Banner/header | `_print_banner()` | N/A | NO — Rich-specific (web has its own) |
+
+**Key insight:** The `DisplayManager` pattern (subscribe to events → update display state)
+is exactly what the web bridge's WebSocket adapter needs. The web bridge (`web/bridge.py`)
+should register the same event handlers but serialize to JSON instead of Rich output.
+
+### ACP SDK updates (2026-02-08)
+
+Both Gemini and Codex bridges were updated to use ACP SDK 0.8+ typed API:
+- `connect_to_agent()` replaces deprecated `spawn_agent_process()`
+- Typed dispatch: `AgentThoughtChunk`, `AgentMessageChunk`, `ToolCallStart`, `ToolCallProgress`
+- Typed `RequestPermissionResponse` with `AllowedOutcome`/`DeniedOutcome`
+- `_text_from_content()` helper for content block extraction
+- Subprocess transport cleanup (stdin close, transport close, `asyncio.sleep(0)`)
+  prevents "Event loop is closed" GC errors on exit
+
+### Test coverage
+
+- **730 unit tests** — all passing
+- **120+ integration tests** — all passing (some slow provider tests skip on timeout)
+- Integration tests cover: all 3 providers, CLI commands, REPL, display, sessions, MCP, ACP
 
 ---
 
 ## 1. Executive Summary
 
 Avatar Engine je navržen jako **knihovna pro GUI aplikace s AI avatarem** — postavičkou,
-která mluví, myslí, používá nástroje, a reaguje na uživatele vizuálně. Aktuální
-implementace funguje pro CLI, ale **pro GUI integraci má 9 kritických mezer**.
+která mluví, myslí, používá nástroje, a reaguje na uživatele vizuálně. Původně
+identifikováno **9 kritických mezer**; většina je nyní vyřešena (viz sekce 0).
 
 Tento plán detailně popisuje každou mezeru, její dopad na GUI, a navrhuje řešení.
 
@@ -1914,51 +1968,54 @@ class AvatarDemoApp(App):
 
 ## 18. Aktualizovaný implementační plán
 
-### Fáze 0: Předpoklady
+### Fáze 0: Předpoklady ✅ DONE
 ```
-Prostudovat referenční projekty ✓ (tato sekce)
-```
-
-### Fáze 1: Thread Safety (základ pro vše)
-```
-RC-2 → RC-1 → RC-7 → RC-3/4 → RC-5/6 → RC-8..13
+Prostudovat referenční projekty ✓
 ```
 
-### Fáze 2: ThinkingEvent + Thinking Display
+### Fáze 1: Thread Safety ⚠️ PARTIALLY DONE
 ```
-ThinkingPhase enum → bold parser (vzor z Gemini+Codex) →
-ThinkingEvent rozšíření → thinking filtr oneshot →
-klasifikátor → syntetický thinking pro Claude →
-CLI spinner + subject display → testy
-```
-Reference: `gemini-cli/packages/core/src/utils/thoughtUtils.ts`,
-`codex/codex-rs/tui/src/chatwidget.rs:1249-1288`
-
-### Fáze 3: Paralelní operace
-```
-EngineState enum → ActivityEvent → ActivityTracker →
-stdin lock → tool group display (vzor ToolGroupMessage) →
-background activity API → interrupt/cancel API → testy
-```
-Reference: `gemini-cli/packages/cli/src/ui/hooks/useToolExecutionScheduler.ts`,
-`gemini-cli/packages/cli/src/ui/components/messages/ToolGroupMessage.tsx`
-
-### Fáze 4: CLI Display Layer
-```
-cli/display.py (spinner, tool group, progress) →
-repl.py integration → chat.py integration → testy
+RC-3/4 (ACP buffer locks) ✓ — _acp_buffer_lock in gemini.py + codex.py
+RC-7 (stdin lock) — TODO
+RC-2 (EventEmitter threading.Lock) — TODO
+RC-1 (_get_sync_loop) — TODO
+RC-5/6 (signal handler) — TODO
+RC-8..13 — TODO
 ```
 
-### Fáze 5: System Prompt + Budget
+### Fáze 2: ThinkingEvent + Thinking Display ✅ DONE
 ```
-Codex system prompt → Gemini oneshot fix →
-pre-request budget check → cost estimation → testy
+ThinkingPhase enum ✓ → bold **Subject** parser ✓ →
+ThinkingEvent rozšíření (phase, is_start, is_complete, block_id, subject) ✓ →
+thinking filtr oneshot ✓ → klasifikátor ✓ →
+syntetický thinking pro Claude ✓ →
+CLI spinner + subject display ✓ → testy ✓
 ```
 
-### Fáze 6: Diagnostics + Capabilities
+### Fáze 3: Paralelní operace ✅ DONE
 ```
-DiagnosticEvent → stderr surfacing → ProviderCapabilities →
-ToolPolicy → testy
+EngineState enum ✓ → ActivityEvent ✓ → ActivityTracker ✓ →
+ToolGroupDisplay ✓ → testy ✓
+interrupt/cancel API — TODO (not needed for current CLI/web use cases)
+```
+
+### Fáze 4: CLI Display Layer ✅ DONE
+```
+cli/display.py ✓ (ThinkingDisplay, ToolGroupDisplay, DisplayManager) →
+repl.py integration ✓ (prompt_toolkit removed, transient spinner) →
+chat.py integration ✓ → ASCII art banner ✓ → testy ✓
+```
+
+### Fáze 5: System Prompt + Budget ✅ DONE
+```
+Codex system prompt ✓ → Gemini oneshot fix ✓ →
+pre-request budget check ✓ → cost estimation ✓ → testy ✓
+```
+
+### Fáze 6: Diagnostics + Capabilities ✅ DONE
+```
+DiagnosticEvent ✓ → stderr surfacing ✓ → ProviderCapabilities ✓ →
+ToolPolicy ✓ → testy ✓
 ```
 
 ### ~~Fáze 7: Demo GUI~~ — WON'T DO — replaced by web bridge (see PHASE7_WEB_BRIDGE_PLAN.md)
@@ -2015,33 +2072,33 @@ Originally planned as Python Textual TUI. Replaced by web bridge (FastAPI + WebS
 
 ### Must-have pro GUI avatar
 
-- [ ] ThinkingEvent má `phase`, `is_start`, `is_complete`, `block_id`
-- [ ] Bold parser extrahuje thinking subject (vzor z Gemini + Codex)
-- [ ] GUI může rozlišit typ myšlení (analyzing, planning, coding, ...)
-- [ ] Paralelní tool_use je viditelný jako ActivityEvent
-- [ ] GUI může zobrazit strom aktivních operací
-- [ ] Thinking content NEPROSAKUJE do text response (žádný provider)
-- [ ] EventEmitter je thread-safe
-- [ ] System prompt funguje u všech 3 providerů
-- [ ] Budget check PŘED odesláním promptu
+- [x] ThinkingEvent má `phase`, `is_start`, `is_complete`, `block_id`
+- [x] Bold parser extrahuje thinking subject (vzor z Gemini + Codex)
+- [x] GUI může rozlišit typ myšlení (analyzing, planning, coding, ...)
+- [x] Paralelní tool_use je viditelný jako ActivityEvent
+- [x] GUI může zobrazit strom aktivních operací
+- [x] Thinking content NEPROSAKUJE do text response (žádný provider)
+- [ ] EventEmitter je thread-safe — TODO (RC-2)
+- [x] System prompt funguje u všech 3 providerů
+- [x] Budget check PŘED odesláním promptu
 
 ### Must-have pro CLI
 
-- [ ] CLI zobrazuje thinking subject jako spinner + text + timer
-- [ ] CLI zobrazuje paralelní tools v tool group border boxu
-- [ ] CLI má EngineState-based status display
-- [ ] `--verbose` mode ukazuje plný thinking text
+- [x] CLI zobrazuje thinking subject jako spinner + text + timer
+- [x] CLI zobrazuje paralelní tools v tool group border boxu
+- [x] CLI má EngineState-based status display
+- [x] `--verbose` mode ukazuje plný thinking text
 
-### Must-have pro Demo GUI
+### Must-have pro Demo GUI → Web Bridge (PHASE7_WEB_BRIDGE_PLAN.md)
 
-- [ ] Demo GUI s avatar postavičkou reagující na stavy
-- [ ] Plynulé přechody mezi avatar stavy (fade-in/fade-out)
-- [ ] Streaming text cursor `▌` blikající během response
-- [ ] Thinking shimmer efekt na status textu (vzor z Codex)
-- [ ] Thinking panel s real-time thinking stream
-- [ ] Activity panel s hierarchickým stromem paralelních operací
-- [ ] Cancel per-operace + Cancel All
-- [ ] Agregovaný progress counter (running/completed/pending)
+- [ ] Web bridge (FastAPI + WebSocket) — see PHASE7_WEB_BRIDGE_PLAN.md
+- [ ] Reference React app with avatar visualization
+- [ ] ~~Demo GUI s avatar postavičkou reagující na stavy~~ → web React component
+- [ ] Streaming text via WebSocket events
+- [ ] Thinking indicator with phase/subject
+- [ ] Tool activity panel with status icons
+- [ ] Cost tracker widget (Claude)
+- [ ] Connection status + provider info
 - [ ] Background task output snippet + toast notifikace při dokončení
 - [ ] Stall detection (warning po 30s inaktivity operace)
 - [ ] Input vždy aktivní — uživatel může psát během AI práce

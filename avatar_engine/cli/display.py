@@ -9,6 +9,9 @@ from rich.panel import Panel
 from rich.text import Text
 
 from ..events import (
+    ActivityEvent,
+    ActivityStatus,
+    DiagnosticEvent,
     EngineState,
     ErrorEvent,
     EventEmitter,
@@ -20,11 +23,16 @@ from ..events import (
 
 # Status icons per activity/tool state
 STATUS_ICONS = {
-    "pending": "\u23f3",      # hourglass
-    "running": "\u280b",      # braille spinner frame
-    "completed": "\u2713",    # checkmark
-    "failed": "\u2717",       # cross
-    "cancelled": "\u2298",    # circled slash
+    ActivityStatus.PENDING: "\u23f3",     # hourglass
+    ActivityStatus.RUNNING: "\u280b",     # braille spinner frame
+    ActivityStatus.COMPLETED: "\u2713",   # checkmark
+    ActivityStatus.FAILED: "\u2717",      # cross
+    ActivityStatus.CANCELLED: "\u2298",   # circled slash
+    "pending": "\u23f3",
+    "running": "\u280b",
+    "completed": "\u2713",
+    "failed": "\u2717",
+    "cancelled": "\u2298",
 }
 
 # Spinner frames for animated status
@@ -316,6 +324,8 @@ class DisplayManager:
         """Register event handlers on the emitter."""
         self._emitter.add_handler(ThinkingEvent, self._on_thinking)
         self._emitter.add_handler(ToolEvent, self._on_tool)
+        self._emitter.add_handler(ActivityEvent, self._on_activity)
+        self._emitter.add_handler(DiagnosticEvent, self._on_diagnostic)
         self._emitter.add_handler(ErrorEvent, self._on_error)
         self._emitter.add_handler(StateEvent, self._on_state)
 
@@ -323,6 +333,8 @@ class DisplayManager:
         """Remove all handlers from the emitter."""
         self._emitter.remove_handler(ThinkingEvent, self._on_thinking)
         self._emitter.remove_handler(ToolEvent, self._on_tool)
+        self._emitter.remove_handler(ActivityEvent, self._on_activity)
+        self._emitter.remove_handler(DiagnosticEvent, self._on_diagnostic)
         self._emitter.remove_handler(ErrorEvent, self._on_error)
         self._emitter.remove_handler(StateEvent, self._on_state)
 
@@ -343,15 +355,17 @@ class DisplayManager:
         """Handle thinking events — update spinner display."""
         if event.is_complete:
             self.thinking.stop()
-            if not self.tools.has_active:
-                self._set_state(EngineState.IDLE)
+            # Transition to responding if not already in a more active state
+            with self._state_lock:
+                if self._state == EngineState.THINKING:
+                    self._state = EngineState.RESPONDING
             self.clear_status()
             return
 
         self.thinking.start(event)
         self._set_state(EngineState.THINKING)
 
-        if self._verbose:
+        if self._verbose and event.thought:
             rendered = self.thinking.render_verbose(event.thought)
             self._console.print(rendered)
 
@@ -366,10 +380,48 @@ class DisplayManager:
         elif event.status in ("completed", "failed"):
             self.tools.tool_completed(event)
 
+            # If this was the last tool, transition state
             if not self.tools.has_active:
-                self._set_state(EngineState.RESPONDING)
+                with self._state_lock:
+                    if self._state == EngineState.TOOL_EXECUTING:
+                        self._state = EngineState.RESPONDING
 
         self._print_tool_event(event)
+
+    def _on_activity(self, event: ActivityEvent) -> None:
+        """Handle activity events — update tool/activity tracking."""
+        # We use ToolGroupDisplay to track activities too for now
+        if event.status == ActivityStatus.RUNNING:
+            self.tools.tool_started(ToolEvent(
+                tool_name=event.name,
+                tool_id=event.activity_id,
+                status="started"
+            ))
+            self._set_state(EngineState.TOOL_EXECUTING)
+        elif event.status in (ActivityStatus.COMPLETED, ActivityStatus.FAILED, ActivityStatus.CANCELLED):
+            status_map = {
+                ActivityStatus.COMPLETED: "completed",
+                ActivityStatus.FAILED: "failed",
+                ActivityStatus.CANCELLED: "cancelled"
+            }
+            self.tools.tool_completed(ToolEvent(
+                tool_name=event.name,
+                tool_id=event.activity_id,
+                status=status_map[event.status],
+                error=event.detail if event.status == ActivityStatus.FAILED else None
+            ))
+            if not self.tools.has_active:
+                with self._state_lock:
+                    if self._state == EngineState.TOOL_EXECUTING:
+                        self._state = EngineState.RESPONDING
+
+    def _on_diagnostic(self, event: DiagnosticEvent) -> None:
+        """Handle diagnostic events."""
+        if self._verbose or event.level in ("warning", "error"):
+            self.clear_status()
+            style = "yellow" if event.level == "warning" else ("red" if event.level == "error" else "dim")
+            prefix = "! " if event.level == "warning" else ("x " if event.level == "error" else "  ")
+            self._console.print(f"[dim]{event.source}:[/dim] [{style}]{prefix}{event.message}[/{style}]")
 
     def _on_error(self, event: ErrorEvent) -> None:
         """Handle error events."""
@@ -399,51 +451,54 @@ class DisplayManager:
             return self._status_active
 
     def advance_spinner(self) -> None:
-        """Render one colored spinner frame for current thinking state.
+        """Render one colored spinner frame for current state.
 
-        Shows a fallback 'Thinking...' when no ThinkingEvent has been
-        received yet (common for Codex/Claude which take time to start).
+        Shows thinking subject, tool progress, or generic generating status.
         """
         if self._verbose:
             return
-        rich_text = self.thinking.render()
-        if rich_text is None and self._state in (EngineState.THINKING, EngineState.RESPONDING):
-            # Fallback: no ThinkingEvent yet, but we know we're waiting
-            frame = SPINNER_FRAMES[self._frame_index % len(SPINNER_FRAMES)]
-            rich_text = Text()
-            rich_text.append(f"{frame} ", style="bold cyan")
-            rich_text.append("Thinking...", style="cyan")
+
+        rich_text = self.render_status_line()
         self._frame_index += 1
-        if rich_text is None:
-            return
-        self._write_status_rich(rich_text)
+
+        if rich_text:
+            self._write_status_rich(rich_text)
 
     def clear_status(self) -> None:
-        """Clear transient spinner/status line."""
+        """Clear transient spinner/status line and restore cursor."""
         with self._status_lock:
             if not self._status_active:
                 return
+            f = self._console.file
             clear = "\r" + (" " * self._status_width) + "\r"
-            self._console.file.write(clear)
-            self._console.file.flush()
+            f.write(clear)
+            f.write("\033[?25h")  # Restore cursor visibility
+            f.flush()
             self._status_active = False
             self._status_width = 0
 
     def _write_status_rich(self, text: Text) -> None:
-        """Write a colored transient status line (overwritten on next call)."""
+        """Write a colored transient status line (overwritten on next call).
+
+        Uses console.file.write for \\r cursor control and console.print
+        for Rich-formatted colored output — avoids capture() ANSI issues.
+        Hides cursor during spinner to prevent blinking.
+        """
         with self._status_lock:
             visible_width = len(text.plain)
-            # Render Rich Text → string with ANSI color codes
-            with self._console.capture() as cap:
-                self._console.print(text, end="", highlight=False)
-            rendered = cap.get()
-            # Pad to clear leftover chars from previous longer line
             if self._status_active and self._status_width > visible_width:
                 pad = " " * (self._status_width - visible_width)
             else:
                 pad = ""
-            self._console.file.write("\r" + rendered + pad)
-            self._console.file.flush()
+            f = self._console.file
+            # Hide cursor + \r to column 0, Rich prints colored text, pad clears leftovers
+            if not self._status_active:
+                f.write("\033[?25l")  # Hide cursor on first spinner frame
+            f.write("\r")
+            self._console.print(text, end="", highlight=False)
+            if pad:
+                f.write(pad)
+            f.flush()
             self._status_active = True
             self._status_width = max(visible_width, self._status_width)
 

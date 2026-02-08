@@ -429,6 +429,49 @@ class TestProviderOverrideWithConfig:
                 # Should keep config's provider (claude), not default (gemini)
                 assert config_obj.provider.value == "claude"
 
+    def test_provider_switch_clears_model(self, runner, mock_engine, tmp_path):
+        """Switching provider with -p should clear model from config."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text('provider: "gemini"\nmodel: "gemini-3-pro-preview"\n')
+
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-p", "claude", "-c", str(config_file),
+                "chat", "--no-stream", "Hello"
+            ])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            config_obj = kwargs.get("config")
+            if config_obj:
+                assert config_obj.provider.value == "claude"
+                # Model should be cleared — don't use gemini model with claude
+                assert config_obj.model is None
+
+    def test_provider_switch_keeps_explicit_model(self, runner, mock_engine, tmp_path):
+        """Switching provider with -p + -m should keep the explicit model."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text('provider: "gemini"\nmodel: "gemini-3-pro-preview"\n')
+
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-p", "claude", "-c", str(config_file),
+                "chat", "--no-stream", "-m", "claude-sonnet-4-5-20250929", "Hello"
+            ])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            config_obj = kwargs.get("config")
+            if config_obj:
+                assert config_obj.provider.value == "claude"
+                assert config_obj.model == "claude-sonnet-4-5-20250929"
+
 
 # =============================================================================
 # Error Message Tests

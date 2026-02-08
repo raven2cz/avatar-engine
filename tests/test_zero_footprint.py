@@ -159,11 +159,11 @@ class TestGeminiBridgeZeroFootprint:
         assert list(tmp_path.iterdir()) == []
         bridge._sandbox.cleanup()
 
-    def test_sandbox_has_settings(self, tmp_path):
-        """Sandbox must contain gemini-settings.json."""
+    def test_sandbox_has_settings_oneshot(self, tmp_path):
+        """Sandbox must contain gemini-settings.json in oneshot mode."""
         bridge = GeminiBridge(
             model="gemini-3-pro-preview",
-            acp_enabled=True,
+            acp_enabled=False,
             working_dir=str(tmp_path),
         )
         bridge._setup_config_files()
@@ -173,7 +173,19 @@ class TestGeminiBridgeZeroFootprint:
         assert settings_path.exists()
         data = json.loads(settings_path.read_text())
         assert data["model"]["name"] == "gemini-3-pro-preview"
-        assert data["previewFeatures"] is True
+        bridge._sandbox.cleanup()
+
+    def test_sandbox_no_settings_acp(self, tmp_path):
+        """ACP mode should NOT write settings — uses gemini-cli defaults."""
+        bridge = GeminiBridge(
+            model="gemini-3-pro-preview",
+            acp_enabled=True,
+            working_dir=str(tmp_path),
+        )
+        bridge._setup_config_files()
+
+        assert bridge._sandbox is not None
+        assert bridge._gemini_settings_path is None
         bridge._sandbox.cleanup()
 
     def test_sandbox_has_system_prompt(self, tmp_path):
@@ -191,9 +203,10 @@ class TestGeminiBridgeZeroFootprint:
         bridge._sandbox.cleanup()
 
     def test_env_has_system_settings_path(self, tmp_path):
-        """_build_subprocess_env must set GEMINI_CLI_SYSTEM_SETTINGS_PATH."""
+        """_build_subprocess_env must set GEMINI_CLI_SYSTEM_SETTINGS_PATH in oneshot mode."""
         bridge = GeminiBridge(
             model="gemini-3-pro-preview",
+            acp_enabled=False,
             working_dir=str(tmp_path),
         )
         bridge._setup_config_files()
@@ -201,6 +214,19 @@ class TestGeminiBridgeZeroFootprint:
 
         assert "GEMINI_CLI_SYSTEM_SETTINGS_PATH" in env
         assert Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).exists()
+        bridge._sandbox.cleanup()
+
+    def test_env_no_system_settings_path_acp(self, tmp_path):
+        """ACP mode must NOT set GEMINI_CLI_SYSTEM_SETTINGS_PATH."""
+        bridge = GeminiBridge(
+            model="gemini-3-pro-preview",
+            acp_enabled=True,
+            working_dir=str(tmp_path),
+        )
+        bridge._setup_config_files()
+        env = bridge._build_subprocess_env()
+
+        assert "GEMINI_CLI_SYSTEM_SETTINGS_PATH" not in env
         bridge._sandbox.cleanup()
 
     def test_env_has_system_md_when_prompt_set(self, tmp_path):
@@ -225,8 +251,8 @@ class TestGeminiBridgeZeroFootprint:
         assert "GEMINI_SYSTEM_MD" not in env
         bridge._sandbox.cleanup()
 
-    def test_acp_settings_no_custom_aliases(self, tmp_path):
-        """ACP mode sandbox settings must NOT include customAliases."""
+    def test_acp_settings_no_file(self, tmp_path):
+        """ACP mode must not write settings file at all."""
         bridge = GeminiBridge(
             model="gemini-3-pro-preview",
             acp_enabled=True,
@@ -235,10 +261,8 @@ class TestGeminiBridgeZeroFootprint:
         )
         bridge._setup_config_files()
 
-        data = json.loads(
-            (bridge._sandbox.root / "gemini-settings.json").read_text()
-        )
-        assert "modelConfigs" not in data
+        assert bridge._gemini_settings_path is None
+        assert not (bridge._sandbox.root / "gemini-settings.json").exists()
         bridge._sandbox.cleanup()
 
     def test_oneshot_settings_have_custom_aliases(self, tmp_path):
@@ -260,7 +284,7 @@ class TestGeminiBridgeZeroFootprint:
         bridge._sandbox.cleanup()
 
     def test_acp_settings_no_mcp_servers(self, tmp_path):
-        """ACP mode must NOT include MCP servers in settings (passed via protocol)."""
+        """ACP mode must NOT write settings at all (MCP passed via protocol)."""
         bridge = GeminiBridge(
             acp_enabled=True,
             mcp_servers={"tools": {"command": "python", "args": ["t.py"]}},
@@ -268,10 +292,8 @@ class TestGeminiBridgeZeroFootprint:
         )
         bridge._setup_config_files()
 
-        data = json.loads(
-            (bridge._sandbox.root / "gemini-settings.json").read_text()
-        )
-        assert "mcpServers" not in data
+        assert bridge._gemini_settings_path is None
+        assert not (bridge._sandbox.root / "gemini-settings.json").exists()
         bridge._sandbox.cleanup()
 
     def test_oneshot_settings_have_mcp_servers(self, tmp_path):

@@ -1,5 +1,7 @@
 # Plan: Unified Session Management for All 3 Providers
 
+> Status: DONE (2026-02-07)
+
 ## Context
 
 Avatar-engine wraps 3 AI CLI providers (Gemini, Claude, Codex) but session management is inconsistent:

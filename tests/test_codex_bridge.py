@@ -39,18 +39,25 @@ from avatar_engine.bridges.base import BridgeState, BridgeResponse, Message
 # =============================================================================
 
 
-def _make_mock_acp_context(session_id="codex-session-123"):
-    """Create mock ACP context, connection, and process."""
-    conn = MagicMock()
-    proc = MagicMock()
+def _make_mock_conn_proc(session_id="codex-session-123"):
+    """Create mock ACP connection and process for connect_to_agent pattern."""
+    conn = AsyncMock()
+    proc = AsyncMock()
+    proc.stdin = MagicMock()
+    proc.stdout = MagicMock()
+    proc.returncode = None
+    proc.terminate = MagicMock()
+    proc.kill = MagicMock()
+    proc.wait = AsyncMock()
 
     # Mock initialize
     init_resp = MagicMock()
+    init_resp.protocol_version = 1
+    init_resp.capabilities = {}
     conn.initialize = AsyncMock(return_value=init_resp)
 
     # Mock authenticate
-    auth_resp = MagicMock()
-    conn.authenticate = AsyncMock(return_value=auth_resp)
+    conn.authenticate = AsyncMock(return_value=None)
 
     # Mock new_session
     session_resp = MagicMock()
@@ -63,12 +70,10 @@ def _make_mock_acp_context(session_id="codex-session-123"):
     prompt_resp.content.text = "Hello from Codex!"
     conn.prompt = AsyncMock(return_value=prompt_resp)
 
-    # Create async context manager mock
-    ctx = MagicMock()
-    ctx.__aenter__ = AsyncMock(return_value=(conn, proc))
-    ctx.__aexit__ = AsyncMock(return_value=None)
+    # Mock close
+    conn.close = AsyncMock()
 
-    return ctx, conn, proc
+    return conn, proc
 
 
 class _ContentBlock:
@@ -570,20 +575,24 @@ class TestCodexACPClient:
     """Test _CodexACPClient callback behavior."""
 
     def test_auto_approve_permission(self):
-        """Should auto-approve when auto_approve=True."""
+        """Should auto-approve when auto_approve=True with typed response."""
         from avatar_engine.bridges.codex import _CodexACPClient
 
         client = _CodexACPClient(auto_approve=True)
         options = MagicMock()
-        options.options = [{"outcome": "approved"}]
+        opt = MagicMock()
+        opt.option_id = "approve-once"
+        options.options = [opt]
 
         result = asyncio.run(
             client.request_permission(options, "session-1", "tool-call")
         )
-        assert result["outcome"] == {"outcome": "approved"}
+        assert hasattr(result, "outcome")
+        assert result.outcome.option_id == "approve-once"
+        assert result.outcome.outcome == "selected"
 
     def test_deny_permission(self, caplog):
-        """Should deny when auto_approve=False and log warning."""
+        """Should deny when auto_approve=False with typed DeniedOutcome."""
         from avatar_engine.bridges.codex import _CodexACPClient
 
         client = _CodexACPClient(auto_approve=False)
@@ -593,7 +602,8 @@ class TestCodexACPClient:
             result = asyncio.run(
                 client.request_permission(options, "session-1", "tool-call")
             )
-        assert result["outcome"]["outcome"] == "cancelled"
+        assert hasattr(result, "outcome")
+        assert result.outcome.outcome == "cancelled"
         assert "denied" in caplog.text.lower() or "auto_approve=False" in caplog.text
 
     def test_session_update_callback(self):
@@ -627,46 +637,48 @@ class TestCodexACPClient:
 
 @pytest.mark.skipif(not _ACP_AVAILABLE, reason="ACP SDK not installed")
 class TestCodexACPLifecycle:
-    """Test ACP lifecycle with mocked spawn_agent_process."""
+    """Test ACP lifecycle with mocked connect_to_agent."""
 
     @pytest.mark.asyncio
     async def test_start_full_lifecycle(self):
-        """Should complete full ACP lifecycle: spawn → init → auth → session."""
-        ctx, conn, proc = _make_mock_acp_context()
+        """Should complete full ACP lifecycle: connect → init → auth → session."""
+        conn, proc = _make_mock_conn_proc()
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge()
-                await bridge.start()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge()
+                    await bridge.start()
 
-                assert bridge.state == BridgeState.READY
-                assert bridge.session_id == "codex-session-123"
-                assert bridge._acp_session_id == "codex-session-123"
+                    assert bridge.state == BridgeState.READY
+                    assert bridge.session_id == "codex-session-123"
+                    assert bridge._acp_session_id == "codex-session-123"
 
-                conn.initialize.assert_awaited_once()
-                conn.authenticate.assert_awaited_once_with(method_id="chatgpt")
-                conn.new_session.assert_awaited_once()
+                    conn.initialize.assert_awaited_once()
+                    conn.authenticate.assert_awaited_once_with(method_id="chatgpt")
+                    conn.new_session.assert_awaited_once()
 
-                await bridge.stop()
+                    await bridge.stop()
 
     @pytest.mark.asyncio
     async def test_start_with_api_key_auth(self):
         """Should use correct auth method."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge(auth_method="openai-api-key")
-                await bridge.start()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge(auth_method="openai-api-key")
+                    await bridge.start()
 
-                conn.authenticate.assert_awaited_once_with(method_id="openai-api-key")
+                    conn.authenticate.assert_awaited_once_with(method_id="openai-api-key")
 
-                await bridge.stop()
+                    await bridge.stop()
 
     @pytest.mark.asyncio
     async def test_start_with_mcp_servers(self):
         """Should pass MCP servers to new_session."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
 
         mcp = {
             "tools": {
@@ -676,35 +688,36 @@ class TestCodexACPLifecycle:
             }
         }
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge(mcp_servers=mcp)
-                await bridge.start()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge(mcp_servers=mcp)
+                    await bridge.start()
 
-                call_kwargs = conn.new_session.call_args
-                mcp_arg = call_kwargs.kwargs.get("mcp_servers", call_kwargs[1].get("mcp_servers"))
-                assert len(mcp_arg) == 1
-                assert mcp_arg[0]["name"] == "tools"
-                assert mcp_arg[0]["command"] == "python"
+                    call_kwargs = conn.new_session.call_args
+                    mcp_arg = call_kwargs.kwargs.get("mcp_servers", call_kwargs[1].get("mcp_servers"))
+                    assert len(mcp_arg) == 1
+                    assert mcp_arg[0]["name"] == "tools"
+                    assert mcp_arg[0]["command"] == "python"
 
-                await bridge.stop()
+                    await bridge.stop()
 
     @pytest.mark.asyncio
     async def test_stop_cleans_up_acp(self):
-        """Should clean up ACP context on stop."""
-        ctx, conn, proc = _make_mock_acp_context()
+        """Should clean up ACP connection and process on stop."""
+        conn, proc = _make_mock_conn_proc()
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge()
-                await bridge.start()
-                await bridge.stop()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge()
+                    await bridge.start()
+                    await bridge.stop()
 
-                assert bridge._acp_conn is None
-                assert bridge._acp_proc is None
-                assert bridge._acp_ctx is None
-                assert bridge._acp_session_id is None
-                assert bridge.state == BridgeState.DISCONNECTED
+                    assert bridge._acp_conn is None
+                    assert bridge._acp_proc is None
+                    assert bridge._acp_session_id is None
+                    assert bridge.state == BridgeState.DISCONNECTED
 
     @pytest.mark.asyncio
     async def test_start_fails_without_executable(self, caplog):
@@ -719,44 +732,47 @@ class TestCodexACPLifecycle:
     @pytest.mark.asyncio
     async def test_start_auth_timeout(self, caplog):
         """Should raise on auth timeout and log error."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
         conn.authenticate = AsyncMock(side_effect=asyncio.TimeoutError())
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge(timeout=1)
-                with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
-                    with pytest.raises(RuntimeError, match="authentication timed out"):
-                        await bridge.start()
-                assert "timed out" in caplog.text.lower()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge(timeout=1)
+                    with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
+                        with pytest.raises(RuntimeError, match="authentication timed out"):
+                            await bridge.start()
+                    assert "timed out" in caplog.text.lower()
 
     @pytest.mark.asyncio
     async def test_start_auth_not_supported(self):
         """Should continue if auth returns 'not supported'."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
         conn.authenticate = AsyncMock(side_effect=Exception("method not supported"))
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge()
-                await bridge.start()
-                assert bridge.state == BridgeState.READY
-                await bridge.stop()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge()
+                    await bridge.start()
+                    assert bridge.state == BridgeState.READY
+                    await bridge.stop()
 
     @pytest.mark.asyncio
     async def test_start_session_failure(self, caplog):
         """Should raise on session creation failure and log error."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
         conn.new_session = AsyncMock(side_effect=Exception("Session error"))
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge()
-                with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
-                    with pytest.raises(Exception, match="Session error"):
-                        await bridge.start()
-                assert bridge.state == BridgeState.ERROR
-                assert "start failed" in caplog.text.lower()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge()
+                    with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
+                        with pytest.raises(Exception, match="Session error"):
+                            await bridge.start()
+                    assert bridge.state == BridgeState.ERROR
+                    assert "start failed" in caplog.text.lower()
 
 
 # =============================================================================
@@ -771,28 +787,28 @@ class TestCodexSend:
     @pytest.mark.asyncio
     async def test_send_basic(self):
         """Should send prompt and return response."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge()
-                await bridge.start()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge()
+                    await bridge.start()
 
-                response = await bridge.send("Hello!")
+                    response = await bridge.send("Hello!")
 
-                assert response.success is True
-                assert response.content == "Hello from Codex!"
-                assert response.session_id == "codex-session-123"
-                assert response.duration_ms >= 0
+                    assert response.success is True
+                    assert response.content == "Hello from Codex!"
+                    assert response.session_id == "codex-session-123"
+                    assert response.duration_ms >= 0
 
-                await bridge.stop()
+                    await bridge.stop()
 
     @pytest.mark.asyncio
     async def test_send_with_streaming_text(self):
         """Should use accumulated text buffer from ACP updates."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
 
-        # Simulate streaming text via _handle_acp_update
         async def mock_prompt(**kwargs):
             bridge._handle_acp_update("codex-session-123", _make_text_update("Hello "))
             bridge._handle_acp_update("codex-session-123", _make_text_update("World!"))
@@ -800,118 +816,124 @@ class TestCodexSend:
 
         conn.prompt = mock_prompt
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge()
-                await bridge.start()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge()
+                    await bridge.start()
 
-                response = await bridge.send("Hi")
+                    response = await bridge.send("Hi")
 
-                assert response.success is True
-                assert response.content == "Hello World!"
+                    assert response.success is True
+                    assert response.content == "Hello World!"
 
-                await bridge.stop()
+                    await bridge.stop()
 
     @pytest.mark.asyncio
     async def test_send_timeout(self):
         """Should handle timeout gracefully."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
         conn.prompt = AsyncMock(side_effect=asyncio.TimeoutError())
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge(timeout=1)
-                await bridge.start()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge(timeout=1)
+                    await bridge.start()
 
-                response = await bridge.send("Hello")
+                    response = await bridge.send("Hello")
 
-                assert response.success is False
-                assert "timeout" in response.error.lower()
-                assert bridge.state == BridgeState.ERROR
+                    assert response.success is False
+                    assert "timeout" in response.error.lower()
+                    assert bridge.state == BridgeState.ERROR
 
-                await bridge.stop()
+                    await bridge.stop()
 
     @pytest.mark.asyncio
     async def test_send_error(self, caplog):
         """Should handle send errors gracefully and log error."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
         conn.prompt = AsyncMock(side_effect=RuntimeError("API error"))
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge()
-                await bridge.start()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge()
+                    await bridge.start()
 
-                with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
-                    response = await bridge.send("Hello")
+                    with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
+                        response = await bridge.send("Hello")
 
-                assert response.success is False
-                assert "API error" in response.error
-                assert bridge.state == BridgeState.ERROR
-                assert "send failed" in caplog.text.lower()
+                    assert response.success is False
+                    assert "API error" in response.error
+                    assert bridge.state == BridgeState.ERROR
+                    assert "send failed" in caplog.text.lower()
 
-                await bridge.stop()
+                    await bridge.stop()
 
     @pytest.mark.asyncio
     async def test_send_auto_starts(self):
         """Should auto-start if disconnected."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge()
-                assert bridge.state == BridgeState.DISCONNECTED
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge()
+                    assert bridge.state == BridgeState.DISCONNECTED
 
-                response = await bridge.send("Hello")
+                    response = await bridge.send("Hello")
 
-                assert response.success is True
-                assert bridge.state == BridgeState.READY
+                    assert response.success is True
+                    assert bridge.state == BridgeState.READY
 
-                await bridge.stop()
+                    await bridge.stop()
 
     @pytest.mark.asyncio
     async def test_send_history_tracking(self):
         """Should track conversation history."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge()
-                await bridge.start()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge()
+                    await bridge.start()
 
-                await bridge.send("Hello")
-                await bridge.send("How are you?")
+                    await bridge.send("Hello")
+                    await bridge.send("How are you?")
 
-                history = bridge.get_history()
-                assert len(history) == 4  # 2 user + 2 assistant
-                assert history[0].role == "user"
-                assert history[0].content == "Hello"
-                assert history[1].role == "assistant"
-                assert history[2].role == "user"
-                assert history[2].content == "How are you?"
+                    history = bridge.get_history()
+                    assert len(history) == 4  # 2 user + 2 assistant
+                    assert history[0].role == "user"
+                    assert history[0].content == "Hello"
+                    assert history[1].role == "assistant"
+                    assert history[2].role == "user"
+                    assert history[2].content == "How are you?"
 
-                await bridge.stop()
+                    await bridge.stop()
 
     @pytest.mark.asyncio
     async def test_send_stats_tracking(self):
         """Should track usage statistics."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge()
-                await bridge.start()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge()
+                    await bridge.start()
 
-                await bridge.send("Hello")
-                await bridge.send("Again")
+                    await bridge.send("Hello")
+                    await bridge.send("Again")
 
-                stats = bridge.get_stats()
-                assert stats["total_requests"] == 2
-                assert stats["successful_requests"] == 2
-                assert stats["failed_requests"] == 0
-                assert stats["total_duration_ms"] >= 0
+                    stats = bridge.get_stats()
+                    assert stats["total_requests"] == 2
+                    assert stats["successful_requests"] == 2
+                    assert stats["failed_requests"] == 0
+                    assert stats["total_duration_ms"] >= 0
 
-                await bridge.stop()
+                    await bridge.stop()
 
 
 # =============================================================================
@@ -926,7 +948,7 @@ class TestCodexStream:
     @pytest.mark.asyncio
     async def test_stream_basic(self):
         """Should stream text chunks."""
-        ctx, conn, proc = _make_mock_acp_context()
+        conn, proc = _make_mock_conn_proc()
 
         async def mock_prompt(**kwargs):
             bridge._handle_acp_update("codex-session-123", _make_text_update("Hello "))
@@ -935,19 +957,20 @@ class TestCodexStream:
 
         conn.prompt = mock_prompt
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                bridge = CodexBridge()
-                await bridge.start()
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    bridge = CodexBridge()
+                    await bridge.start()
 
-                chunks = []
-                async for chunk in bridge.send_stream("Hi"):
-                    chunks.append(chunk)
+                    chunks = []
+                    async for chunk in bridge.send_stream("Hi"):
+                        chunks.append(chunk)
 
-                assert chunks == ["Hello ", "World!"]
-                assert bridge.state == BridgeState.READY
+                    assert chunks == ["Hello ", "World!"]
+                    assert bridge.state == BridgeState.READY
 
-                await bridge.stop()
+                    await bridge.stop()
 
 
 # =============================================================================

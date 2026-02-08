@@ -5,6 +5,7 @@ from avatar_engine.bridges.gemini import (
     _extract_thinking_from_update,
     _extract_text_from_update,
     _extract_text_from_result,
+    _is_thinking_block,
 )
 
 
@@ -180,3 +181,101 @@ class TestExtractTextFromResult:
         result_obj = MockUpdate()
         result = _extract_text_from_result(result_obj)
         assert result == ""
+
+    def test_thinking_blocks_excluded_from_result(self):
+        """Thinking blocks should not appear in text result."""
+        blocks = [
+            MockContentBlock(text="I need to analyze...", type_="thinking"),
+            MockContentBlock(text="Here is the answer."),
+        ]
+        result_obj = MockUpdate(content=blocks)
+        result = _extract_text_from_result(result_obj)
+        assert result == "Here is the answer."
+        assert "analyze" not in result
+
+
+class TestIsThinkingBlock:
+    """Tests for _is_thinking_block helper."""
+
+    def test_type_thinking(self):
+        block = MockContentBlock(text="reasoning", type_="thinking")
+        assert _is_thinking_block(block) is True
+
+    def test_type_text(self):
+        block = MockContentBlock(text="response", type_="text")
+        assert _is_thinking_block(block) is False
+
+    def test_thinking_attribute(self):
+        block = MockContentBlock(thinking="some thought")
+        assert _is_thinking_block(block) is True
+
+    def test_plain_text_block(self):
+        block = MockContentBlock(text="just text")
+        assert _is_thinking_block(block) is False
+
+    def test_dict_thinking(self):
+        assert _is_thinking_block({"type": "thinking", "text": "..."}) is True
+
+    def test_dict_text(self):
+        assert _is_thinking_block({"type": "text", "text": "..."}) is False
+
+
+class TestThinkingExcludedFromText:
+    """Verify thinking content blocks are NOT extracted as text."""
+
+    def test_update_with_mixed_content_blocks(self):
+        """Mixed thinking + text blocks: only text should be extracted."""
+        blocks = [
+            MockContentBlock(text="Let me think...", type_="thinking"),
+            MockContentBlock(text="The answer is 42."),
+        ]
+        update = MockUpdate(content=blocks)
+        result = _extract_text_from_update(update)
+        assert result == "The answer is 42."
+
+    def test_update_only_thinking_returns_none(self):
+        """Update with only thinking blocks should return None."""
+        blocks = [
+            MockContentBlock(text="Analyzing problem...", type_="thinking"),
+        ]
+        update = MockUpdate(content=blocks)
+        result = _extract_text_from_update(update)
+        assert result is None
+
+    def test_agent_message_with_thinking_blocks(self):
+        """Thinking blocks in agent_message should be excluded."""
+        blocks = [
+            MockContentBlock(text="Planning response...", type_="thinking"),
+            MockContentBlock(text="Here is my response."),
+        ]
+        msg = MockAgentMessage(content=blocks)
+        update = MockUpdate(agent_message=msg)
+        result = _extract_text_from_update(update)
+        assert result == "Here is my response."
+
+    def test_dict_update_thinking_excluded(self):
+        """Dict-style thinking blocks should be excluded."""
+        update = {
+            "agentMessage": {
+                "content": [
+                    {"type": "thinking", "text": "Let me consider..."},
+                    {"type": "text", "text": "Final answer."},
+                ]
+            }
+        }
+        result = _extract_text_from_update(update)
+        assert result == "Final answer."
+
+    def test_single_thinking_content_block(self):
+        """Single thinking content block should return None."""
+        block = MockContentBlock(text="Internal thought", type_="thinking")
+        update = MockUpdate(content=block)
+        result = _extract_text_from_update(update)
+        assert result is None
+
+    def test_single_text_content_block(self):
+        """Single non-thinking content block should return text."""
+        block = MockContentBlock(text="Regular response")
+        update = MockUpdate(content=block)
+        result = _extract_text_from_update(update)
+        assert result == "Regular response"

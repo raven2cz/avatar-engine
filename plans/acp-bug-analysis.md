@@ -1,61 +1,75 @@
-## Root Cause Analysis
+## ACP Bug Analysis — RESOLVED
 
-After investigating the gemini-cli source code, the root cause appears to be in how ACP mode handles model configuration resolution.
+**Status:** DONE (2026-02-08)
 
-### The Problem
+### Original Issue
 
-In **`packages/cli/src/zed-integration/zedIntegration.ts`** (line 489), the ACP `Session.prompt()` method passes a minimal `{ model }` object to `chat.sendMessageStream()`:
+Gemini ACP `prompt()` returned "Internal error" (HTTP 500). Filed as
+[gemini-cli#18423](https://github.com/google-gemini/gemini-cli/issues/18423).
 
-```typescript
-// zedIntegration.ts, Session.prompt(), line 485-494
-const model = resolveModel(
-  this.config.getModel(),
-  this.config.getPreviewFeatures(),
-);
-const responseStream = await chat.sendMessageStream(
-  { model },          // <-- only { model }, no customAliases context
-  nextMessage?.parts ?? [],
-  promptId,
-  pendingSend.signal,
-);
+### Root Causes Found
+
+The issue had **three** contributing factors:
+
+#### 1. Wrong SDK API — `spawn_agent_process` vs `connect_to_agent`
+
+We used `spawn_agent_process` (deprecated context manager) instead of the
+official `connect_to_agent` API. The correct pattern from the SDK example:
+
+```python
+proc = await asyncio.create_subprocess_exec(
+    *cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+    stderr=None, cwd=cwd, env=env,
+)
+conn = connect_to_agent(client, proc.stdin, proc.stdout)
 ```
 
-Then in **`packages/core/src/core/geminiChat.ts`** (line 305-306), `sendMessageStream()` resolves the `ModelConfigKey` through `ModelConfigService` but **only extracts the `model` field**, discarding the resolved `generateContentConfig`:
+#### 2. Missing `ClientCapabilities` in `initialize()`
 
-```typescript
-// geminiChat.ts, sendMessageStream(), line 305-306
-const { model } =
-  this.config.modelConfigService.getResolvedConfig(modelConfigKey);
-// ^^^^ generateContentConfig is resolved but discarded!
+We called `initialize(protocol_version=1)` without `client_capabilities`.
+Gemini-cli requires the client to declare what it supports (filesystem, terminal).
+Correct call:
+
+```python
+await conn.initialize(
+    protocol_version=PROTOCOL_VERSION,
+    client_capabilities=ClientCapabilities(
+        fs=FileSystemCapability(read_text_file=True, write_text_file=True),
+        terminal=True,
+    ),
+)
 ```
 
-### Why Normal (Non-ACP) Mode Works
+#### 3. Wrong `request_permission` response format
 
-The normal CLI path goes through `GeminiClient.generateContent()` (`packages/core/src/core/client.ts`, line 906) which properly calls:
+Our client returned raw dicts `{"outcome": first_option}`. The SDK expects
+typed Pydantic models:
 
-```typescript
-const desiredModelConfig =
-  this.config.modelConfigService.getResolvedConfig(modelConfigKey);
-let {
-  model: currentAttemptModel,
-  generateContentConfig: currentAttemptGenerateContentConfig,
-} = desiredModelConfig;
+```python
+RequestPermissionResponse(
+    outcome=AllowedOutcome(option_id=opt.option_id, outcome="selected")
+)
 ```
 
-Here, **both** `model` and `generateContentConfig` are extracted and used, so `customAliases` configuration (system instructions, temperature, safety settings, etc.) is properly applied.
+#### 4. Settings overrides (secondary, now also fixed)
 
-### ModelConfigService Resolution Chain
+- `previewFeatures` was removed from gemini-cli (commit `61d92c4a2`).
+  Gemini 3 is now the default. We no longer set this flag.
+- `model.name` in system settings (highest priority) bypassed the built-in
+  alias chain that carries `generateContentConfig` (thinkingConfig etc.).
+  ACP mode no longer writes settings at all.
 
-`ModelConfigService.getResolvedConfig()` (`packages/core/src/services/modelConfigService.ts`, line 285) correctly resolves `customAliases` through `resolveAliasChain()` (line 159), which walks the alias `extends` hierarchy and merges `modelConfig` from root to leaf. The resolution itself works correctly — the problem is that ACP's code path discards the resolved configuration.
+### Previous Analysis (Outdated)
 
-### Comparison
+The original analysis about `sendMessageStream` discarding `generateContentConfig`
+at line 305-306 of `geminiChat.ts` was partially correct but is no longer the
+primary issue. The new gemini-cli code resolves config properly via
+`applyModelSelection()` in `makeApiCallAndProcessStream()`.
 
-| Aspect | ACP Path | Normal Path |
-|--------|----------|-------------|
-| Entry Point | `Session.prompt()` line 489 | `GeminiClient.generateContent()` line 906 |
-| Config Extraction | `{ model }` only | `{ model, generateContentConfig }` |
-| Result | `customAliases` config lost | `customAliases` fully applied |
+### Fix Applied
 
-### Suggested Fix
-
-In `geminiChat.ts` `sendMessageStream()`, the resolved `generateContentConfig` should be preserved and passed through to the API call, similar to how `GeminiClient.generateContent()` handles it. Alternatively, the ACP path in `zedIntegration.ts` could be routed through `GeminiClient` to reuse the existing proper resolution logic.
+- `avatar_engine/bridges/gemini.py`: Rewritten ACP startup to use
+  `connect_to_agent`, `ClientCapabilities`, typed `RequestPermissionResponse`
+- ACP mode no longer writes `settings.json` (no `GEMINI_CLI_SYSTEM_SETTINGS_PATH`)
+- Removed `previewFeatures` (gone from gemini-cli)
+- ACP SDK upgraded to 0.8.0

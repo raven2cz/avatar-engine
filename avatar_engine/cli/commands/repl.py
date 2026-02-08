@@ -2,28 +2,64 @@
 
 import asyncio
 import json
-import logging
 import time
-from contextlib import contextmanager, nullcontext
 import click
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from ...config import AvatarConfig
 from ...engine import AvatarEngine
 from ...types import ProviderType
 from ..display import DisplayManager
 
-try:
-    from prompt_toolkit import PromptSession
-    from prompt_toolkit.patch_stdout import patch_stdout
-except ModuleNotFoundError:  # pragma: no cover - optional dependency path
-    PromptSession = None  # type: ignore[assignment]
+console = Console(highlight=False)
 
-    def patch_stdout():
-        return nullcontext()
 
-console = Console()
+def _print_banner(out: Console, provider: str, version: str) -> None:
+    """Print ASCII art banner with gradient colors on REPL start."""
+    # Logo lines matching the SVG: antenna, rounded face, happy ^ eyes, smile
+    logo_lines = [
+        "       o         ",
+        "       |         ",
+        "   .--------.    ",
+        "  ( ~^    ^~ )   ",
+        "  (   \\__/   )   ",
+        "   '--------'    ",
+    ]
+    # Blue→purple gradient to match SVG (#58a6ff → #bc8cff)
+    colors = [
+        "#58a6ff",  # antenna dot
+        "#6da0ff",  # antenna stem
+        "#7a98ff",  # top frame
+        "#8a90ff",  # eyes
+        "#a088ff",  # smile
+        "#bc8cff",  # bottom frame
+    ]
+
+    # Right side: title + info
+    info_lines = [
+        "",
+        ("bold", "Avatar Engine"),
+        ("dim", f"v{version}"),
+        ("dim", f"Provider: {provider}"),
+        ("dim", "AI assistant integration library"),
+        ("dim", "/help for commands, /exit to quit"),
+    ]
+
+    for i, logo in enumerate(logo_lines):
+        line = Text()
+        line.append(logo, style=colors[i])
+        if i < len(info_lines) and info_lines[i]:
+            info = info_lines[i]
+            if isinstance(info, tuple):
+                style, text = info
+                line.append("  ")
+                line.append(text, style=style)
+            else:
+                line.append(f"  {info}")
+        out.print(line)
+    out.print()
 
 
 async def _animate_spinner(display: DisplayManager) -> None:
@@ -35,31 +71,6 @@ async def _animate_spinner(display: DisplayManager) -> None:
     except asyncio.CancelledError:
         display.clear_status()
         raise
-
-
-@contextmanager
-def _quiet_repl_logs(enabled: bool):
-    """Temporarily suppress noisy INFO logs in interactive REPL."""
-    if not enabled:
-        yield
-        return
-
-    logger_names = [
-        "avatar_engine.engine",
-        "avatar_engine.bridges.gemini",
-        "avatar_engine.bridges.claude",
-        "avatar_engine.bridges.codex",
-    ]
-    original_levels = {}
-    try:
-        for name in logger_names:
-            lg = logging.getLogger(name)
-            original_levels[name] = lg.level
-            lg.setLevel(logging.WARNING)
-        yield
-    finally:
-        for name in logger_names:
-            logging.getLogger(name).setLevel(original_levels.get(name, logging.NOTSET))
 
 
 @click.command()
@@ -154,7 +165,7 @@ async def _repl_async(
     timeout: int,
     resume_id: str = None,
     continue_last: bool = False,
-    plain: bool = True,
+    plain: bool = False,
 ) -> None:
     """Async REPL implementation."""
     # Build engine kwargs
@@ -193,183 +204,191 @@ async def _repl_async(
         # CLI flags override config file
         if provider_explicit:
             config.provider = ProviderType(provider)
+            # Clear model when switching providers — each has its own default
+            if not model:
+                config.model = None
         if model:
             config.model = model
         engine = AvatarEngine(config=config)
     else:
         engine = AvatarEngine(provider=provider, model=model, **kwargs)
 
-    out_console = (
-        Console(file=console.file, no_color=True, force_terminal=False, highlight=False)
-        if plain
-        else console
-    )
+    # Console for output — plain or colored
+    if plain:
+        out_console = Console(no_color=True, highlight=False)
+    else:
+        out_console = console
 
     # DisplayManager handles all event visualization
     display = DisplayManager(engine, console=out_console, verbose=verbose)
 
-    out_console.print(f"[bold]Avatar Engine REPL[/bold] ({provider})")
-    out_console.print("Type '/exit' to quit, '/help' for commands\n")
+    from ... import __version__
+    if plain:
+        out_console.print(f"Avatar Engine v{__version__} ({provider})")
+        out_console.print("Type '/exit' to quit, '/help' for commands\n")
+    else:
+        _print_banner(out_console, provider, __version__)
 
-    if PromptSession is None:
-        raise RuntimeError("prompt_toolkit is required for REPL mode. Install avatar-engine[cli].")
-
-    try:
-        from prompt_toolkit.formatted_text import HTML
-        prompt_text = HTML('<b><style fg="ansiblue">You</style></b>: ')
-    except ImportError:
-        prompt_text = "You: "
-
-    session = PromptSession()
+    loop = asyncio.get_event_loop()
 
     try:
-        with _quiet_repl_logs(enabled=not verbose):
-            await engine.start()
+        await engine.start()
 
         if verbose:
             out_console.print(f"[dim]Session: {engine.session_id}[/dim]\n")
 
-        with patch_stdout():
-            while True:
-                try:
-                    user_input = await session.prompt_async(prompt_text)
+        while True:
+            try:
+                # Non-blocking input via thread pool (doesn't freeze event loop)
+                user_input = await loop.run_in_executor(
+                    None, lambda: out_console.input("[bold blue]You[/bold blue]: ")
+                )
 
-                    # Handle commands
-                    if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
-                        break
+                # Handle commands
+                if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
+                    break
 
-                    if user_input.lower() in ("/clear", "/reset"):
-                        engine.clear_history()
-                        out_console.print("[dim]History cleared[/dim]")
+                if user_input.lower() in ("/clear", "/reset"):
+                    engine.clear_history()
+                    out_console.print("[dim]History cleared[/dim]")
+                    continue
+
+                if user_input.lower() == "/health":
+                    health = engine.get_health()
+                    out_console.print_json(data=health.__dict__)
+                    continue
+
+                if user_input.lower() == "/stats":
+                    stats = {
+                        "session_id": engine.session_id,
+                        "provider": engine.current_provider,
+                        "is_warm": engine.is_warm,
+                        "history_length": len(engine.get_history()),
+                        "restart_count": engine.restart_count,
+                        "rate_limit": engine.rate_limit_stats,
+                    }
+                    out_console.print_json(data=stats)
+                    continue
+
+                if user_input.lower() == "/usage":
+                    _show_usage(engine, out_console)
+                    continue
+
+                if user_input.lower() == "/tools":
+                    _show_tools(engine, out_console)
+                    continue
+
+                if user_input.lower().startswith("/tool "):
+                    tool_name = user_input[6:].strip()
+                    _show_tool_detail(engine, tool_name, out_console)
+                    continue
+
+                if user_input.lower() == "/mcp":
+                    _show_mcp_status(engine, out_console)
+                    continue
+
+                if user_input.lower() == "/help":
+                    out_console.print("[bold]Commands:[/bold]")
+                    out_console.print("  /exit, /quit  - Exit the session")
+                    out_console.print("  /clear        - Clear conversation history")
+                    out_console.print("  /health       - Show health status")
+                    out_console.print("  /stats        - Show session statistics")
+                    out_console.print("  /usage        - Show usage (tokens, cost, requests)")
+                    out_console.print("  /tools        - List available MCP tools")
+                    out_console.print("  /tool NAME    - Show MCP tool detail")
+                    out_console.print("  /mcp          - Show MCP server status")
+                    out_console.print("  /sessions     - List available sessions")
+                    out_console.print("  /session      - Show current session ID")
+                    out_console.print("  /resume ID    - Resume a session by ID")
+                    out_console.print("  /help         - Show this help")
+                    continue
+
+                if user_input.lower() == "/session":
+                    out_console.print(f"[dim]Session: {engine.session_id or 'N/A'}[/dim]")
+                    continue
+
+                if user_input.lower() == "/sessions":
+                    caps = engine.session_capabilities
+                    if not caps.can_list:
+                        out_console.print(f"[yellow]{engine.current_provider} does not support session listing[/yellow]")
                         continue
+                    sessions = await engine.list_sessions()
+                    if not sessions:
+                        out_console.print("[dim]No sessions found[/dim]")
+                    else:
+                        for s in sessions[:20]:
+                            title = f" — {s.title}" if s.title else ""
+                            out_console.print(f"  [cyan]{s.session_id[:12]}[/cyan]{title}")
+                        out_console.print(f"[dim]{len(sessions)} session(s)[/dim]")
+                    continue
 
-                    if user_input.lower() == "/health":
-                        health = engine.get_health()
-                        out_console.print_json(data=health.__dict__)
+                if user_input.lower().startswith("/resume"):
+                    parts = user_input.split(maxsplit=1)
+                    if len(parts) < 2:
+                        out_console.print("[yellow]Usage: /resume <session-id>[/yellow]")
                         continue
-
-                    if user_input.lower() == "/stats":
-                        stats = {
-                            "session_id": engine.session_id,
-                            "provider": engine.current_provider,
-                            "is_warm": engine.is_warm,
-                            "history_length": len(engine.get_history()),
-                            "restart_count": engine.restart_count,
-                            "rate_limit": engine.rate_limit_stats,
-                        }
-                        out_console.print_json(data=stats)
+                    sid = parts[1].strip()
+                    caps = engine.session_capabilities
+                    if not caps.can_load:
+                        out_console.print(f"[yellow]{engine.current_provider} does not support session resume[/yellow]")
                         continue
-
-                    if user_input.lower() == "/usage":
-                        _show_usage(engine, out_console)
-                        continue
-
-                    if user_input.lower() == "/tools":
-                        _show_tools(engine, out_console)
-                        continue
-
-                    if user_input.lower().startswith("/tool "):
-                        tool_name = user_input[6:].strip()
-                        _show_tool_detail(engine, tool_name, out_console)
-                        continue
-
-                    if user_input.lower() == "/mcp":
-                        _show_mcp_status(engine, out_console)
-                        continue
-
-                    if user_input.lower() == "/help":
-                        out_console.print("[bold]Commands:[/bold]")
-                        out_console.print("  /exit, /quit  - Exit the session")
-                        out_console.print("  /clear        - Clear conversation history")
-                        out_console.print("  /health       - Show health status")
-                        out_console.print("  /stats        - Show session statistics")
-                        out_console.print("  /usage        - Show usage (tokens, cost, requests)")
-                        out_console.print("  /tools        - List available MCP tools")
-                        out_console.print("  /tool NAME    - Show MCP tool detail")
-                        out_console.print("  /mcp          - Show MCP server status")
-                        out_console.print("  /sessions     - List available sessions")
-                        out_console.print("  /session      - Show current session ID")
-                        out_console.print("  /resume ID    - Resume a session by ID")
-                        out_console.print("  /help         - Show this help")
-                        continue
-
-                    if user_input.lower() == "/session":
-                        out_console.print(f"[dim]Session: {engine.session_id or 'N/A'}[/dim]")
-                        continue
-
-                    if user_input.lower() == "/sessions":
-                        caps = engine.session_capabilities
-                        if not caps.can_list:
-                            out_console.print(f"[yellow]{engine.current_provider} does not support session listing[/yellow]")
-                            continue
-                        sessions = await engine.list_sessions()
-                        if not sessions:
-                            out_console.print("[dim]No sessions found[/dim]")
-                        else:
-                            for s in sessions[:20]:
-                                title = f" — {s.title}" if s.title else ""
-                                out_console.print(f"  [cyan]{s.session_id[:12]}[/cyan]{title}")
-                            out_console.print(f"[dim]{len(sessions)} session(s)[/dim]")
-                        continue
-
-                    if user_input.lower().startswith("/resume"):
-                        parts = user_input.split(maxsplit=1)
-                        if len(parts) < 2:
-                            out_console.print("[yellow]Usage: /resume <session-id>[/yellow]")
-                            continue
-                        sid = parts[1].strip()
-                        caps = engine.session_capabilities
-                        if not caps.can_load:
-                            out_console.print(f"[yellow]{engine.current_provider} does not support session resume[/yellow]")
-                            continue
-                        try:
-                            ok = await engine.resume_session(sid)
-                            if ok:
-                                out_console.print(f"[green]Resumed session: {sid}[/green]")
-                            else:
-                                out_console.print(f"[red]Failed to resume: {sid}[/red]")
-                        except Exception as e:
-                            out_console.print(f"[red]Error: {e}[/red]")
-                        continue
-
-                    if not user_input.strip():
-                        continue
-
-                    # Send message and stream response
-                    display.on_response_start()
-                    spinner_task = asyncio.create_task(_animate_spinner(display))
-                    printed_header = False
-
                     try:
-                        async for chunk in engine.chat_stream(user_input):
-                            if not printed_header:
-                                spinner_task.cancel()
-                                try:
-                                    await spinner_task
-                                except asyncio.CancelledError:
-                                    pass
-                                display.clear_status()
-                                out_console.print("[bold green]Assistant[/bold green]:")
-                                printed_header = True
-                            out_console.print(chunk, end="")
-                    finally:
-                        if not spinner_task.done():
+                        ok = await engine.resume_session(sid)
+                        if ok:
+                            out_console.print(f"[green]Resumed session: {sid}[/green]")
+                        else:
+                            out_console.print(f"[red]Failed to resume: {sid}[/red]")
+                    except Exception as e:
+                        out_console.print(f"[red]Error: {e}[/red]")
+                    continue
+
+                if not user_input.strip():
+                    continue
+
+                # Send message and stream response
+                display.on_response_start()
+                spinner_task = asyncio.create_task(_animate_spinner(display))
+                printed_header = False
+
+                try:
+                    async for chunk in engine.chat_stream(user_input):
+                        if not printed_header:
                             spinner_task.cancel()
                             try:
                                 await spinner_task
                             except asyncio.CancelledError:
                                 pass
+                            display.clear_status()
+                            out_console.print("[bold green]Assistant[/bold green]:")
+                            printed_header = True
+                        out_console.print(chunk, end="", markup=False)
+                except Exception as e:
+                    # ACP errors, timeouts, etc. — show to user
+                    spinner_task.cancel()
+                    try:
+                        await spinner_task
+                    except asyncio.CancelledError:
+                        pass
+                    display.clear_status()
+                    out_console.print(f"[red]Error: {e}[/red]")
+                finally:
+                    if not spinner_task.done():
+                        spinner_task.cancel()
+                        try:
+                            await spinner_task
+                        except asyncio.CancelledError:
+                            pass
 
-                    if printed_header:
-                        out_console.print("\n")
-                    display.on_response_end()
+                if printed_header:
+                    out_console.print("\n")
+                display.on_response_end()
 
-                except KeyboardInterrupt:
-                    display.on_response_end()
-                    out_console.print("\n[dim]Use '/exit' to quit[/dim]")
-                    continue
-                except EOFError:
-                    break
+            except KeyboardInterrupt:
+                display.on_response_end()
+                out_console.print("\n[dim]Use '/exit' to quit[/dim]")
+                continue
+            except EOFError:
+                break
 
     except KeyboardInterrupt:
         pass

@@ -437,7 +437,7 @@ pytest tests/ -v
 # Run with coverage
 pytest tests/ --cov=avatar_engine
 
-# Current: 700+ unit tests, 110+ integration tests
+# Current: 730+ unit tests, 120+ integration tests
 ```
 
 PTY REPL integration tests are marked with `-m pty` and require host PTY support (`/dev/pts`); they auto-skip when PTY devices are unavailable.

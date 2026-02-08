@@ -1,303 +1,185 @@
-# CLI Display Rewrite — Gemini CLI Style
+# CLI Display Fix v2 — Robustni event pipeline pro CLI i Web GUI
 
 > Created: 2026-02-07
-> Status: Draft
-> Assigned to: Codex
-> Reviewer: Claude
-> Branch: `cli-plan`
+> Rewritten: 2026-02-08
+> Status: DONE (2026-02-08)
+> Branch: cli-plan
 
 ---
 
 ## Problem
 
-The current CLI REPL display uses Rich `Live` for animated spinners. This fundamentally conflicts with:
-1. `Prompt.ask()` input — flickering, lost characters
-2. Streaming text output — overwritten responses
-3. Event handlers printing during stream — thinking leaks into text
+Codexuv rewrite pridal prompt_toolkit + patch_stdout + _quiet_repl_logs, cimz:
+1. Rozbil ANSI barvy (patch_stdout mangles Rich escape codes)
+2. Skryl startup logy (bridge info, provider, model)
+3. Tise spolkl ACP chyby (_stream_acp error handling)
+4. Pridal zbytecnou slozitost (prompt_toolkit neni potreba)
 
-Rich `Live` is for progress bars, NOT for a REPL with interleaved input/status/streaming.
+Navic existuji pre-existing bugy:
+- _stream_acp() tise spolkne RequestError — uzivatel nevidi chybu
+- _extract_text_from_update() nefiltruje thinking bloky -> thinking v outputu
+- Gemini bridge nikdy neposle is_complete=True pro thinking eventy
 
-**Current state**: The REPL has been reverted to a simple non-Live baseline (direct prints only, no animations). This works correctly but has no animated spinners or real-time status updates.
+## Cil
 
----
+Cisty event pipeline znovupouzitelny pro Web GUI:
 
-## Solution: prompt_toolkit Based REPL
+    Bridge -> Engine._process_event() -> EventEmitter
+                                          +-- CLI: DisplayManager (spinner + text)
+                                          +-- Web: WebSocket -> React
 
-Replace Rich `Live` + `Prompt.ask` with **prompt_toolkit** — the same library IPython and many Python REPLs use. It handles input/display separation natively.
+Vizualni vystup:
 
-### Why prompt_toolkit
-- Built for exactly this: async REPL with concurrent output
-- `patch_stdout()` context manager lets background output not interfere with input
-- `print_formatted_text()` for status updates that don't corrupt input line
-- Used by IPython, pgcli, mycli, AWS CLI v2 — battle-tested
-- Pure Python, no native deps
+    $ avatar repl
 
-### Architecture
+    Starting Gemini bridge (ACP enabled: True)
+    ACP authenticated via: oauth-personal
 
-```
-repl.py (REPL loop)
-  - prompt_toolkit PromptSession for input
-  - patch_stdout() context for safe background output
-  - async streaming with clean text output
+    Avatar Engine REPL (gemini)
 
-display.py (DisplayManager)
-  - Remove all Live-related code (start_live, stop_live, update_live)
-  - Keep ThinkingDisplay + ToolGroupDisplay as data models
-  - Event handlers print via print_formatted_text() (safe with patch_stdout)
-  - Three output modes:
-    1. WAITING: single-line spinner (overwrite with \r)
-    2. TOOL STATUS: printed lines (non-transient)
-    3. TEXT STREAM: clean sequential print
-```
+    You: Analyzuj tento projekt
 
----
+    * Analyzing (3s)
+    * Understanding the project structure (5s)
+      * read_file: src/main.py
+      v read_file (0.3s)
+    * Planning improvements (8s)
 
-## Reference: Gemini CLI Visual Patterns
+    Assistant:
+    Projekt ma standardni Python strukturu...
 
-Study `/home/box/git/github/gemini-cli/packages/cli/src/ui/components/`:
-
-**LoadingIndicator.tsx**: `{spinner} {thought.subject} (esc to cancel, {elapsed}s)`
-**ToolGroupMessage.tsx**: Box with list of tools, status icons per tool
-**GeminiRespondingSpinner.tsx**: Braille dot animation
-
-Target output (what we want to achieve):
-
-```
-You: Explain this project
-
-⠋ Analyzing code structure (3s)
-  ⠋ Read: src/main.py
-  ✓ Read (0.3s)
-  ⠋ Grep: patterns
-  ✓ Grep (0.5s)
-✓ Analysis complete (4s)
-
-Assistant:
-This project is a Python library that...
-
-You: _                          <-- clean input, no flicker
-```
-
-Key behaviors:
-- Spinner animates on a single line (\r overwrite), disappears when done
-- Tool status lines are permanent (not transient)
-- Text stream prints sequentially after all tools/thinking finish
-- Input prompt is always clean — no concurrent display corruption
+Spinner zmizi, objevi se Assistant: a pod nim JEN finalni odpoved.
+Zadny thinking text, zadne reasoning bloky.
 
 ---
 
-## Current Code Analysis
+## 5 implementacnich kroku
 
-### What to KEEP
-- `ThinkingDisplay` class — data model for thinking state (subject, phase, elapsed time)
-- `ToolGroupDisplay` class — data model for tool tracking (active/completed/failed)
-- `DisplayManager` event handler registration pattern (`_on_thinking`, `_on_tool`, etc.)
-- `on_response_start()` / `on_response_end()` lifecycle hooks
-- `_summarize_params()` helper
-- All event types from `events.py` (ThinkingEvent, ToolEvent, etc.)
-- `EngineState` enum
+### Krok 1: Fix _stream_acp() error handling (gemini.py)
 
-### What to REMOVE
-- `start_live()` / `stop_live()` / `update_live()` — Rich Live is the root cause
-- `Rich Live` import and usage
-- `Rich Prompt.ask()` from repl.py — replace with prompt_toolkit `PromptSession`
-- `_update_display_loop()` background task in repl.py
-- Any `refresh_per_second` or `auto_refresh` settings
+Problem: Kdyz ACP prompt() vyhodi RequestError, _run_prompt() ji zachyti
+ve finally a posle None sentinel. Hlavni loop breakne, prazdna odpoved,
+chyba ztracena. Uzivatel nevidi nic.
 
-### What to ADD
-- `prompt_toolkit` dependency in pyproject.toml `[cli]` extras
-- `PromptSession` for async input in repl.py
-- `patch_stdout()` context for safe background output
-- Spinner animation using `sys.stdout.write('\r' + frame + ' ' + text)` pattern
-- Clean transition from spinner to text output (erase spinner line before first text chunk)
+Oprava: Po while loopu zkontrolovat task.exception() a propagovat chybu.
+Pridat fallback na oneshot jako ma _send_acp().
 
----
+### Krok 2: is_complete tracking pro Gemini thinking (gemini.py)
 
-## Implementation Steps
+Problem: Gemini bridge emituje thinking eventy bez is_complete=True.
+DisplayManager._on_thinking() nikdy nezavola thinking.stop() pres eventy.
 
-### Step 1: Add prompt_toolkit dependency
+Oprava: Pridat _was_thinking flag. Kdyz prijde text PO thinking,
+emitovat {type: thinking, is_complete: True}.
 
-In `pyproject.toml`, add to `[project.optional-dependencies]`:
-```toml
-cli = ["click>=8.0", "rich>=13.0", "prompt-toolkit>=3.0"]
-```
+### Krok 3: Odstranit _quiet_repl_logs() (repl.py)
 
-### Step 2: Rewrite repl.py input loop
+Problem: Codex pridal funkci, ktera nastavuje bridge loggery na WARNING.
+Skryje 12+ dulezitych startup zprav (provider, model, ACP auth...).
 
-Replace `Rich Prompt.ask()` with prompt_toolkit `PromptSession`:
+Oprava: Smazat funkci a jeji pouziti. Startup logy budou opet viditelne.
 
-```python
-from prompt_toolkit import PromptSession
-from prompt_toolkit.patch_stdout import patch_stdout
+### Krok 4: Zjednodusit REPL (repl.py)
 
-session = PromptSession()
+Problem: prompt_toolkit + patch_stdout pridava slozitost a bugs.
+patch_stdout mangles ANSI, prompt_toolkit neni nutny.
 
-with patch_stdout():
-    while True:
-        user_input = await session.prompt_async("You: ")
-        # ... handle commands, send to engine
-        display.on_response_start()
-        async for chunk in engine.chat_stream(user_input):
-            if display.is_first_text:
-                display.clear_status()  # erase spinner line
-                print("Assistant:")
-            print(chunk, end='', flush=True)
-        print()  # newline after response
-        display.on_response_end()
-```
+Oprava: Zpet na asyncio run_in_executor + console.input() pro vstup.
+Zachovat async spinner task pattern (funguje). Odstranit prompt_toolkit,
+patch_stdout, sys.__stdout__ hack. Psat primo na console.
 
-### Step 3: Rewrite DisplayManager output
+### Krok 5: Thinking text filtrace (gemini.py) — HOTOVO
 
-Remove all Rich Live code. Replace with direct stdout writes that work with `patch_stdout()`:
+Problem: _extract_text_from_update() nevynechavala thinking bloky.
 
-```python
-import sys
-import threading
-
-class DisplayManager:
-    def __init__(self, emitter, console=None, verbose=False):
-        # ... keep existing init
-        self._spinner_active = False
-        self._spinner_text = ''
-
-    def _on_thinking(self, event):
-        if event.is_complete:
-            self.thinking.stop()
-            return
-        self.thinking.start(event)
-        self._update_spinner()
-
-    def _update_spinner(self):
-        """Write spinner to stdout (safe with patch_stdout)."""
-        text = self.thinking.render_text()  # plain text, no Rich
-        if text:
-            frame = SPINNER_FRAMES[self._frame_idx % len(SPINNER_FRAMES)]
-            sys.stdout.write(f'\r{frame} {text}')
-            sys.stdout.flush()
-            self._spinner_active = True
-
-    def clear_status(self):
-        """Erase the spinner line before text output."""
-        if self._spinner_active:
-            sys.stdout.write('\r' + ' ' * 80 + '\r')
-            sys.stdout.flush()
-            self._spinner_active = False
-
-    def _on_tool(self, event):
-        """Print tool status lines (permanent, not transient)."""
-        # Clear spinner first
-        self.clear_status()
-        if event.status == 'started':
-            print(f'  \u280b {event.tool_name}: {_summarize_params(event.parameters)}')
-        elif event.status == 'completed':
-            print(f'  \u2713 {event.tool_name}')
-        elif event.status == 'failed':
-            print(f'  \u2717 {event.tool_name}: {event.error}')
-```
-
-### Step 4: Async spinner animation
-
-Add a background task that animates the spinner at ~8 FPS:
-
-```python
-async def _animate_spinner(display):
-    try:
-        while True:
-            display._update_spinner()
-            display._frame_idx += 1
-            await asyncio.sleep(0.125)
-    except asyncio.CancelledError:
-        display.clear_status()
-```
-
-Start/stop this task around each response, NOT around the whole REPL loop.
-
-### Step 5: Clean up Rich usage
-
-- Keep Rich `Console` for formatted output (colored text, tables, panels)
-- Remove `Rich Live` import and all Live-related code
-- Remove `Rich Prompt` import (replaced by prompt_toolkit)
-- The `console.print()` calls for non-animated output (commands like /stats, /usage) stay as-is
+Oprava: Pridana _is_thinking_block() helper, filtrace v obou extraction
+funkcich. 13 novych testu, vsechny prochazi.
 
 ---
 
-## Files to Modify
+## Co zachovat (funguje)
 
-| File | Action |
-|------|--------|
-| `pyproject.toml` | Add `prompt-toolkit>=3.0` to `[cli]` extras |
-| `avatar_engine/cli/commands/repl.py` | Replace Prompt.ask with PromptSession, add patch_stdout, restructure response loop |
-| `avatar_engine/cli/display.py` | Remove Live code, add spinner/clear_status methods, keep data models |
-| `tests/test_cli_repl_lifecycle.py` | Update tests for new display API (no Live), test spinner output |
-| `tests/integration/test_real_repl_display.py` | Update integration tests for non-Live display lifecycle |
+- Event system: ThinkingEvent, ThinkingPhase, extract_bold_subject, classify_thinking
+- Engine._process_event() — konverze raw eventu na typed eventy
+- DisplayManager event handler pattern (_on_thinking, _on_tool, _on_error)
+- ThinkingDisplay + ToolGroupDisplay data modely
+- advance_spinner() + _write_status_rich() + clear_status() pattern
+- on_response_start() / on_response_end() lifecycle
+
+## Co odstranit
+
+- prompt_toolkit import a pouziti
+- patch_stdout()
+- _quiet_repl_logs()
+- sys.__stdout__ hack (nebude potreba bez patch_stdout)
+
+## Co pridat
+
+- Error propagace v _stream_acp()
+- _was_thinking flag + is_complete emission v Gemini bridge
+- asyncio run_in_executor pro neblokujici input
+- Codex bridge: stejna _is_thinking_block() filtrace
 
 ---
 
-## Testing Strategy
+## Testovaci strategie
 
-### Unit tests (test_cli_repl_lifecycle.py)
+### Unit testy
+- _stream_acp error propagace (mock ACP connection)
+- is_complete emission kdyz text nasleduje po thinking
+- _is_thinking_block filtrace (13 testu — HOTOVO)
+- Provider switch clears model (2 testy — HOTOVO)
 
-1. **Spinner output**: DisplayManager writes spinner text to stdout on ThinkingEvent
-2. **Tool status lines**: ToolEvent prints permanent status lines
-3. **clear_status()**: Erases spinner line (\r + spaces)
-4. **on_response_start/end**: State transitions work correctly
-5. **Events in non-REPL mode**: Events print directly (no prompt_toolkit needed)
-6. **Verbose mode**: Prints thinking details
-7. **Error handling**: Errors print immediately
-8. **Multiple turns**: State resets correctly between turns
+### Integracni testy
+- Real Gemini: thinking spinner + response text
+- Real Claude: spinner + response
+- Error scenario: ACP failure zobrazena uzivateli
 
-### Integration tests (test_real_repl_display.py)
-
-1. **Real Gemini stream**: Events fire, text chunks arrive, no display corruption
-2. **Real Claude stream**: Same as above (Claude has fewer ThinkingEvents)
-3. **Multiple turns**: Each turn starts/ends cleanly
-4. **Full text captured**: All text chunks received (nothing lost by display)
-
-### Manual testing
-
-```bash
-# Test with Gemini (has rich thinking/tool events)
-avatar repl -p gemini
-
-# Test with Claude (fewer events, verify fallback spinner)
-avatar repl -p claude
-
-# Verify: no flickering, clean input, animated spinners, tool status lines
-```
+### Manualni testy
+    avatar repl              # Gemini (default)
+    avatar -p claude repl    # Claude
+    avatar -p codex repl     # Codex
 
 ---
 
 ## Acceptance Criteria
 
-1. **No flickering**: Input prompt is always clean, never corrupted by status output
-2. **Animated spinner**: Braille spinner animates during thinking (\r overwrite)
-3. **Tool status lines**: Tools show start/complete with icons, permanent lines
-4. **Clean text streaming**: Response text prints sequentially after spinner clears
-5. **Multiple turns**: Each turn starts fresh, no state leakage
-6. **All providers work**: Gemini, Claude, Codex all display correctly
-7. **All existing tests pass**: `python -m pytest tests/ -x -q` — zero failures
-8. **New tests cover display**: Unit + integration tests for new display behavior
-9. **No Rich Live**: Zero references to `Rich Live` in repl.py or display.py event handlers
-10. **prompt_toolkit input**: `PromptSession.prompt_async()` replaces `Prompt.ask()`
+1. Startup logy viditelne (provider, model, ACP auth)
+2. Spinner animuje jednoradkove behem thinking
+3. Thinking text NIKDY v response outputu
+4. Chyby z ACP zobrazeny uzivateli (ne tise spolknute)
+5. Cisty exit bez chybovych hlasek
+6. Vsechny providery funguji
+7. Vsechny testy prochazi
+8. Zadny prompt_toolkit v repl.py
 
 ---
 
-## Dependencies
+## Appendix: ACP Stabilization (2026-02-08)
 
-```
-prompt-toolkit >= 3.0  (add to pyproject.toml [cli] extras)
-```
+Po updatu gemini-cli na novou verzi se objevily dalsi problemy:
 
-prompt_toolkit is already a transitive dependency of IPython (which is in dev deps), but it must be explicitly listed for CLI users.
+### Opravene bugy
 
----
+1. **Gemini ACP "Internal error"** — tri root causes:
+   - `spawn_agent_process` → `connect_to_agent` (oficialní SDK API)
+   - Chybejici `ClientCapabilities(fs=..., terminal=True)` v `initialize()`
+   - Spatny format `request_permission` odpovedi (raw dict → typed Pydantic)
+   - `previewFeatures` odstranen z gemini-cli, nenastavujeme v settings
+   - ACP mode nepise settings.json vubec (nechava gemini-cli defaults)
+   - Detaily viz `plans/acp-bug-analysis.md`
 
-## Notes for Codex
+2. **Codex thinking leak** — reasoning text unikal do odpovedi:
+   - Skip text extraction kdyz thinking je v tom samem updatu
+   - `_was_thinking` flag + `is_complete` emission pri thinking→text prechodu
 
-- The baseline code (after revert) has NO animations — just direct prints. This is correct and fully functional.
-- Your job is to ADD animations on top of the working baseline, NOT fix broken animations.
-- Keep the existing command handling (/exit, /clear, /stats, etc.) — don't touch it.
-- The event system (EventEmitter, ThinkingEvent, ToolEvent, etc.) is correct — don't modify `events.py`.
-- Run `python -m pytest tests/ -x -q` after every change to ensure nothing breaks.
-- Study Gemini CLI's visual patterns in `/home/box/git/github/gemini-cli/` for inspiration.
-- Study Codex CLI's patterns in `/home/box/git/github/codex/codex-cli/` for comparison.
+3. **Cursor blinking** — spinner animace zpusobovala problikavani kurzoru:
+   - `\033[?25l` (hide cursor) pri prvnim spinner frame
+   - `\033[?25h` (show cursor) v `clear_status()`
+
+### ACP SDK
+
+- Python SDK: `agent-client-protocol==0.8.0`
+- TypeScript SDK (gemini-cli): `@agentclientprotocol/sdk ^0.12.0`
+- Oficialni vzor: `examples/gemini.py` v python-sdk repu
+- Dokumentace: https://agentclientprotocol.github.io/python-sdk/

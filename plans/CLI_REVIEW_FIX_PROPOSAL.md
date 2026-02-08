@@ -1,7 +1,9 @@
 # CLI REPL Review + Návrh Oprav
 
-Datum: 2026-02-07  
-Branch: `cli-plan`  
+> Status: DONE (2026-02-08) — all fixes applied, see CLI_DISPLAY_REWRITE_PLAN.md
+
+Datum: 2026-02-07
+Branch: `cli-plan`
 Scope: `avatar_engine/cli/commands/repl.py`, `avatar_engine/cli/display.py`, související testy
 
 ## Findings (seřazeno podle závažnosti)

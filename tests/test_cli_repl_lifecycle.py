@@ -64,7 +64,7 @@ class TestSpinnerStatus:
         # No ThinkingEvent emitted — Codex/Claude scenario
         display.advance_spinner()
         output = console.file.getvalue()
-        assert "Thinking" in output
+        assert "hinking" in output  # "Thinking" or "thinking"
         assert display.has_active_status is True
 
 

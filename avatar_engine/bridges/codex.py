@@ -43,14 +43,28 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _ACP_AVAILABLE = False
 try:
-    from acp import spawn_agent_process, text_block
+    from acp import PROTOCOL_VERSION, connect_to_agent, text_block
     from acp.interfaces import Client as ACPClient
+    from acp.schema import (
+        AgentMessageChunk,
+        AgentThoughtChunk,
+        AllowedOutcome,
+        ClientCapabilities,
+        DeniedOutcome,
+        FileSystemCapability,
+        PermissionOption,
+        RequestPermissionResponse,
+        TextContentBlock,
+        ToolCall,
+        ToolCallStart,
+        ToolCallProgress,
+    )
 
     _ACP_AVAILABLE = True
 except ImportError:
     logger.info(
         "agent-client-protocol not installed — Codex ACP unavailable. "
-        "Install with: pip install agent-client-protocol"
+        "Install with: uv add agent-client-protocol"
     )
 
 
@@ -134,13 +148,13 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         # ACP state
         self._acp_conn = None
         self._acp_proc = None
-        self._acp_ctx = None
         self._acp_session_id: Optional[str] = None
 
         # Collected events from ACP session_update notifications
         self._acp_events: List[Dict[str, Any]] = []
         self._acp_text_buffer: str = ""
         self._recent_thinking_norm = deque(maxlen=8)
+        self._was_thinking = False  # Track thinking→text transition for is_complete
         self._acp_buffer_lock = threading.Lock()  # RC-3/4: sync callback vs main thread
 
         # Provider capabilities
@@ -203,7 +217,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
     # ======================================================================
 
     async def _start_acp(self) -> None:
-        """Spawn codex-acp, authenticate, create session."""
+        """Spawn codex-acp via connect_to_agent (official SDK API)."""
         self._set_state(BridgeState.WARMING_UP)
 
         # Verify executable is available
@@ -214,30 +228,48 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 "Install npx (Node.js) or codex-acp binary."
             )
 
-        # Build ACP client that handles permission requests
-        client = _CodexACPClient(
-            auto_approve=(self.approval_mode == "auto"),
-            on_update=self._handle_acp_update,
-        )
-
         # Build command: executable + executable_args
         cmd_args = [exe_bin] + self.executable_args
         env = self._build_subprocess_env()
 
         logger.info(f"Spawning ACP: {' '.join(cmd_args[:6])}")
 
-        # spawn_agent_process is an async context manager
-        self._acp_ctx = spawn_agent_process(
-            client, *cmd_args, cwd=self.working_dir, env=env
+        # Spawn process with stdio pipes
+        self._acp_proc = await asyncio.create_subprocess_exec(
+            *cmd_args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=None,
+            cwd=self.working_dir,
+            env=env,
         )
-        self._acp_conn, self._acp_proc = await self._acp_ctx.__aenter__()
 
-        # Step 1: Initialize protocol
+        # Build ACP client that handles permission requests
+        client = _CodexACPClient(
+            auto_approve=(self.approval_mode == "auto"),
+            on_update=self._handle_acp_update,
+        )
+
+        # Connect via official SDK API
+        self._acp_conn = connect_to_agent(
+            client, self._acp_proc.stdin, self._acp_proc.stdout
+        )
+
+        # Step 1: Initialize protocol with client capabilities
         init_resp = await asyncio.wait_for(
-            self._acp_conn.initialize(protocol_version=1),
+            self._acp_conn.initialize(
+                protocol_version=PROTOCOL_VERSION,
+                client_capabilities=ClientCapabilities(
+                    fs=FileSystemCapability(
+                        read_text_file=True,
+                        write_text_file=True,
+                    ),
+                    terminal=True,
+                ),
+            ),
             timeout=self.timeout,
         )
-        logger.debug(f"ACP initialized: {init_resp}")
+        logger.debug(f"ACP initialized: protocol v{init_resp.protocol_version}")
         self._store_acp_capabilities(init_resp)
 
         # Step 2: Authenticate
@@ -285,14 +317,43 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         return mcp_servers_acp
 
     async def _cleanup_acp(self) -> None:
-        """Clean up ACP context manager and process."""
-        if self._acp_ctx:
+        """Clean up ACP connection and terminate process.
+
+        Closes subprocess pipes and transport explicitly to prevent
+        'Event loop is closed' errors from BaseSubprocessTransport.__del__.
+        """
+        if self._acp_conn:
             try:
-                await self._acp_ctx.__aexit__(None, None, None)
+                await self._acp_conn.close()
             except Exception as exc:
-                logger.debug(f"ACP cleanup: {exc}")
-            self._acp_ctx = None
-        self._acp_conn = None
+                logger.debug(f"ACP conn close: {exc}")
+            self._acp_conn = None
+        if self._acp_proc:
+            # Close stdin to signal EOF to child process
+            if self._acp_proc.stdin:
+                try:
+                    self._acp_proc.stdin.close()
+                except Exception:
+                    pass
+            if self._acp_proc.returncode is None:
+                try:
+                    self._acp_proc.terminate()
+                    await asyncio.wait_for(self._acp_proc.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    self._acp_proc.kill()
+                    await self._acp_proc.wait()
+                except Exception as exc:
+                    logger.debug(f"ACP process cleanup: {exc}")
+            # Close the subprocess transport so pipe transports are cleaned up
+            # while the event loop is still running
+            try:
+                transport = getattr(self._acp_proc, "_transport", None)
+                if transport and hasattr(transport, "close"):
+                    transport.close()
+                # Give event loop a chance to process pipe close callbacks
+                await asyncio.sleep(0)
+            except Exception:
+                pass
         self._acp_proc = None
         self._acp_session_id = None
 
@@ -300,12 +361,83 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         """Callback for ACP session/update notifications (streaming text + thinking).
 
         Called from ACP SDK thread — all buffer writes protected by lock (RC-3/4).
+        Wrapped in try-except so exceptions don't propagate into ACP SDK internals.
         """
+        try:
+            self._handle_acp_update_inner(session_id, update)
+        except Exception as exc:
+            logger.debug(f"Error in ACP update handler: {exc}", exc_info=True)
+
+    def _handle_acp_update_inner(self, session_id: str, update: Any) -> None:
+        """Inner handler for ACP updates — uses typed SDK objects.
+
+        The ACP SDK delivers typed updates:
+        - AgentThoughtChunk → thinking event (spinner, NOT printed)
+        - AgentMessageChunk → response text (printed to output)
+        - ToolCallStart/ToolCallProgress → tool events
+        - Fallback: legacy attribute-based extraction
+        """
+        # --- Typed dispatch (ACP SDK 0.8+) ---
+        if _ACP_AVAILABLE and isinstance(update, AgentThoughtChunk):
+            thinking = _text_from_content(update.content)
+            if thinking:
+                self._was_thinking = True
+                norm = _normalize_reasoning_text(thinking)
+                if norm:
+                    with self._acp_buffer_lock:
+                        self._recent_thinking_norm.append(norm)
+                thinking_event = {
+                    "type": "thinking",
+                    "session_id": session_id,
+                    "thought": thinking,
+                }
+                with self._acp_buffer_lock:
+                    self._acp_events.append(thinking_event)
+                if self._on_event:
+                    self._on_event(thinking_event)
+            return
+
+        if _ACP_AVAILABLE and isinstance(update, AgentMessageChunk):
+            text = _text_from_content(update.content)
+            if text and not self._should_suppress_text_output(text):
+                # Thinking→text transition: emit is_complete so display stops spinner
+                if self._was_thinking:
+                    self._was_thinking = False
+                    complete_event = {
+                        "type": "thinking",
+                        "session_id": session_id,
+                        "thought": "",
+                        "is_complete": True,
+                    }
+                    if self._on_event:
+                        self._on_event(complete_event)
+
+                event = {"type": "acp_update", "session_id": session_id, "text": text}
+                with self._acp_buffer_lock:
+                    self._acp_text_buffer += text
+                    self._acp_events.append(event)
+                if self._on_output:
+                    self._on_output(text)
+                if self._on_event:
+                    self._on_event(event)
+            return
+
+        if _ACP_AVAILABLE and isinstance(update, (ToolCallStart, ToolCallProgress)):
+            tool_event = _extract_tool_event_from_update(update)
+            if tool_event:
+                tool_event["session_id"] = session_id
+                with self._acp_buffer_lock:
+                    self._acp_events.append(tool_event)
+                if self._on_event:
+                    self._on_event(tool_event)
+            return
+
+        # --- Fallback: legacy attribute-based extraction ---
         event = {"type": "acp_update", "session_id": session_id, "raw": str(update)}
 
-        # Extract thinking content
         thinking = _extract_thinking_from_update(update)
         if thinking:
+            self._was_thinking = True
             norm = _normalize_reasoning_text(thinking)
             if norm:
                 with self._acp_buffer_lock:
@@ -320,7 +452,6 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             if self._on_event:
                 self._on_event(thinking_event)
 
-        # Extract tool call events
         tool_event = _extract_tool_event_from_update(update)
         if tool_event:
             tool_event["session_id"] = session_id
@@ -329,9 +460,19 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             if self._on_event:
                 self._on_event(tool_event)
 
-        # Extract text content
-        text = _extract_text_from_update(update)
+        text = None if thinking else _extract_text_from_update(update)
         if text and not self._should_suppress_text_output(text):
+            if self._was_thinking:
+                self._was_thinking = False
+                complete_event = {
+                    "type": "thinking",
+                    "session_id": session_id,
+                    "thought": "",
+                    "is_complete": True,
+                }
+                if self._on_event:
+                    self._on_event(complete_event)
+
             event["text"] = text
             with self._acp_buffer_lock:
                 self._acp_text_buffer += text
@@ -376,9 +517,18 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
 
             elapsed = int((time.time() - t0) * 1000)
 
-            # Prefer accumulated streaming buffer, fallback to result
+            # Prefer accumulated streaming buffer, fallback to result, then thinking
             with self._acp_buffer_lock:  # RC-3/4
                 content = self._acp_text_buffer or _extract_text_from_result(result)
+                # Codex sends responses as thinking chunks — if text buffer is
+                # empty, reconstruct content from thinking events
+                if not content:
+                    thinking_parts = [
+                        e["thought"] for e in self._acp_events
+                        if e.get("type") == "thinking" and e.get("thought")
+                    ]
+                    if thinking_parts:
+                        content = "".join(thinking_parts).strip()
                 events_copy = self._acp_events.copy()
 
             with self._history_lock:  # RC-9
@@ -592,21 +742,31 @@ if _ACP_AVAILABLE:
             """Handle tool permission requests from codex-acp.
 
             Codex ACP sends RequestPermission for exec, patch, MCP calls.
-            Possible decisions: Approved, ApprovedForSession, Abort.
+            Returns typed RequestPermissionResponse (SDK 0.8+).
             """
             if self._auto_approve:
                 logger.debug(
                     f"Auto-approving tool call in session {session_id}"
                 )
                 if hasattr(options, "options") and options.options:
-                    first_option = options.options[0]
-                    return {"outcome": first_option}
-                return {"outcome": {"outcome": "approved"}}
+                    opt = options.options[0]
+                    return RequestPermissionResponse(
+                        outcome=AllowedOutcome(
+                            option_id=opt.option_id, outcome="selected"
+                        )
+                    )
+                return RequestPermissionResponse(
+                    outcome=AllowedOutcome(
+                        option_id="approved", outcome="selected"
+                    )
+                )
             else:
                 logger.warning(
                     f"Tool call denied (auto_approve=False): {tool_call}"
                 )
-                return {"outcome": {"outcome": "cancelled"}}
+                return RequestPermissionResponse(
+                    outcome=DeniedOutcome(outcome="cancelled")
+                )
 
         async def session_update(self, session_id, update, **kwargs):
             """Handle streaming session updates from codex-acp."""
@@ -841,6 +1001,22 @@ def _extract_text_from_result(result: Any) -> str:
     except Exception as exc:
         logger.debug(f"Could not extract text from result: {exc}")
     return ""
+
+
+def _text_from_content(content: Any) -> Optional[str]:
+    """Extract text from a typed ACP content block (SDK 0.8+).
+
+    Handles TextContentBlock and plain strings.
+    """
+    if content is None:
+        return None
+    if _ACP_AVAILABLE and isinstance(content, TextContentBlock):
+        return content.text or None
+    if isinstance(content, str):
+        return content or None
+    if hasattr(content, "text"):
+        return content.text or None
+    return None
 
 
 def _normalize_reasoning_text(text: Any) -> str:

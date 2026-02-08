@@ -127,14 +127,20 @@ def _mock_acp(
     call_idx = [0]
 
     conn = AsyncMock()
-    proc = MagicMock()
-    proc.pid = 77777
+    proc = AsyncMock()
+    proc.stdin = MagicMock()
+    proc.stdout = MagicMock()
+    proc.returncode = None
+    proc.terminate = MagicMock()
+    proc.kill = MagicMock()
+    proc.wait = AsyncMock()
 
     conn.initialize = AsyncMock(return_value=_FakeInitResponse())
     conn.authenticate = AsyncMock(return_value=None)
     conn.new_session = AsyncMock(
         return_value=_FakeSessionResponse(session_id=session_id)
     )
+    conn.close = AsyncMock()
 
     async def _prompt(**kwargs):
         idx = call_idx[0]
@@ -144,12 +150,9 @@ def _mock_acp(
 
     conn.prompt = _prompt
 
-    ctx = AsyncMock()
-    ctx.__aenter__ = AsyncMock(return_value=(conn, proc))
-    ctx.__aexit__ = AsyncMock(return_value=None)
-
     return (
-        patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx),
+        patch("asyncio.create_subprocess_exec", return_value=proc),
+        patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn),
         patch("shutil.which", return_value="/usr/bin/npx"),
         conn,
     )
@@ -167,9 +170,9 @@ class TestEngineCodexLifecycle:
     @pytest.mark.asyncio
     async def test_start_chat_stop(self):
         """Engine.start() → chat() → stop() complete lifecycle."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
 
@@ -189,9 +192,9 @@ class TestEngineCodexLifecycle:
     @pytest.mark.asyncio
     async def test_auto_start_on_chat(self):
         """chat() should auto-start engine if not started."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             assert engine._started is False
 
@@ -204,9 +207,9 @@ class TestEngineCodexLifecycle:
     @pytest.mark.asyncio
     async def test_idempotent_start(self):
         """Calling start() twice should be no-op."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
             session1 = engine.session_id
@@ -219,9 +222,9 @@ class TestEngineCodexLifecycle:
     @pytest.mark.asyncio
     async def test_double_stop_safe(self):
         """Calling stop() twice should be safe."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
             await engine.stop()
@@ -253,9 +256,9 @@ class TestEngineCodexConfig:
             },
         })
 
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(config=config)
             assert engine.current_provider == "codex"
 
@@ -283,8 +286,8 @@ codex:
             path = f.name
 
         try:
-            p1, p2, conn = _mock_acp()
-            with p1, p2:
+            p1, p2, p3, conn = _mock_acp()
+            with p1, p2, p3:
                 engine = AvatarEngine.from_config(path)
                 assert engine.current_provider == "codex"
 
@@ -348,10 +351,10 @@ class TestEngineCodexEvents:
     @pytest.mark.asyncio
     async def test_text_event_emitted(self):
         """TextEvent should fire when CodexBridge streams text."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
         text_events = []
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
 
             @engine.on(TextEvent)
@@ -375,10 +378,10 @@ class TestEngineCodexEvents:
     @pytest.mark.asyncio
     async def test_thinking_event_emitted(self):
         """ThinkingEvent should fire when CodexBridge receives thought."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
         thinking_events = []
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
 
             @engine.on(ThinkingEvent)
@@ -400,10 +403,10 @@ class TestEngineCodexEvents:
     @pytest.mark.asyncio
     async def test_tool_result_event_emitted(self):
         """ToolEvent should fire for tool_result from CodexBridge."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
         tool_events = []
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
 
             @engine.on(ToolEvent)
@@ -425,10 +428,10 @@ class TestEngineCodexEvents:
     @pytest.mark.asyncio
     async def test_state_event_emitted_on_start(self):
         """StateEvent should fire during bridge state transitions."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
         state_events = []
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
 
             @engine.on(StateEvent)
@@ -447,10 +450,10 @@ class TestEngineCodexEvents:
     @pytest.mark.asyncio
     async def test_state_event_emitted_during_chat(self):
         """StateEvent should fire for BUSY → READY during chat."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
         state_events = []
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
 
             @engine.on(StateEvent)
@@ -481,9 +484,9 @@ class TestEngineCodexStreaming:
     @pytest.mark.asyncio
     async def test_chat_stream_yields_chunks(self):
         """chat_stream() should yield text chunks from CodexBridge."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
 
@@ -504,9 +507,9 @@ class TestEngineCodexStreaming:
     @pytest.mark.asyncio
     async def test_chat_stream_auto_starts(self):
         """chat_stream() should auto-start engine if not started."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
 
             async def mock_send_stream(prompt):
@@ -543,63 +546,73 @@ class TestEngineCodexRestart:
         """Engine should auto-restart when send() fails."""
         call_count = [0]
 
-        # First context: start OK, send fails
+        # First conn: start OK, send fails
         conn1 = AsyncMock()
-        proc1 = MagicMock()
-        proc1.pid = 11111
+        proc1 = AsyncMock()
+        proc1.stdin = MagicMock()
+        proc1.stdout = MagicMock()
+        proc1.returncode = None
+        proc1.terminate = MagicMock()
+        proc1.kill = MagicMock()
+        proc1.wait = AsyncMock()
         conn1.initialize = AsyncMock(return_value=_FakeInitResponse())
         conn1.authenticate = AsyncMock(return_value=None)
         conn1.new_session = AsyncMock(return_value=_FakeSessionResponse("s-1"))
+        conn1.close = AsyncMock()
 
         async def fail_prompt(**kwargs):
             raise RuntimeError("Connection lost")
 
         conn1.prompt = fail_prompt
 
-        ctx1 = AsyncMock()
-        ctx1.__aenter__ = AsyncMock(return_value=(conn1, proc1))
-        ctx1.__aexit__ = AsyncMock(return_value=None)
-
-        # Second context: start OK, send OK
+        # Second conn: start OK, send OK
         conn2 = AsyncMock()
-        proc2 = MagicMock()
-        proc2.pid = 22222
+        proc2 = AsyncMock()
+        proc2.stdin = MagicMock()
+        proc2.stdout = MagicMock()
+        proc2.returncode = None
+        proc2.terminate = MagicMock()
+        proc2.kill = MagicMock()
+        proc2.wait = AsyncMock()
         conn2.initialize = AsyncMock(return_value=_FakeInitResponse())
         conn2.authenticate = AsyncMock(return_value=None)
         conn2.new_session = AsyncMock(return_value=_FakeSessionResponse("s-2"))
+        conn2.close = AsyncMock()
 
         async def ok_prompt(**kwargs):
             return _FakePromptResult(text="Recovered!")
 
         conn2.prompt = ok_prompt
 
-        ctx2 = AsyncMock()
-        ctx2.__aenter__ = AsyncMock(return_value=(conn2, proc2))
-        ctx2.__aexit__ = AsyncMock(return_value=None)
-
-        def make_ctx(*args, **kwargs):
+        def make_proc(*args, **kwargs):
             call_count[0] += 1
-            return ctx1 if call_count[0] <= 1 else ctx2
+            return proc1 if call_count[0] <= 1 else proc2
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", side_effect=make_ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                engine = AvatarEngine(provider="codex", timeout=10)
-                await engine.start()
+        conn_count = [0]
+        def make_conn(*args, **kwargs):
+            conn_count[0] += 1
+            return conn1 if conn_count[0] <= 1 else conn2
 
-                # First send fails → triggers auto-restart → retry succeeds
-                response = await engine.chat("Hello")
-                assert response.success is True
-                assert response.content == "Recovered!"
-                assert engine.restart_count == 1
+        with patch("asyncio.create_subprocess_exec", side_effect=make_proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", side_effect=make_conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    engine = AvatarEngine(provider="codex", timeout=10)
+                    await engine.start()
 
-                await engine.stop()
+                    # First send fails → triggers auto-restart → retry succeeds
+                    response = await engine.chat("Hello")
+                    assert response.success is True
+                    assert response.content == "Recovered!"
+                    assert engine.restart_count == 1
+
+                    await engine.stop()
 
     @pytest.mark.asyncio
     async def test_restart_count_tracked(self):
         """Restart count should increment on each restart."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
 
@@ -618,30 +631,33 @@ class TestEngineCodexRestart:
         error_events = []
 
         conn = AsyncMock()
-        proc = MagicMock()
-        proc.pid = 33333
+        proc = AsyncMock()
+        proc.stdin = MagicMock()
+        proc.stdout = MagicMock()
+        proc.returncode = None
+        proc.terminate = MagicMock()
+        proc.kill = MagicMock()
+        proc.wait = AsyncMock()
         conn.initialize = AsyncMock(side_effect=RuntimeError("Init boom"))
+        conn.close = AsyncMock()
 
-        ctx = AsyncMock()
-        ctx.__aenter__ = AsyncMock(return_value=(conn, proc))
-        ctx.__aexit__ = AsyncMock(return_value=None)
+        with patch("asyncio.create_subprocess_exec", return_value=proc):
+            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
+                with patch("shutil.which", return_value="/usr/bin/npx"):
+                    engine = AvatarEngine(provider="codex", timeout=10)
 
-        with patch("avatar_engine.bridges.codex.spawn_agent_process", return_value=ctx):
-            with patch("shutil.which", return_value="/usr/bin/npx"):
-                engine = AvatarEngine(provider="codex", timeout=10)
+                    @engine.on(ErrorEvent)
+                    def on_error(event):
+                        error_events.append(event)
 
-                @engine.on(ErrorEvent)
-                def on_error(event):
-                    error_events.append(event)
+                    with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
+                        with pytest.raises(RuntimeError):
+                            await engine.start()
 
-                with caplog.at_level(logging.ERROR, logger="avatar_engine.bridges.codex"):
-                    with pytest.raises(RuntimeError):
-                        await engine.start()
-
-                assert len(error_events) == 1
-                assert "Init boom" in error_events[0].error
-                assert error_events[0].provider == "codex"
-                assert "start failed" in caplog.text.lower()
+                    assert len(error_events) == 1
+                    assert "Init boom" in error_events[0].error
+                    assert error_events[0].provider == "codex"
+                    assert "start failed" in caplog.text.lower()
 
 
 # =============================================================================
@@ -656,9 +672,9 @@ class TestEngineCodexHealth:
     @pytest.mark.asyncio
     async def test_is_healthy_when_running(self):
         """is_healthy() should return True when bridge is READY."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             assert engine.is_healthy() is False
 
@@ -671,9 +687,9 @@ class TestEngineCodexHealth:
     @pytest.mark.asyncio
     async def test_get_health_details(self):
         """get_health() should return detailed HealthStatus."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
 
             # Before start
@@ -696,9 +712,9 @@ class TestEngineCodexHealth:
     @pytest.mark.asyncio
     async def test_health_after_chat(self):
         """Health should remain good after successful chat."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
             await engine.chat("Hello")
@@ -722,9 +738,9 @@ class TestEngineCodexMultiTurn:
     @pytest.mark.asyncio
     async def test_multi_turn_history(self):
         """History should accumulate across turns."""
-        p1, p2, conn = _mock_acp(responses=["R1", "R2", "R3"])
+        p1, p2, p3, conn = _mock_acp(responses=["R1", "R2", "R3"])
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
 
@@ -749,9 +765,9 @@ class TestEngineCodexMultiTurn:
     @pytest.mark.asyncio
     async def test_clear_history(self):
         """clear_history() should reset conversation."""
-        p1, p2, conn = _mock_acp(responses=["R1", "R2"])
+        p1, p2, p3, conn = _mock_acp(responses=["R1", "R2"])
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
 
@@ -769,9 +785,9 @@ class TestEngineCodexMultiTurn:
     @pytest.mark.asyncio
     async def test_session_id_persists_across_turns(self):
         """Session ID should remain same across multi-turn."""
-        p1, p2, conn = _mock_acp(responses=["R1", "R2"])
+        p1, p2, p3, conn = _mock_acp(responses=["R1", "R2"])
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
 
@@ -797,9 +813,9 @@ class TestEngineProviderSwitching:
     @pytest.mark.asyncio
     async def test_switch_to_codex(self):
         """Should switch from Gemini to Codex."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             # Start as gemini (but mock it too to avoid real gemini)
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
@@ -826,9 +842,9 @@ class TestEngineCodexProperties:
     @pytest.mark.asyncio
     async def test_is_warm_true_for_codex(self):
         """Codex bridge is always persistent (warm)."""
-        p1, p2, conn = _mock_acp()
+        p1, p2, p3, conn = _mock_acp()
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
 
@@ -839,9 +855,9 @@ class TestEngineCodexProperties:
     @pytest.mark.asyncio
     async def test_session_id_available(self):
         """Session ID should be available after start."""
-        p1, p2, conn = _mock_acp(session_id="my-codex-session")
+        p1, p2, p3, conn = _mock_acp(session_id="my-codex-session")
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
 
             assert engine.session_id is None
@@ -912,7 +928,7 @@ logging:
             path = f.name
 
         try:
-            p1, p2, conn = _mock_acp(
+            p1, p2, p3, conn = _mock_acp(
                 session_id="e2e-session",
                 responses=["I'm Codex, ready to help!"],
             )
@@ -920,7 +936,7 @@ logging:
             text_events = []
             state_events = []
 
-            with p1, p2:
+            with p1, p2, p3:
                 engine = AvatarEngine.from_config(path)
 
                 @engine.on(TextEvent)
@@ -964,11 +980,11 @@ logging:
     @pytest.mark.asyncio
     async def test_e2e_multi_turn_with_history_check(self):
         """Full E2E multi-turn conversation with history validation."""
-        p1, p2, conn = _mock_acp(
+        p1, p2, p3, conn = _mock_acp(
             responses=["Answer 1", "Answer 2", "The number was 42"],
         )
 
-        with p1, p2:
+        with p1, p2, p3:
             engine = AvatarEngine(provider="codex", timeout=10)
             await engine.start()
 

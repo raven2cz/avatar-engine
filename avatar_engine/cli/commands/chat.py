@@ -161,6 +161,9 @@ async def _chat_async(
         # CLI flags override config file
         if provider_explicit:
             config.provider = ProviderType(provider)
+            # Clear model when switching providers — each has its own default
+            if not model:
+                config.model = None
         if model:
             config.model = model
         engine = AvatarEngine(config=config)
@@ -185,15 +188,45 @@ async def _chat_async(
         if stream and not json_output:
             # Streaming output
             display.on_response_start()
+            spinner_task = asyncio.create_task(_animate_spinner(display))
+            printed_header = False
             full_response = ""
-            async for chunk in engine.chat_stream(message):
-                console.print(chunk, end="")
-                full_response += chunk
+
+            try:
+                async for chunk in engine.chat_stream(message):
+                    if not printed_header:
+                        spinner_task.cancel()
+                        try:
+                            await spinner_task
+                        except asyncio.CancelledError:
+                            pass
+                        display.clear_status()
+                        printed_header = True
+                    console.print(chunk, end="")
+                    full_response += chunk
+            finally:
+                if not spinner_task.done():
+                    spinner_task.cancel()
+                    try:
+                        await spinner_task
+                    except asyncio.CancelledError:
+                        pass
+
             console.print()  # Final newline
             display.on_response_end()
         else:
             # Complete response
-            response = await engine.chat(message)
+            display.on_response_start()
+            spinner_task = asyncio.create_task(_animate_spinner(display))
+            try:
+                response = await engine.chat(message)
+            finally:
+                spinner_task.cancel()
+                try:
+                    await spinner_task
+                except asyncio.CancelledError:
+                    pass
+                display.clear_status()
 
             if json_output:
                 result = {
@@ -221,6 +254,17 @@ async def _chat_async(
     finally:
         display.unregister()
         await engine.stop()
+
+
+async def _animate_spinner(display: DisplayManager) -> None:
+    """Animate thinking spinner while waiting for response text."""
+    try:
+        while True:
+            display.advance_spinner()
+            await asyncio.sleep(0.125)
+    except asyncio.CancelledError:
+        display.clear_status()
+        raise
 
 
 def _run_async_clean(coro: object) -> None:
