@@ -19,6 +19,106 @@ Phases 1-6 (events, activity tracking, CLI display, system prompt, budget, diagn
 
 ---
 
+## Shared Components from CLI Display Rewrite (CRITICAL — reuse, don't reimplement)
+
+The CLI display rewrite (`cli/display.py`) built **transport-agnostic state machines** that
+the web bridge MUST reuse. The event → state logic is identical; only the rendering differs
+(Rich terminal vs JSON/WebSocket).
+
+### What exists in `cli/display.py`
+
+| Component | Class | State it manages | Events consumed |
+|-----------|-------|-----------------|----------------|
+| Thinking state | `ThinkingDisplay` | `active`, `subject`, `phase`, `start_time`, spinner frame | `ThinkingEvent` (start/update/complete) |
+| Tool groups | `ToolGroupDisplay` | `tools` dict (name→status), `group_start_time`, `active_count` | `ToolEvent` (started/completed/failed) |
+| Engine state | `DisplayManager` | `state: EngineState`, `has_active_status`, registered handlers | `ThinkingEvent`, `ToolEvent`, `ErrorEvent`, `StateEvent` |
+
+### How the web bridge should consume them
+
+The `DisplayManager` pattern is **subscribe to events → update internal state → render**.
+The web bridge follows the same pattern but renders to JSON over WebSocket:
+
+```
+CLI:     Engine → EventEmitter → DisplayManager → Rich Console (terminal)
+Web:     Engine → EventEmitter → WebSocketBridge → JSON → WebSocket → React
+```
+
+**`WebSocketBridge._on_event()` should mirror `DisplayManager`'s event handlers:**
+
+```python
+# cli/display.py (existing):
+@engine.on(ThinkingEvent)
+def _on_thinking(self, event):
+    if event.is_complete:
+        self.thinking.deactivate()
+    else:
+        self.thinking.activate(event.subject, event.phase)
+
+# web/bridge.py (new — same logic, different output):
+@engine.on(ThinkingEvent)
+def _on_thinking(self, event):
+    self._broadcast({
+        "type": "thinking",
+        "data": {
+            "thought": event.thought,
+            "subject": event.subject,
+            "phase": event.phase.value if event.phase else "general",
+            "is_start": event.is_start,
+            "is_complete": event.is_complete,
+            "block_id": event.block_id,
+        }
+    })
+```
+
+### Shared state machines to extract (consider refactoring)
+
+During implementation, consider extracting the **state logic** from `DisplayManager` into
+a transport-agnostic base that both CLI and web can inherit:
+
+```python
+# Possible future refactor (not required for v1):
+class BaseDisplayState:
+    """Transport-agnostic event → state machine."""
+    thinking: ThinkingDisplay
+    tools: ToolGroupDisplay
+    state: EngineState
+
+    def _on_thinking(self, event: ThinkingEvent): ...
+    def _on_tool(self, event: ToolEvent): ...
+    def _on_error(self, event: ErrorEvent): ...
+
+class TerminalDisplay(BaseDisplayState):
+    """Rich terminal rendering."""
+    def render(self): ...  # Rich Console output
+
+class WebSocketDisplay(BaseDisplayState):
+    """JSON/WebSocket rendering."""
+    def render(self): ...  # broadcast JSON
+```
+
+For v1, just mirror the handlers. Refactor to shared base in v2 if needed.
+
+### Key implementation notes from CLI experience
+
+1. **ThinkingEvent lifecycle**: `is_start=True` → N updates with `subject` → `is_complete=True`.
+   The web client needs to handle missing `is_start` (Codex sometimes skips it).
+2. **ThinkingEvent.subject**: Extracted from `**Bold Text**` markers in thinking stream.
+   Both Gemini and Codex use this pattern. The subject changes dynamically during thinking.
+3. **Fallback "Thinking..."**: When no `ThinkingEvent` is emitted (some providers skip it),
+   `DisplayManager.advance_spinner()` shows generic "Thinking..." — web should do the same.
+4. **Codex thinking-as-response**: Codex sends entire responses as `AgentThoughtChunk` only
+   (no `AgentMessageChunk`). The bridge reconstructs content from thinking events.
+   Web client should handle `chat_response` with content that came from thinking.
+5. **ToolEvent grouping**: Tools arrive as individual events but should be displayed as groups.
+   `ToolGroupDisplay` handles this with a dict keyed by `tool_id`. React `ToolActivity`
+   component should use the same grouping logic.
+6. **EngineState transitions**: IDLE → THINKING → RESPONDING → IDLE (normal flow).
+   Can also go THINKING → ERROR. Web `StatusBar` should show these states.
+7. **Event order**: ThinkingEvent always comes before TextEvent. ToolEvent can interleave.
+   `is_complete=True` on ThinkingEvent fires before first text chunk.
+
+---
+
 ## Architecture
 
 ```
@@ -106,11 +206,13 @@ def event_to_ws_message(event: AvatarEvent) -> Optional[dict]:
 
 ### Step 2: `bridge.py` — WebSocket event adapter
 
-- `WebSocketBridge(engine)` — registers `engine.on_any()` handler
+- `WebSocketBridge(engine)` — registers per-event-type handlers (mirrors `DisplayManager` pattern from `cli/display.py`)
 - Maintains set of connected WS clients
+- Handler registration: same `@engine.on(ThinkingEvent)`, `@engine.on(ToolEvent)` pattern as CLI
 - `_on_event()` is sync (EventEmitter callback) → uses `asyncio.create_task()` for async WS send
 - `_broadcast()` fans out to all clients, removes dead ones
 - Thread-safe with `asyncio.Lock`
+- **IMPORTANT**: Reference `cli/display.py:DisplayManager.__init__()` for the complete list of event handlers — web bridge needs the same set
 
 ### Step 3: `session_manager.py` — Engine lifecycle
 
@@ -255,9 +357,12 @@ Steps 1-10 (Python) first, then 11-15 (React). Steps 7-10 can overlap with 4-6.
 
 ## Critical Files to Modify/Read
 
-- `avatar_engine/events.py` — All event types + EventEmitter.on_any()
-- `avatar_engine/engine.py` — AvatarEngine.chat(), capabilities, health
-- `avatar_engine/types.py` — BridgeResponse, ProviderCapabilities, HealthStatus
-- `avatar_engine/cli/display.py` — Reference for how events drive UI (ThinkingDisplay, ToolGroupDisplay)
+- `avatar_engine/events.py` — All 8 event types (TextEvent, ThinkingEvent, ToolEvent, StateEvent, CostEvent, ErrorEvent, DiagnosticEvent, ActivityEvent) + EventEmitter + EngineState enum
+- `avatar_engine/engine.py` — AvatarEngine.chat(), chat_stream(), capabilities, health, on() decorator
+- `avatar_engine/types.py` — BridgeResponse, ProviderCapabilities, HealthStatus, ToolPolicy
+- `avatar_engine/activity.py` — ActivityTracker, ActivityStatus — needed for activity event serialization
+- `avatar_engine/cli/display.py` — **PRIMARY REFERENCE** — ThinkingDisplay, ToolGroupDisplay, DisplayManager show exactly how events drive UI state. Web bridge handlers should mirror these.
+- `avatar_engine/cli/commands/repl.py` — Reference for spinner loop pattern (`_animate_spinner()`), response lifecycle (`on_response_start/end`), and how display integrates with chat flow
+- `avatar_engine/cli/commands/chat.py` — Reference for one-shot chat with spinner, `_run_async_clean()` for subprocess cleanup
 - `pyproject.toml` — Add [web] optional deps
 - `avatar_engine/__init__.py` — Add web exports
