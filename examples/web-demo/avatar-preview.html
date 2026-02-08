@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Avatar Engine — Orb Design Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --obsidian: #0a0a0f;
+      --slate-darker: #0f0f17;
+      --slate-deep: #12121a;
+      --slate-dark: #16161f;
+      --slate-mid: #1a1a2e;
+      --slate-light: #2a2a42;
+      --synapse: #6366f1;
+      --pulse: #8b5cf6;
+      --neural: #06b6d4;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--obsidian);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, 0.08) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.05) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    .header {
+      text-align: center;
+      padding: 3rem 2rem 1rem;
+    }
+    .header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .header p {
+      color: var(--text-secondary);
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    /* Emotion selector */
+    .emotions {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .emotion-btn {
+      padding: 0.5rem 1rem;
+      border-radius: 999px;
+      border: 1px solid var(--slate-mid);
+      background: var(--slate-deep);
+      color: var(--text-secondary);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .emotion-btn:hover {
+      border-color: var(--synapse);
+      color: var(--text-primary);
+      background: rgba(99, 102, 241, 0.1);
+    }
+    .emotion-btn.active {
+      border-color: var(--synapse);
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+      color: white;
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
+    }
+
+    /* Grid of orb variants */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+      padding: 2rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: rgba(18, 18, 26, 0.6);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(26, 26, 46, 0.5);
+      border-radius: 1.5rem;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.5rem;
+      transition: all 0.3s ease;
+    }
+    .card:hover {
+      border-color: var(--synapse);
+      box-shadow: 0 8px 40px rgba(99, 102, 241, 0.1);
+      transform: translateY(-4px);
+    }
+    .card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .card p {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .orb-container {
+      position: relative;
+      width: 140px;
+      height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ================================================================
+       VARIANT 1: Nebula Pulse — soft glowing sphere with ring
+       ================================================================ */
+    .nebula .glow {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      filter: blur(30px);
+      opacity: 0.3;
+      animation: breathe 3s ease-in-out infinite;
+    }
+    .nebula .core {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      animation: breathe 3s ease-in-out infinite;
+      box-shadow:
+        0 0 30px var(--glow-1),
+        0 0 60px var(--glow-2),
+        inset 0 0 20px rgba(255,255,255,0.15);
+    }
+    .nebula .core::after {
+      content: '';
+      position: absolute;
+      inset: 6px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.25), transparent 60%);
+    }
+    .nebula .ring {
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      border: 1.5px solid;
+      opacity: 0.3;
+      animation: spin 12s linear infinite, breathe 3s ease-in-out infinite;
+    }
+    .nebula .ring2 {
+      position: absolute;
+      width: 118px;
+      height: 118px;
+      border-radius: 50%;
+      border: 1px dashed;
+      opacity: 0.15;
+      animation: spin-reverse 20s linear infinite;
+    }
+    .nebula .particle {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      animation: orbit 6s linear infinite;
+    }
+
+    /* ================================================================
+       VARIANT 2: Plasma Core — pulsing layered discs
+       ================================================================ */
+    .plasma .layer {
+      position: absolute;
+      border-radius: 50%;
+      animation: breathe 3s ease-in-out infinite;
+    }
+    .plasma .layer-outer {
+      width: 100px;
+      height: 100px;
+      opacity: 0.15;
+      filter: blur(8px);
+    }
+    .plasma .layer-mid {
+      width: 70px;
+      height: 70px;
+      opacity: 0.5;
+      filter: blur(2px);
+      animation-delay: 0.3s;
+    }
+    .plasma .layer-inner {
+      width: 44px;
+      height: 44px;
+      opacity: 0.9;
+      animation-delay: 0.6s;
+      box-shadow: 0 0 20px var(--glow-1), 0 0 40px var(--glow-2);
+    }
+    .plasma .layer-core {
+      width: 20px;
+      height: 20px;
+      opacity: 1;
+      background: white !important;
+      filter: blur(1px);
+      animation-delay: 0.9s;
+      box-shadow: 0 0 15px white;
+    }
+    .plasma .spark {
+      position: absolute;
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: white;
+      animation: spark-fly 2s ease-out infinite;
+    }
+
+    /* ================================================================
+       VARIANT 3: Neural Web — connected nodes with pulsing lines
+       ================================================================ */
+    .neural-web {
+      position: relative;
+    }
+    .neural-web svg {
+      position: absolute;
+      inset: 0;
+      width: 140px;
+      height: 140px;
+    }
+    .neural-web .hub {
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      animation: breathe 3s ease-in-out infinite;
+      box-shadow: 0 0 25px var(--glow-1), 0 0 50px var(--glow-2);
+    }
+    .neural-web .node {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: node-pulse 2s ease-in-out infinite;
+    }
+    .neural-web line {
+      stroke-width: 1;
+      opacity: 0.3;
+      animation: line-pulse 2s ease-in-out infinite;
+    }
+
+    /* ================================================================
+       VARIANT 4: Morphing Blob — organic shape-shifting
+       ================================================================ */
+    .blob .shape {
+      width: 80px;
+      height: 80px;
+      animation: morph 8s ease-in-out infinite, breathe 3s ease-in-out infinite;
+      box-shadow: 0 0 40px var(--glow-1), 0 0 80px var(--glow-2);
+    }
+    .blob .shape::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.3), transparent 60%);
+      animation: morph 8s ease-in-out infinite reverse;
+    }
+    .blob .glow-bg {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      filter: blur(30px);
+      opacity: 0.25;
+      animation: morph 8s ease-in-out infinite, breathe 3s ease-in-out infinite;
+    }
+
+    /* ================================================================
+       VARIANT 5: Concentric Rings — spinning concentric circles
+       ================================================================ */
+    .rings .ring-item {
+      position: absolute;
+      border-radius: 50%;
+      border-style: solid;
+      animation: breathe 3s ease-in-out infinite;
+    }
+    .rings .dot {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 0 8px white;
+    }
+    .rings .center {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      animation: breathe 3s ease-in-out infinite;
+      box-shadow: 0 0 20px var(--glow-1), 0 0 40px var(--glow-2);
+    }
+
+    /* ================================================================
+       VARIANT 6: Galaxy Spiral — rotating spiral arms
+       ================================================================ */
+    .galaxy .arm {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      animation: spin 10s linear infinite;
+    }
+    .galaxy .star {
+      position: absolute;
+      border-radius: 50%;
+      animation: twinkle 2s ease-in-out infinite;
+    }
+    .galaxy .core-glow {
+      position: absolute;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      filter: blur(6px);
+      animation: breathe 3s ease-in-out infinite;
+    }
+    .galaxy .core-bright {
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 0 15px white, 0 0 30px var(--glow-1);
+      animation: breathe 3s ease-in-out infinite;
+    }
+
+    /* ================================================================
+       Keyframes
+       ================================================================ */
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); opacity: var(--base-opacity, 1); }
+      50% { transform: scale(1.06); opacity: calc(var(--base-opacity, 1) * 0.88); }
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes spin-reverse { to { transform: rotate(-360deg); } }
+    @keyframes orbit {
+      0% { transform: rotate(0deg) translateX(50px) rotate(0deg); }
+      100% { transform: rotate(360deg) translateX(50px) rotate(-360deg); }
+    }
+    @keyframes morph {
+      0%, 100% { border-radius: 42% 58% 62% 38% / 45% 55% 45% 55%; }
+      25% { border-radius: 55% 45% 38% 62% / 52% 48% 52% 48%; }
+      50% { border-radius: 38% 62% 55% 45% / 58% 42% 58% 42%; }
+      75% { border-radius: 62% 38% 45% 55% / 42% 58% 42% 58%; }
+    }
+    @keyframes spark-fly {
+      0% { transform: translate(0, 0) scale(1); opacity: 1; }
+      100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+    }
+    @keyframes node-pulse {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
+      50% { transform: translate(-50%, -50%) scale(1.4); opacity: 1; }
+    }
+    @keyframes line-pulse {
+      0%, 100% { opacity: 0.15; }
+      50% { opacity: 0.5; }
+    }
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) scale(1); }
+      50% { opacity: 1; transform: translate(-50%, -50%) scale(1.5); }
+    }
+
+    /* ================================================================
+       Emotion Color Themes
+       ================================================================ */
+    [data-emotion="idle"]       { --c1: #6366f1; --c2: #8b5cf6; --c3: #a78bfa; --glow-1: rgba(99,102,241,0.5); --glow-2: rgba(139,92,246,0.3); }
+    [data-emotion="thinking"]   { --c1: #3b82f6; --c2: #6366f1; --c3: #06b6d4; --glow-1: rgba(59,130,246,0.5);  --glow-2: rgba(6,182,212,0.3);  }
+    [data-emotion="analyzing"]  { --c1: #06b6d4; --c2: #3b82f6; --c3: #8b5cf6; --glow-1: rgba(6,182,212,0.5);   --glow-2: rgba(59,130,246,0.3); }
+    [data-emotion="coding"]     { --c1: #10b981; --c2: #06b6d4; --c3: #34d399; --glow-1: rgba(16,185,129,0.5);  --glow-2: rgba(6,182,212,0.3);  }
+    [data-emotion="planning"]   { --c1: #8b5cf6; --c2: #c084fc; --c3: #e879f9; --glow-1: rgba(139,92,246,0.5);  --glow-2: rgba(192,132,252,0.3);}
+    [data-emotion="reviewing"]  { --c1: #f59e0b; --c2: #f97316; --c3: #fbbf24; --glow-1: rgba(245,158,11,0.5);  --glow-2: rgba(249,115,22,0.3); }
+    [data-emotion="error"]      { --c1: #ef4444; --c2: #f97316; --c3: #fbbf24; --glow-1: rgba(239,68,68,0.5);   --glow-2: rgba(249,115,22,0.3); }
+    [data-emotion="success"]    { --c1: #22c55e; --c2: #10b981; --c3: #06b6d4; --glow-1: rgba(34,197,94,0.5);   --glow-2: rgba(16,185,129,0.3); }
+    [data-emotion="responding"] { --c1: #818cf8; --c2: #a78bfa; --c3: #c084fc; --glow-1: rgba(129,140,248,0.5); --glow-2: rgba(167,139,250,0.3);}
+
+    .label {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      background: var(--slate-dark);
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      border: 1px solid var(--slate-mid);
+    }
+  </style>
+</head>
+<body data-emotion="idle">
+
+  <div class="header">
+    <h1>Avatar Engine — Orb Variants</h1>
+    <p>Click an emotion to see all variants change color theme</p>
+  </div>
+
+  <div class="emotions" id="emotions">
+    <button class="emotion-btn active" data-emotion="idle">Idle</button>
+    <button class="emotion-btn" data-emotion="thinking">Thinking</button>
+    <button class="emotion-btn" data-emotion="analyzing">Analyzing</button>
+    <button class="emotion-btn" data-emotion="coding">Coding</button>
+    <button class="emotion-btn" data-emotion="planning">Planning</button>
+    <button class="emotion-btn" data-emotion="reviewing">Reviewing</button>
+    <button class="emotion-btn" data-emotion="responding">Responding</button>
+    <button class="emotion-btn" data-emotion="success">Success</button>
+    <button class="emotion-btn" data-emotion="error">Error</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- 1. Nebula Pulse -->
+    <div class="card">
+      <h3>Nebula Pulse</h3>
+      <div class="orb-container nebula">
+        <div class="glow" style="background: radial-gradient(circle, var(--c1), var(--c2));"></div>
+        <div class="ring2" style="border-color: var(--c3);"></div>
+        <div class="ring" style="border-color: var(--c1);"></div>
+        <div class="core" style="background: radial-gradient(135deg, var(--c1), var(--c2), var(--c3));"></div>
+        <div class="particle" style="--orbit-r: 50px; animation-delay: 0s; background: var(--c3); width: 5px; height: 5px; box-shadow: 0 0 6px var(--c3);"></div>
+        <div class="particle" style="--orbit-r: 50px; animation-delay: -2s; background: var(--c1); width: 4px; height: 4px; box-shadow: 0 0 6px var(--c1);"></div>
+        <div class="particle" style="--orbit-r: 50px; animation-delay: -4s; background: var(--c2); width: 3px; height: 3px; box-shadow: 0 0 6px var(--c2);"></div>
+      </div>
+      <span class="label">ring + orbit particles</span>
+      <p>Classic glowing sphere with orbiting ring and particles. Clean, elegant.</p>
+    </div>
+
+    <!-- 2. Plasma Core -->
+    <div class="card">
+      <h3>Plasma Core</h3>
+      <div class="orb-container plasma">
+        <div class="layer layer-outer" style="background: radial-gradient(circle, var(--c1), var(--c2));"></div>
+        <div class="layer layer-mid" style="background: radial-gradient(circle, var(--c2), var(--c3));"></div>
+        <div class="layer layer-inner" style="background: radial-gradient(circle, var(--c1), var(--c2));"></div>
+        <div class="layer layer-core"></div>
+        <div class="spark" style="--dx: 40px; --dy: -30px; animation-delay: 0s; left: 50%; top: 50%;"></div>
+        <div class="spark" style="--dx: -35px; --dy: 25px; animation-delay: 0.5s; left: 50%; top: 50%;"></div>
+        <div class="spark" style="--dx: 20px; --dy: 40px; animation-delay: 1s; left: 50%; top: 50%;"></div>
+        <div class="spark" style="--dx: -40px; --dy: -20px; animation-delay: 1.5s; left: 50%; top: 50%;"></div>
+      </div>
+      <span class="label">layered discs + sparks</span>
+      <p>Hot plasma layers with white-hot center. Sparks fly outward. Intense energy feel.</p>
+    </div>
+
+    <!-- 3. Neural Web -->
+    <div class="card">
+      <h3>Neural Web</h3>
+      <div class="orb-container neural-web" id="neural-web">
+        <svg viewBox="0 0 140 140" id="neural-svg"></svg>
+        <div class="hub" style="background: radial-gradient(circle, var(--c1), var(--c2));"></div>
+      </div>
+      <span class="label">connected nodes</span>
+      <p>Brain-inspired network. Nodes pulse along connections. Intellectual, AI feel.</p>
+    </div>
+
+    <!-- 4. Morphing Blob -->
+    <div class="card">
+      <h3>Morphing Blob</h3>
+      <div class="orb-container blob">
+        <div class="glow-bg" style="background: radial-gradient(circle, var(--c1), var(--c2));"></div>
+        <div class="shape" style="background: linear-gradient(135deg, var(--c1), var(--c2), var(--c3)); position: relative;"></div>
+      </div>
+      <span class="label">organic morph</span>
+      <p>Organic blob with continuous shape-shifting. Alive, fluid, mesmerizing.</p>
+    </div>
+
+    <!-- 5. Concentric Rings -->
+    <div class="card">
+      <h3>Concentric Rings</h3>
+      <div class="orb-container rings" id="rings-container">
+        <div class="ring-item" style="width:110px; height:110px; border-width:1px; border-color: var(--c3); opacity:0.2; animation: spin 20s linear infinite, breathe 3s ease-in-out infinite;"></div>
+        <div class="ring-item" style="width:86px; height:86px; border-width:1.5px; border-color: var(--c2); opacity:0.35; animation: spin-reverse 14s linear infinite, breathe 3s ease-in-out infinite 0.2s;"></div>
+        <div class="ring-item" style="width:62px; height:62px; border-width:2px; border-color: var(--c1); opacity:0.5; animation: spin 9s linear infinite, breathe 3s ease-in-out infinite 0.4s;"></div>
+        <div class="ring-item" style="width:40px; height:40px; border-width:2px; border-color: var(--c2); opacity:0.7; animation: spin-reverse 6s linear infinite, breathe 3s ease-in-out infinite 0.6s;"></div>
+        <div class="center" style="background: radial-gradient(circle, var(--c1), var(--c2));"></div>
+        <!-- Dots on rings -->
+        <div class="dot" style="animation: spin 9s linear infinite; transform-origin: 70px 70px; left: 70px; top: 39px;"></div>
+        <div class="dot" style="animation: spin-reverse 14s linear infinite; transform-origin: 70px 70px; left: 70px; top: 27px;"></div>
+      </div>
+      <span class="label">spinning rings + dots</span>
+      <p>Gyroscope-like rings with tracking dots. Precise, mechanical, focused.</p>
+    </div>
+
+    <!-- 6. Galaxy Spiral -->
+    <div class="card">
+      <h3>Galaxy Spiral</h3>
+      <div class="orb-container galaxy" id="galaxy-container">
+        <div class="core-glow" style="background: radial-gradient(circle, var(--c1), var(--c2)); left:50%; top:50%; transform:translate(-50%,-50%);"></div>
+        <div class="core-bright" style="left:50%; top:50%; transform:translate(-50%,-50%);"></div>
+        <div class="arm" id="galaxy-arm-1"></div>
+        <div class="arm" id="galaxy-arm-2" style="animation-delay: -5s;"></div>
+      </div>
+      <span class="label">spiral arms + stars</span>
+      <p>Miniature galaxy with spiral arms and twinkling stars. Cosmic, grand.</p>
+    </div>
+
+  </div>
+
+  <script>
+    // Emotion switcher
+    document.getElementById('emotions').addEventListener('click', (e) => {
+      const btn = e.target.closest('.emotion-btn')
+      if (!btn) return
+      document.querySelectorAll('.emotion-btn').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      document.body.dataset.emotion = btn.dataset.emotion
+    })
+
+    // Generate Neural Web nodes + lines
+    ;(function() {
+      const svg = document.getElementById('neural-svg')
+      const cx = 70, cy = 70
+      const nodes = [
+        { x: 20, y: 35 }, { x: 55, y: 15 }, { x: 105, y: 25 },
+        { x: 120, y: 70 }, { x: 100, y: 115 }, { x: 50, y: 120 },
+        { x: 15, y: 95 }, { x: 35, y: 60 },
+      ]
+      // Lines from hub to nodes
+      nodes.forEach((n, i) => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+        line.setAttribute('x1', cx); line.setAttribute('y1', cy)
+        line.setAttribute('x2', n.x); line.setAttribute('y2', n.y)
+        line.setAttribute('stroke', 'var(--c1)')
+        line.style.animationDelay = `${i * 0.25}s`
+        svg.appendChild(line)
+      })
+      // Lines between adjacent nodes
+      for (let i = 0; i < nodes.length; i++) {
+        const j = (i + 1) % nodes.length
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+        line.setAttribute('x1', nodes[i].x); line.setAttribute('y1', nodes[i].y)
+        line.setAttribute('x2', nodes[j].x); line.setAttribute('y2', nodes[j].y)
+        line.setAttribute('stroke', 'var(--c2)')
+        line.style.animationDelay = `${i * 0.3}s`
+        svg.appendChild(line)
+      }
+      // Node dots
+      const container = document.getElementById('neural-web')
+      nodes.forEach((n, i) => {
+        const dot = document.createElement('div')
+        dot.className = 'node'
+        dot.style.cssText = `
+          left: ${n.x}px; top: ${n.y}px;
+          background: var(--c${(i % 3) + 1});
+          box-shadow: 0 0 8px var(--c${(i % 3) + 1});
+          animation-delay: ${i * 0.25}s;
+        `
+        container.appendChild(dot)
+      })
+    })()
+
+    // Generate Galaxy stars
+    ;(function() {
+      const arms = [document.getElementById('galaxy-arm-1'), document.getElementById('galaxy-arm-2')]
+      arms.forEach((arm, armIdx) => {
+        for (let i = 0; i < 12; i++) {
+          const angle = (i / 12) * Math.PI * 1.5 + armIdx * Math.PI
+          const r = 15 + i * 4
+          const x = 60 + Math.cos(angle) * r
+          const y = 60 + Math.sin(angle) * r
+          const size = Math.max(2, 5 - i * 0.3)
+          const star = document.createElement('div')
+          star.className = 'star'
+          star.style.cssText = `
+            left: ${x}px; top: ${y}px;
+            width: ${size}px; height: ${size}px;
+            background: var(--c${(i % 3) + 1});
+            box-shadow: 0 0 ${size + 2}px var(--c${(i % 3) + 1});
+            animation-delay: ${i * 0.2 + armIdx * 0.1}s;
+          `
+          arm.appendChild(star)
+        }
+      })
+    })()
+  </script>
+</body>
+</html>

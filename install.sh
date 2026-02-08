@@ -51,6 +51,7 @@ NC='\033[0m'
 INSTALL_GEMINI=false
 INSTALL_CLAUDE=false
 INSTALL_CODEX=false
+INSTALL_WEB=false
 
 print_header() {
     echo -e "\n${BLUE}═══════════════════════════════════════════════════════════${NC}"
@@ -88,18 +89,19 @@ select_providers() {
     if command -v claude &> /dev/null; then
         claude_status=" ${DIM}(already installed)${NC}"
     fi
-    if command -v codex-acp &> /dev/null || (command -v npx &> /dev/null && timeout 5 npx --yes @zed-industries/codex-acp --help &> /dev/null); then
+    if command -v codex &> /dev/null; then
         codex_status=" ${DIM}(already installed)${NC}"
     fi
 
-    echo -e "  ${BOLD}1)${NC} ${CYAN}Gemini CLI${NC}  — Google Gemini (free tier available)${gemini_status}"
-    echo -e "     ${DIM}npm install -g @google/gemini-cli${NC}"
+    echo -e "  ${BOLD}1)${NC} ${CYAN}Gemini CLI${NC}  — Google Gemini (free tier / Pro / Max)${gemini_status}"
+    echo -e "     ${DIM}sudo npm install -g @google/gemini-cli${NC}"
     echo ""
-    echo -e "  ${BOLD}2)${NC} ${CYAN}Claude Code${NC} — Anthropic Claude (API key required)${claude_status}"
-    echo -e "     ${DIM}npm install -g @anthropic-ai/claude-code${NC}"
+    echo -e "  ${BOLD}2)${NC} ${CYAN}Claude Code${NC} — Anthropic Claude (Pro / Max subscription)${claude_status}"
+    echo -e "     ${DIM}sudo npm install -g @anthropic-ai/claude-code${NC}"
     echo ""
-    echo -e "  ${BOLD}3)${NC} ${CYAN}Codex CLI${NC}   — OpenAI Codex via ACP (API key required)${codex_status}"
-    echo -e "     ${DIM}npx @zed-industries/codex-acp${NC}"
+    echo -e "  ${BOLD}3)${NC} ${CYAN}Codex CLI${NC}   — OpenAI Codex (Plus / Pro subscription)${codex_status}"
+    echo -e "     ${DIM}sudo npm install -g @openai/codex${NC}"
+    echo -e "     ${DIM}+ npx @zed-industries/codex-acp (ACP adapter)${NC}"
     echo ""
     echo -e "  ${BOLD}a)${NC} All providers"
     echo -e "  ${BOLD}n)${NC} None (Python library only, install CLIs later)"
@@ -217,7 +219,7 @@ check_dependencies() {
         echo "    Version: $(gemini --version 2>/dev/null || echo 'N/A')"
     else
         print_warn "Gemini CLI is not installed"
-        echo "    Install: npm install -g @google/gemini-cli"
+        echo "    Install: sudo npm install -g @google/gemini-cli"
     fi
 
     # Claude Code
@@ -225,22 +227,29 @@ check_dependencies() {
         echo "    Version: $(claude --version 2>/dev/null || echo 'N/A')"
     else
         print_warn "Claude Code is not installed"
-        echo "    Install: npm install -g @anthropic-ai/claude-code"
+        echo "    Install: sudo npm install -g @anthropic-ai/claude-code"
     fi
 
-    # Codex CLI (codex-acp)
+    # Codex CLI
+    if check_command codex; then
+        echo "    Version: $(codex --version 2>/dev/null || echo 'N/A')"
+    else
+        print_warn "Codex CLI is not installed"
+        echo "    Install: sudo npm install -g @openai/codex"
+    fi
+
+    # codex-acp adapter
     if command -v codex-acp &> /dev/null; then
-        print_ok "codex-acp found: $(which codex-acp)"
+        print_ok "codex-acp adapter found: $(which codex-acp)"
     elif command -v npx &> /dev/null; then
-        # Check if codex-acp is cached via npx
         if timeout 5 npx --yes @zed-industries/codex-acp --help &> /dev/null; then
-            print_ok "codex-acp found (via npx)"
+            print_ok "codex-acp adapter found (via npx)"
         else
-            print_warn "codex-acp is not installed"
-            echo "    Install: npx @zed-industries/codex-acp (auto-fetched on first use)"
+            print_warn "codex-acp adapter not cached"
+            echo "    Pre-fetch: npx @zed-industries/codex-acp --help"
         fi
     else
-        print_warn "codex-acp requires npx (Node.js)"
+        print_warn "codex-acp adapter requires npx (Node.js)"
     fi
 
     # --- Python package dependencies ---
@@ -266,6 +275,20 @@ check_dependencies() {
     fi
 
     echo "    Install/repair: uv sync --extra cli --extra dev"
+
+    # --- Web demo ---
+    echo ""
+    echo -e "${BOLD}Web Demo:${NC}"
+    if [ -n "$python_bin" ]; then
+        check_python_module "$python_bin" "fastapi" "fastapi (web server)" false
+        check_python_module "$python_bin" "uvicorn" "uvicorn (ASGI server)" false
+    fi
+    if [ -d "examples/web-demo/node_modules" ]; then
+        print_ok "Web demo frontend deps installed"
+    else
+        print_warn "Web demo frontend deps not installed"
+        echo "    Install: ./install.sh --web"
+    fi
 
     echo ""
     if $all_ok; then
@@ -340,16 +363,9 @@ install_cli_tools() {
 
     print_header "Installing AI Agent CLIs"
 
-    # Check npm for Gemini/Claude (they need global npm install)
-    if ($INSTALL_GEMINI || $INSTALL_CLAUDE) && ! command -v npm &> /dev/null; then
+    # Check npm (all providers need it)
+    if ($INSTALL_GEMINI || $INSTALL_CLAUDE || $INSTALL_CODEX) && ! command -v npm &> /dev/null; then
         print_error "npm is not installed!"
-        echo "Install Node.js: sudo pacman -S nodejs npm"
-        exit 1
-    fi
-
-    # Check npx for Codex
-    if $INSTALL_CODEX && ! command -v npx &> /dev/null; then
-        print_error "npx is not installed!"
         echo "Install Node.js: sudo pacman -S nodejs npm"
         exit 1
     fi
@@ -361,7 +377,7 @@ install_cli_tools() {
             print_ok "Already installed"
         else
             echo "Installing @google/gemini-cli..."
-            npm install -g @google/gemini-cli
+            sudo npm install -g @google/gemini-cli
             print_ok "Gemini CLI installed"
         fi
     fi
@@ -373,18 +389,26 @@ install_cli_tools() {
             print_ok "Already installed"
         else
             echo "Installing @anthropic-ai/claude-code..."
-            npm install -g @anthropic-ai/claude-code
+            sudo npm install -g @anthropic-ai/claude-code
             print_ok "Claude Code installed"
         fi
     fi
 
-    # --- Codex CLI (codex-acp) ---
+    # --- Codex CLI ---
     if $INSTALL_CODEX; then
-        echo -e "\n${YELLOW}Codex CLI (codex-acp):${NC}"
-        echo "Codex uses npx to auto-fetch @zed-industries/codex-acp on first use."
-        echo "Pre-fetching package to cache..."
+        echo -e "\n${YELLOW}Codex CLI:${NC}"
+        # 1. Install Codex CLI itself
+        if command -v codex &> /dev/null; then
+            print_ok "Codex CLI already installed"
+        else
+            echo "Installing @openai/codex..."
+            sudo npm install -g @openai/codex
+            print_ok "Codex CLI installed"
+        fi
+        # 2. Pre-fetch codex-acp adapter (ACP bridge for Avatar Engine)
+        echo "Pre-fetching @zed-industries/codex-acp (ACP adapter)..."
         if timeout 15 npx --yes @zed-industries/codex-acp --help &> /dev/null; then
-            print_ok "codex-acp cached via npx"
+            print_ok "codex-acp adapter cached via npx"
         else
             print_warn "codex-acp pre-fetch failed (will be fetched on first use)"
         fi
@@ -396,13 +420,13 @@ install_cli_tools() {
     echo ""
     echo "To sign in, run:"
     if $INSTALL_GEMINI; then
-        echo "  gemini           # Run once to authenticate with Google"
+        echo "  gemini           # Sign in with Google account"
     fi
     if $INSTALL_CLAUDE; then
-        echo "  claude           # Run once to authenticate with Anthropic"
+        echo "  claude           # Sign in with Anthropic account (Pro/Max)"
     fi
     if $INSTALL_CODEX; then
-        echo "  codex login      # For ChatGPT auth, or set OPENAI_API_KEY / CODEX_API_KEY"
+        echo "  codex login      # Sign in with ChatGPT account (Plus/Pro)"
     fi
 }
 
@@ -419,17 +443,68 @@ install_python_deps() {
         uv venv
     fi
 
+    # Build the extras list
+    local extras="--extra cli"
+    if $INSTALL_WEB; then
+        extras="$extras --extra web"
+    fi
+
     echo "Installing project dependencies (core + CLI extras)..."
-    uv sync --extra cli
+    uv sync $extras
 
     # Development tools (optional extra)
     read -p "Install development tools extra ([dev]: pytest, ruff, mypy)? [y/N] " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        uv sync --extra cli --extra dev
+        uv sync $extras --extra dev
     fi
 
     print_ok "Python dependencies installed"
+}
+
+# ============================================================================
+# Install Web Demo dependencies (React frontend)
+# ============================================================================
+
+install_web_demo() {
+    if ! $INSTALL_WEB; then
+        return 0
+    fi
+
+    print_header "Installing Web Demo (React frontend)"
+
+    local web_dir="examples/web-demo"
+    if [ ! -d "$web_dir" ]; then
+        print_error "Web demo directory not found: $web_dir"
+        return 1
+    fi
+
+    # Detect package manager (prefer pnpm > npm)
+    local pkg_cmd=""
+    if command -v pnpm &> /dev/null; then
+        pkg_cmd="pnpm"
+        print_ok "Using pnpm: $(pnpm --version)"
+    elif command -v npm &> /dev/null; then
+        pkg_cmd="npm"
+        print_ok "Using npm: $(npm --version)"
+    else
+        print_error "No Node.js package manager found (pnpm or npm required)"
+        echo "Install Node.js: sudo pacman -S nodejs npm"
+        echo "Or install pnpm: npm install -g pnpm"
+        return 1
+    fi
+
+    echo "Installing frontend dependencies in $web_dir..."
+    (cd "$web_dir" && $pkg_cmd install)
+
+    print_ok "Web demo frontend dependencies installed"
+    echo ""
+    echo "To start the web demo:"
+    echo "  ./scripts/start-web.sh"
+    echo ""
+    echo "Or manually:"
+    echo "  uv run avatar-web --provider gemini  # Backend (port 8420)"
+    echo "  cd examples/web-demo && $pkg_cmd dev  # Frontend (port 5173)"
 }
 
 # ============================================================================
@@ -462,9 +537,10 @@ echo ""
 echo "Avatar Engine ready!"
 echo "  Provider from .avatar.yaml: $(grep '^provider:' .avatar.yaml 2>/dev/null | awk '{print $2}')"
 echo ""
-echo "Run examples:"
-echo "  python examples.py basic"
-echo "  python examples.py --help"
+echo "Commands:"
+echo "  uv run avatar repl          # Interactive REPL"
+echo "  uv run avatar repl          # Interactive REPL"
+echo "  ./scripts/start-web.sh      # Web Demo (React UI)"
 EOF
     chmod +x activate.sh
     print_ok "Created activate.sh (bash/zsh)"
@@ -494,9 +570,10 @@ if test -n "$provider"
     echo "  Provider from .avatar.yaml: $provider"
 end
 echo ""
-echo "Run examples:"
-echo "  python examples.py basic"
-echo "  python examples.py --help"
+echo "Commands:"
+echo "  uv run avatar repl          # Interactive REPL"
+echo "  uv run avatar repl          # Interactive REPL"
+echo "  ./scripts/start-web.sh      # Web Demo (React UI)"
 FISHEOF
     chmod +x activate.fish
     print_ok "Created activate.fish (fish)"
@@ -517,21 +594,35 @@ main() {
             select_providers
             install_cli_tools
             ;;
+        --web)
+            # Install web demo dependencies only
+            INSTALL_WEB=true
+            print_header "Avatar Engine - Web Demo Setup"
+            install_uv
+            install_python_deps
+            install_web_demo
+            print_header "Web demo setup complete!"
+            echo "Start the demo:"
+            echo "  ./scripts/start-web.sh"
+            ;;
         --all)
             # Non-interactive: install everything
             INSTALL_GEMINI=true
             INSTALL_CLAUDE=true
             INSTALL_CODEX=true
+            INSTALL_WEB=true
 
             print_header "Avatar Engine - Full Installation"
             check_dependencies
             install_uv
             install_python_deps
             install_cli_tools
+            install_web_demo
             create_activate_script
 
             print_header "Installation complete!"
             echo "All providers installed: Gemini, Claude, Codex"
+            echo "Web demo installed: examples/web-demo"
             ;;
         --help|-h)
             echo "Avatar Engine - Install Script"
@@ -540,13 +631,14 @@ main() {
             echo "  ./install.sh              Full installation (interactive provider selection)"
             echo "  ./install.sh --check      Check all dependencies"
             echo "  ./install.sh --setup-cli  Install AI agent CLIs (interactive)"
+            echo "  ./install.sh --web        Install web demo dependencies"
             echo "  ./install.sh --all        Install everything without prompts"
             echo "  ./install.sh --help       Show this help"
             echo ""
             echo "Supported AI Agents:"
             echo "  1) Gemini CLI   — Google Gemini     (npm: @google/gemini-cli)"
             echo "  2) Claude Code  — Anthropic Claude  (npm: @anthropic-ai/claude-code)"
-            echo "  3) Codex CLI    — OpenAI Codex      (npx: @zed-industries/codex-acp)"
+            echo "  3) Codex CLI    — OpenAI Codex      (npm: @openai/codex + @zed-industries/codex-acp)"
             ;;
         *)
             print_header "Avatar Engine - Installation"
@@ -566,10 +658,19 @@ main() {
             # 5. CLI tools (based on selection)
             install_cli_tools
 
-            # 6. Activation scripts
+            # 6. Web demo (optional)
+            echo ""
+            read -p "Install Web Demo (React UI for Avatar Engine)? [y/N] " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                INSTALL_WEB=true
+                install_web_demo
+            fi
+
+            # 7. Activation scripts
             create_activate_script
 
-            # 7. Done
+            # 8. Done
             print_header "Installation complete!"
             echo "Detected shell: ${PARENT_SHELL}"
             echo ""
@@ -601,15 +702,20 @@ main() {
                 echo "   gemini           # Google account"
             fi
             if $INSTALL_CLAUDE; then
-                echo "   claude           # Anthropic account"
+                echo "   claude           # Anthropic account (Pro/Max)"
             fi
             if $INSTALL_CODEX; then
-                echo "   codex login      # ChatGPT auth, or set OPENAI_API_KEY"
+                echo "   codex login      # ChatGPT account (Plus/Pro)"
             fi
             echo ""
             echo "4. Run an example:"
-            echo "   python examples.py basic"
+            echo "   uv run avatar repl"
             echo ""
+            if $INSTALL_WEB; then
+                echo "5. Start the Web Demo:"
+                echo "   ./scripts/start-web.sh"
+                echo ""
+            fi
             ;;
     esac
 }

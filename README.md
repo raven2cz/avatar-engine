@@ -46,40 +46,45 @@ Avatar Engine is designed for embedding a dedicated AI avatar into a specific ap
 ## Installation
 
 ```bash
-pip install avatar-engine
+# Interactive installer (recommended)
+./install.sh              # Choose providers, optionally install web demo
+./install.sh --all        # Install everything
+./install.sh --check      # Check what's installed
 
-# With CLI tools
-pip install avatar-engine[cli]
-
-# Development
-pip install avatar-engine[dev,cli]
+# Or manual with uv
+uv sync --extra cli               # Core + CLI
+uv sync --extra cli --extra web   # Core + CLI + Web Demo backend
+uv sync --extra cli --extra dev   # Core + CLI + Dev tools
 ```
 
 ### Prerequisites
 
-Install only the providers you need. All providers use **account-based authentication** (no API keys required):
+Install only the providers you need. All providers use **account-based authentication** (Pro/Max monthly subscriptions, no API keys):
 
 ```bash
-# Gemini CLI (Google account — free tier available)
-npm install -g @google/gemini-cli
-gemini  # Run once to authenticate with Google account
+# Gemini CLI (Google account — free tier / Pro / Max)
+sudo npm install -g @google/gemini-cli
+gemini  # Sign in with Google account
 
-# Claude Code (Anthropic account)
-npm install -g @anthropic-ai/claude-code
-claude  # Run once to authenticate
+# Claude Code (Anthropic Pro / Max subscription)
+sudo npm install -g @anthropic-ai/claude-code
+claude  # Sign in with Anthropic account
 
-# Codex CLI (ChatGPT account via ACP adapter)
-# Auto-fetched via npx on first use, or pre-cache:
+# Codex CLI (ChatGPT Plus / Pro subscription)
+sudo npm install -g @openai/codex
+codex login  # Sign in with ChatGPT account
+# ACP adapter (used by Avatar Engine, auto-fetched via npx):
 npx @zed-industries/codex-acp --help
-codex  # Run once to authenticate with ChatGPT account
 ```
 
 Or use the interactive install script:
 
 ```bash
-./install.sh          # Interactive — choose which providers to install
-./install.sh --all    # Install everything
-./install.sh --check  # Check what's installed
+./install.sh              # Interactive — choose providers + web demo
+./install.sh --all        # Install everything
+./install.sh --web        # Install web demo dependencies only
+./install.sh --setup-cli  # Install AI agent CLIs only
+./install.sh --check      # Check what's installed
 ```
 
 ## Quick Start
@@ -150,6 +155,92 @@ avatar mcp list
 avatar mcp add calc python calc_server.py
 avatar mcp test calc
 ```
+
+## Web Demo
+
+Avatar Engine includes a real-time web interface with a React frontend and FastAPI backend connected via WebSocket.
+
+### Quick Start
+
+```bash
+# 1. Install dependencies
+./install.sh --web
+
+# 2. Start both servers (backend + frontend dev)
+./scripts/start-web.sh
+
+# 3. Open http://localhost:5173
+```
+
+### Start Script Options
+
+```bash
+./scripts/start-web.sh                          # Default (Gemini, port 8420)
+./scripts/start-web.sh --provider claude        # Use Claude
+./scripts/start-web.sh --provider codex         # Use Codex
+./scripts/start-web.sh --model claude-sonnet-4-5 # Specific model
+./scripts/start-web.sh --build                  # Production build (single server)
+```
+
+### Architecture
+
+```
+Browser (React + Vite)          Python Backend (FastAPI + uvicorn)
+┌─────────────────────┐         ┌──────────────────────────────────┐
+│  useAvatarWebSocket  │◄──WS──►│  /api/avatar/ws                  │
+│  useAvatarChat       │        │    WebSocketBridge               │
+│                      │        │      ├─ on(TextEvent)            │
+│  Components:         │  REST  │      ├─ on(ThinkingEvent)        │
+│  ├─ ChatPanel        │◄─────►│      ├─ on(ToolEvent)            │
+│  ├─ StatusBar        │        │      ├─ on(StateEvent)           │
+│  ├─ ThinkingIndicator│        │      ├─ on(CostEvent)            │
+│  ├─ ToolActivity     │        │      ├─ on(ErrorEvent)           │
+│  ├─ BreathingOrb     │        │      └─ on(ActivityEvent)        │
+│  ├─ MessageBubble    │        │                                  │
+│  └─ CostTracker      │        │  EngineSessionManager            │
+└─────────────────────┘         │    └─ AvatarEngine               │
+                                └──────────────────────────────────┘
+```
+
+### REST API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/avatar/health` | Health check |
+| GET | `/api/avatar/capabilities` | Provider capabilities |
+| GET | `/api/avatar/history` | Conversation history |
+| GET | `/api/avatar/usage` | Usage and cost stats |
+| GET | `/api/avatar/sessions` | List sessions |
+| POST | `/api/avatar/chat` | Non-streaming chat |
+| POST | `/api/avatar/stop` | Stop engine |
+| POST | `/api/avatar/clear` | Clear history |
+
+### WebSocket Protocol
+
+Connect to `ws://localhost:8420/api/avatar/ws` for real-time bidirectional streaming.
+
+**Server → Client messages:**
+
+| Type | Description |
+|------|-------------|
+| `connected` | Session info on connect |
+| `text` | Text chunk from AI |
+| `thinking` | AI thinking phase + subject |
+| `tool` | Tool execution status |
+| `state` | Bridge state change |
+| `cost` | Usage/cost update |
+| `error` | Error occurred |
+| `engine_state` | Engine state change |
+| `chat_response` | Complete response |
+
+**Client → Server messages:**
+
+| Type | Description |
+|------|-------------|
+| `chat` | Send message: `{"type": "chat", "data": {"message": "..."}}` |
+| `ping` | Heartbeat |
+| `stop` | Cancel current request |
+| `clear_history` | Clear conversation |
 
 ## Event-Driven GUI Integration
 
@@ -299,30 +390,46 @@ engine = AvatarEngine(
 ```
 avatar-engine/
 ├── avatar_engine/
-│   ├── __init__.py      # Public API
-│   ├── engine.py        # AvatarEngine class
-│   ├── config.py        # Configuration
-│   ├── events.py        # Event system (TextEvent, ThinkingEvent, DiagnosticEvent, ...)
-│   ├── activity.py      # ActivityTracker for concurrent operation visualization
-│   ├── types.py         # Type definitions (ProviderCapabilities, ToolPolicy, ...)
-│   ├── config_sandbox.py # Zero Footprint config (temp files)
-│   ├── bridges/         # Provider implementations
-│   │   ├── base.py      # Abstract bridge
+│   ├── __init__.py        # Public API
+│   ├── engine.py          # AvatarEngine class
+│   ├── config.py          # Configuration
+│   ├── events.py          # Event system (TextEvent, ThinkingEvent, ...)
+│   ├── activity.py        # ActivityTracker for concurrent operations
+│   ├── types.py           # Type definitions (ProviderCapabilities, ToolPolicy, ...)
+│   ├── config_sandbox.py  # Zero Footprint config (temp files)
+│   ├── bridges/           # Provider implementations
+│   │   ├── base.py        # Abstract bridge
 │   │   ├── _acp_session.py # Shared ACP session mixin
-│   │   ├── claude.py    # Claude Code bridge
-│   │   ├── gemini.py    # Gemini CLI bridge
-│   │   └── codex.py     # Codex CLI bridge (ACP)
-│   ├── utils/           # Utilities
-│   │   ├── logging.py   # Logging configuration
-│   │   ├── metrics.py   # Metrics collection
-│   │   └── rate_limit.py# Rate limiting
-│   └── cli/             # CLI application
-│       ├── app.py       # Main CLI
-│       ├── display.py   # Rich-based display (ThinkingDisplay, ToolGroupDisplay)
-│       └── commands/    # CLI commands
-├── examples/            # Usage examples
-├── tests/               # Test suite
-└── plans/               # Design documents
+│   │   ├── claude.py      # Claude Code bridge
+│   │   ├── gemini.py      # Gemini CLI bridge
+│   │   └── codex.py       # Codex CLI bridge (ACP)
+│   ├── cli/               # CLI application
+│   │   ├── app.py         # Main CLI (click)
+│   │   ├── display.py     # Rich display (ThinkingDisplay, ToolGroupDisplay)
+│   │   └── commands/      # CLI commands
+│   ├── web/               # Web bridge (FastAPI + WebSocket)
+│   │   ├── server.py      # REST + WS routes
+│   │   ├── bridge.py      # WebSocketBridge (event → JSON broadcast)
+│   │   ├── protocol.py    # Event serialization protocol
+│   │   ├── session_manager.py  # Engine lifecycle
+│   │   └── __main__.py    # CLI entry: avatar-web / python -m avatar_engine.web
+│   └── utils/             # Utilities
+│       ├── logging.py     # Logging configuration
+│       ├── metrics.py     # Metrics collection
+│       └── rate_limit.py  # Rate limiting
+├── examples/
+│   ├── web-demo/          # React web interface (Vite + Tailwind)
+│   │   └── src/
+│   │       ├── hooks/     # useAvatarWebSocket, useAvatarChat
+│   │       └── components/ # ChatPanel, StatusBar, BreathingOrb, ...
+│   ├── basic_chat.py      # Simple sync/async usage
+│   ├── gui_integration.py # Event-driven GUI pattern
+│   └── streaming_avatar.py # Real-time avatar with TTS
+├── scripts/
+│   └── start-web.sh       # Start web demo (backend + frontend)
+├── tests/                 # Test suite (700+ tests)
+├── install.sh             # Interactive installer (uv-based)
+└── plans/                 # Design documents
 ```
 
 ## Warm Session Architecture
@@ -414,6 +521,7 @@ Capabilities are detected at runtime from the provider — use `engine.session_c
 
 See the `examples/` directory:
 
+- `web-demo/` — **React web interface** with real-time WebSocket streaming
 - `basic_chat.py` — Simple sync/async usage (supports `--provider gemini|claude|codex`)
 - `gui_integration.py` — Event-driven GUI pattern
 - `streaming_avatar.py` — Real-time avatar with TTS
@@ -422,22 +530,27 @@ See the `examples/` directory:
 Run examples:
 
 ```bash
-python examples/basic_chat.py
-python examples/basic_chat.py --provider claude --async
-python examples/basic_chat.py --provider codex
-python examples/streaming_avatar.py --provider codex --interactive
+# Web demo (React UI)
+./scripts/start-web.sh
+
+# Python examples
+uv run python examples/basic_chat.py
+uv run python examples/basic_chat.py --provider claude --async
+uv run python examples/basic_chat.py --provider codex
+uv run python examples/streaming_avatar.py --provider codex --interactive
 ```
 
 ## Testing
 
 ```bash
 # Run all tests
-pytest tests/ -v
+uv run pytest tests/ -v
+
+# Run web tests only
+uv run pytest tests/test_web_*.py -v
 
 # Run with coverage
-pytest tests/ --cov=avatar_engine
-
-# Current: 730+ unit tests, 120+ integration tests
+uv run pytest tests/ --cov=avatar_engine
 ```
 
 PTY REPL integration tests are marked with `-m pty` and require host PTY support (`/dev/pts`); they auto-skip when PTY devices are unavailable.

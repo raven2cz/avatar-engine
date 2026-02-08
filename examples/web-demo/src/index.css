@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar — Synapse style */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #12121a;
+}
+::-webkit-scrollbar-thumb {
+  background: #1a1a2e;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a2a42;
+}
+
+/* Smooth scroll for chat */
+.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(18, 18, 26, 0.8);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+.glass-light {
+  background: rgba(26, 26, 46, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #818cf8, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Breathing orb glow */
+.orb-glow {
+  box-shadow:
+    0 0 30px rgba(139, 92, 246, 0.4),
+    0 0 60px rgba(236, 72, 153, 0.2),
+    inset 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+/* Code block styling */
+.prose pre {
+  background: #0f0f17;
+  border: 1px solid #1a1a2e;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.prose code {
+  color: #a78bfa;
+  font-size: 0.875em;
+}
+
+/* Markdown body — base styles for react-markdown output */
+.markdown-body {
+  line-height: 1.65;
+  word-wrap: break-word;
+}
+
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Task list checkboxes (GFM) */
+.markdown-body input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid #6366f1;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 6px;
+  position: relative;
+  top: -1px;
+}
+
+.markdown-body input[type="checkbox"]:checked {
+  background: #6366f1;
+}
+
+.markdown-body input[type="checkbox"]:checked::after {
+  content: '\2713';
+  color: white;
+  font-size: 10px;
+  position: absolute;
+  top: -1px;
+  left: 2px;
+}
+
+/* Strikethrough (GFM) */
+.markdown-body del {
+  color: #64748b;
+  text-decoration: line-through;
+}

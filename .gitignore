@@ -64,6 +64,10 @@ htmlcov/
 .tox/
 .nox/
 
+# Node / Web demo
+node_modules/
+dist/
+
 # Build artifacts
 *.whl
 *.tar.gz

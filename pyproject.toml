@@ -41,9 +41,15 @@ cli = [
     "rich>=13.0",
     "prompt-toolkit>=3.0",
 ]
+web = [
+    "fastapi>=0.100",
+    "uvicorn[standard]>=0.20",
+    "httpx>=0.24",
+]
 
 [project.scripts]
 avatar = "avatar_engine.cli:cli"
+avatar-web = "avatar_engine.web.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/raven2cz/avatar-engine"

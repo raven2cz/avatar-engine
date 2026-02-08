@@ -335,6 +335,148 @@ Steps 1-10 (Python) first, then 11-15 (React). Steps 7-10 can overlap with 4-6.
 
 ---
 
+## Avatar Emotion States & Visual System
+
+The avatar (Galaxy Spiral orb) changes color, spin speed, and glow based on the AI's
+current state. This section documents all states, their sources, and visual mappings.
+
+### EngineState (what the AI is doing)
+
+These are the high-level states driven by `EngineState` enum (`avatar_engine/events.py`).
+The WebSocket bridge tracks these and emits `engine_state` messages to the frontend.
+
+| EngineState | Description | Visual | When |
+|---|---|---|---|
+| `idle` | Waiting for user input | Slow spin (14s), indigo-violet | Default / after response complete |
+| `thinking` | Model is reasoning | Fast spin (8s), phase-specific color | ThinkingEvent received (Gemini, Codex native) |
+| `responding` | Generating text output | Fast spin, light indigo-violet | ThinkingEvent.is_complete → first TextEvent |
+| `tool_executing` | Running a tool/function | Fast spin, amber-orange-red | ToolEvent(status=started) |
+| `waiting_approval` | Awaiting user tool approval | Slow pulse, amber | ToolPolicy requires approval (defined, rarely used) |
+| `error` | Something went wrong | Red-orange-yellow glow | ErrorEvent / StateEvent(ERROR) |
+
+### ThinkingPhase (sub-state of `thinking`)
+
+When `EngineState == thinking`, the `ThinkingPhase` provides finer granularity.
+Phases are **heuristically classified** from thinking text content by `classify_thinking()`
+in `events.py` — providers don't send explicit phase metadata.
+
+| ThinkingPhase | Keyword triggers | Color scheme (c1, c2, c3) | Example subjects |
+|---|---|---|---|
+| `general` | (fallback — no match) | `#6366f1, #8b5cf6, #a78bfa` (indigo-violet) | Generic thinking |
+| `analyzing` | analyz, look at, examin, reading, inspect | `#06b6d4, #3b82f6, #8b5cf6` (cyan-blue-violet) | "Analyzing error logs", "Reading config" |
+| `planning` | plan, approach, strategy, steps, design | `#8b5cf6, #c084fc, #e879f9` (violet-purple-fuchsia) | "Planning implementation", "Design approach" |
+| `coding` | write, implement, code, function, class, def | `#10b981, #06b6d4, #34d399` (emerald-cyan-green) | "Writing function", "Implementing handler" |
+| `reviewing` | check, verify, review, test, validate | `#f59e0b, #f97316, #fbbf24` (amber-orange-yellow) | "Reviewing changes", "Validating output" |
+| `tool_planning` | tool, call, execut, run, invok | `#f59e0b, #f97316, #ef4444` (amber-orange-red) | "Using read_file", "Calling API" |
+
+### Provider Support Matrix
+
+| Provider | Native thinking events | ThinkingPhase classification | Synthetic events |
+|---|---|---|---|
+| **Gemini** | Yes (`thinking_supported=True`) | Full — all 6 phases via `classify_thinking()` | None |
+| **Codex** | Yes (`thinking_supported=True`) | Full — all 6 phases via `classify_thinking()` | None |
+| **Claude** | No (`thinking_supported=False`) | N/A — Claude CLI doesn't export thinking | Synthetic `tool_planning` when tools are used (engine.py:649-657) |
+
+### Additional UI States (not from ThinkingPhase)
+
+| State | Color scheme | When | Source |
+|---|---|---|---|
+| `responding` | `#818cf8, #a78bfa, #c084fc` (light indigo) | AI is generating text | EngineState.RESPONDING |
+| `success` | `#22c55e, #10b981, #06b6d4` (green-emerald-cyan) | Chat completed successfully | UI feedback (frontend only) |
+| `error` | `#ef4444, #f97316, #fbbf24` (red-orange-yellow) | Error occurred | ErrorEvent |
+
+### Complete Color Map (for avatar bust expansion)
+
+All 11 visual states with their exact hex colors for the Galaxy Spiral avatar:
+
+```typescript
+const PHASE_COLORS = {
+  // Idle / default
+  general:       { c1: '#6366f1', c2: '#8b5cf6', c3: '#a78bfa' },  // indigo-violet
+  idle:          { c1: '#6366f1', c2: '#8b5cf6', c3: '#a78bfa' },  // indigo-violet
+
+  // Active thinking phases (heuristic-classified)
+  thinking:      { c1: '#3b82f6', c2: '#6366f1', c3: '#06b6d4' },  // blue-indigo-cyan
+  analyzing:     { c1: '#06b6d4', c2: '#3b82f6', c3: '#8b5cf6' },  // cyan-blue-violet
+  planning:      { c1: '#8b5cf6', c2: '#c084fc', c3: '#e879f9' },  // violet-purple-fuchsia
+  coding:        { c1: '#10b981', c2: '#06b6d4', c3: '#34d399' },  // emerald-cyan-green
+  reviewing:     { c1: '#f59e0b', c2: '#f97316', c3: '#fbbf24' },  // amber-orange-yellow
+  tool_planning: { c1: '#f59e0b', c2: '#f97316', c3: '#ef4444' },  // amber-orange-red
+
+  // Engine states (not thinking sub-phases)
+  responding:    { c1: '#818cf8', c2: '#a78bfa', c3: '#c084fc' },  // light indigo
+  success:       { c1: '#22c55e', c2: '#10b981', c3: '#06b6d4' },  // green-emerald-cyan
+  error:         { c1: '#ef4444', c2: '#f97316', c3: '#fbbf24' },  // red-orange-yellow
+}
+```
+
+### State Machine Flow
+
+```
+User sends message
+  └─→ IDLE ─→ THINKING (phase: general/analyzing/planning/coding/reviewing)
+                 │
+                 ├─→ TOOL_EXECUTING ─→ back to THINKING
+                 │     (tool_planning phase before tool starts)
+                 │
+                 └─→ RESPONDING ─→ IDLE
+                       (text generation)     (success)
+                                       OR ─→ ERROR
+```
+
+### Galaxy Spiral Behavior Per State
+
+| State | Spin speed | Core glow | Star behavior |
+|---|---|---|---|
+| idle/general | 14s per revolution | Gentle breathe | Slow twinkle |
+| thinking/* | 8s per revolution | Faster breathe | Quick twinkle |
+| responding | 8s per revolution | Bright glow | Active twinkle |
+| error | 8s per revolution | Red pulsing | Agitated twinkle |
+
+### Frontend Dependencies (updated)
+
+```json
+"dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "lucide-react": "^0.300.0",
+    "react-markdown": "^9.0.0",
+    "react-syntax-highlighter": "^15.6.0",
+    "remark-gfm": "^4.0.0"
+},
+"devDependencies": {
+    "@types/react-syntax-highlighter": "^15.5.0"
+}
+```
+
+### Future: Avatar Bust Expansion
+
+The Galaxy Spiral is the Phase 7 logo/avatar. For Phase 8+, actual avatar busts
+(face, expression, pose) can be added. The emotion system is ready:
+
+1. **State source**: `EngineState` + `ThinkingPhase` from WebSocket events
+2. **Color palette**: 11 distinct schemes (see Complete Color Map above)
+3. **Animation speed**: `isActive` flag (idle=slow, all others=fast)
+4. **Transition hook**: `phase` prop changes trigger React re-render with new colors
+5. **Bust mapping**: Each of the 11 states should map to a distinct facial expression,
+   head tilt, eye movement, or other visual cue in the avatar bust
+
+Recommended bust expressions per state:
+| State | Expression | Pose | Eyes |
+|---|---|---|---|
+| idle | Neutral, slight smile | Straight ahead | Open, calm |
+| thinking | Focused, slight frown | Slight head tilt | Narrowed, looking up |
+| analyzing | Concentrated | Head tilted, hand on chin | Scanning left-right |
+| planning | Thoughtful | Looking up-right | Half-closed, contemplating |
+| coding | Determined | Leaning forward | Focused, looking down |
+| reviewing | Critical | Head slightly back | Squinting, evaluating |
+| tool_planning | Alert | Turning to side | Wide, anticipating |
+| responding | Friendly | Facing user | Open, warm |
+| success | Happy | Slight nod | Bright, satisfied |
+| error | Concerned | Slight head shake | Worried, apologetic |
+
+---
+
 ## Key Design Decisions
 
 1. **One engine per server** — matches Synapse pattern (one user session). Multi-tenant is out of scope.
