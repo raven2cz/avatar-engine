@@ -750,17 +750,19 @@ avatar repl --mcp-server "calc:python calc.py" --mcp-server "files:python files.
 
 ## 10. Implementation Status
 
-Core CLI je implementované (chat, repl, health, version, mcp, session).
-Zbývají drobné doplňky:
+> Status: DONE — vše implementováno (2026-02-09)
 
-### 10.1 Chybějící flagy
+Core CLI je kompletní (chat, repl, health, version, mcp, session).
+Všechny následující položky jsou implementovány:
+
+### 10.1 Flagy (DONE)
 
 | # | Flag | Soubor | Popis | Effort |
 |---|------|--------|-------|--------|
 | F1 | `--working-dir, -w` | `app.py` | Globální flag pro working directory, propaguje do engine | 5 min |
 | F2 | `--allowed-tools` | `chat.py` | Comma-separated list allowed tools (Claude) | 5 min |
 
-### 10.2 Chybějící REPL příkazy
+### 10.2 REPL příkazy (DONE)
 
 | # | Příkaz | Soubor | Popis | Effort |
 |---|--------|--------|-------|--------|

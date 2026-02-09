@@ -1,7 +1,7 @@
 # Phase 7: Web GUI Demo — Avatar Engine Web Bridge + Reference React App
 
 > Created: 2026-02-07
-> Status: Draft
+> Status: DONE (2026-02-09)
 > Replaces: GUI_READINESS_PLAN.md section 17 (Textual TUI) + Fáze 7
 
 ---
@@ -621,7 +621,7 @@ All verified 2026-02-09:
 
 ## Model Sub-Options Analysis (2026-02-09)
 
-### Status: 🔍 RESEARCHED — implementation pending
+### Status: DONE
 
 User wants model sub-options (thinking mode, temperature, etc.) selectable from the GUI.
 
