@@ -541,6 +541,7 @@ class BaseBridge(ABC):
             stderr=asyncio.subprocess.PIPE,
             cwd=self.working_dir, env=env,
         )
+        event_count = 0
         try:
             while True:
                 raw = await asyncio.wait_for(proc.stdout.readline(), timeout=self.timeout)
@@ -550,6 +551,7 @@ class BaseBridge(ABC):
                 if not text:
                     continue
                 try:
+                    event_count += 1
                     yield json.loads(text)
                 except json.JSONDecodeError:
                     logger.debug(f"non-json: {text[:200]}")
@@ -558,6 +560,16 @@ class BaseBridge(ABC):
             raise
         finally:
             await proc.wait()
+            # Check for silent failure: process exited with error and no events
+            if proc.returncode != 0 and event_count == 0:
+                stderr = ""
+                if proc.stderr:
+                    stderr_raw = await proc.stderr.read()
+                    stderr = stderr_raw.decode(errors="replace").strip()
+                raise RuntimeError(
+                    f"CLI exited with code {proc.returncode}"
+                    + (f": {stderr[:500]}" if stderr else "")
+                )
 
     # === History ========================================================
 

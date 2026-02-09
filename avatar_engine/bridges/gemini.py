@@ -17,7 +17,7 @@ OAuth authentication:
     Bug #7549 (cached creds not used in ACP) was fixed in PR #9410 (Dec 2025).
 
 Requirements:
-    pip install agent-client-protocol>=0.6.0
+    pip install agent-client-protocol>=0.8.0
 """
 
 import asyncio

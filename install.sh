@@ -280,8 +280,8 @@ check_dependencies() {
     echo ""
     echo -e "${BOLD}Web Demo:${NC}"
     if [ -n "$python_bin" ]; then
-        check_python_module "$python_bin" "fastapi" "fastapi (web server)" false
-        check_python_module "$python_bin" "uvicorn" "uvicorn (ASGI server)" false
+        check_python_module "$python_bin" "fastapi" "fastapi (web server)" false || true
+        check_python_module "$python_bin" "uvicorn" "uvicorn (ASGI server)" false || true
     fi
     if [ -d "examples/web-demo/node_modules" ]; then
         print_ok "Web demo frontend deps installed"

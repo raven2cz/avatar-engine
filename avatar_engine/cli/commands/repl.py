@@ -381,6 +381,15 @@ async def _repl_async(
 
                 if printed_header:
                     out_console.print("\n")
+                else:
+                    # No chunks received — show warning so user isn't confused
+                    spinner_task.cancel()
+                    try:
+                        await spinner_task
+                    except asyncio.CancelledError:
+                        pass
+                    display.clear_status()
+                    out_console.print("[yellow]No response received from provider.[/yellow]")
                 display.on_response_end()
 
             except KeyboardInterrupt:
