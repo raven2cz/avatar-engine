@@ -508,3 +508,228 @@ Recommended bust expressions per state:
 - `avatar_engine/cli/commands/chat.py` — Reference for one-shot chat with spinner, `_run_async_clean()` for subprocess cleanup
 - `pyproject.toml` — Add [web] optional deps
 - `avatar_engine/__init__.py` — Add web exports
+
+---
+
+## Implementation Log: Provider & Model Selector (2026-02-09)
+
+### Status: ✅ DONE
+
+Runtime provider/model switching from web UI dropdown.
+
+### What was implemented
+
+#### Backend
+
+**`web/protocol.py`** — Added `"switch"` to allowed client message types:
+```python
+if msg_type not in ("chat", "stop", "ping", "clear_history", "switch"):
+    return None
+```
+
+**`web/session_manager.py`** — `switch(provider, model)` method:
+- Saves connected WS clients from old bridge before shutdown
+- Updates `_provider` / `_model`, calls `shutdown()` + `start()`
+- Transfers saved clients to the new bridge via `add_client()`
+- On failure: reverts provider/model, restarts old settings, restores clients
+
+**`web/server.py`** — WebSocket `"switch"` handler:
+- Calls `manager.switch(provider, model)`
+- Re-sets bridge event loop after restart: `bridge.set_loop(asyncio.get_running_loop())`
+- Broadcasts `"connected"` message with new provider/model/capabilities to ALL clients
+- On error: broadcasts error + recovery `"connected"` message with current state
+- `_run_chat` uses `manager.engine` / `manager.ws_bridge` (not stale local vars)
+- `asyncio.wait_for(eng.chat(msg), timeout=120)` safety timeout
+- Never-silent errors: direct WS fallback when bridge unavailable
+- `task.add_done_callback()` for unhandled exceptions in fire-and-forget chat tasks
+
+#### Frontend
+
+**`src/config/providers.ts`** — NEW, centralized provider/model config:
+```typescript
+export const PROVIDERS: ProviderConfig[] = [
+  { id: 'gemini', label: 'Gemini', defaultModel: 'gemini-3-pro-preview',
+    models: ['gemini-3-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash', ...] },
+  { id: 'claude', label: 'Claude', defaultModel: 'claude-opus-4-6',
+    models: ['claude-opus-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5'] },
+  { id: 'codex', label: 'Codex', defaultModel: 'gpt-5.3-codex',
+    models: ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.1-codex-mini'] },
+]
+```
+
+**`src/components/ProviderModelSelector.tsx`** — NEW, dropdown component:
+- Provider rows with colored dots and "current" label
+- Model quick-picks from config + custom text input
+- "(default)" label next to default model
+- Closes on click-outside or Escape
+- Loading overlay with spinner during switch
+
+**`src/hooks/useAvatarWebSocket.ts`**:
+- Added `switching: boolean` state + `SWITCHING` action
+- `CONNECTED` action clears `switching` flag
+- `switchProvider(provider, model?)` sends `{type: "switch", data: {...}}`
+
+**`src/hooks/useAvatarChat.ts`**:
+- Exposed `switchProvider` + `switching` in return interface
+- `switchProvider` clears messages (new engine = new conversation)
+- 30s frontend chat timeout (`chatTimeoutRef`)
+
+**`src/components/StatusBar.tsx`**:
+- `switching` + `onSwitch` optional props
+- Interactive `ProviderModelSelector` replaces static badge when `onSwitch` provided
+- Uses `getProvider()` from centralized config
+- Removed static "Thinking" capability badge (confusing vs engine state)
+
+**`src/App.tsx`** — Wires `switchProvider` + `switching` to StatusBar
+
+**`src/api/types.ts`** — Added `SwitchRequest` type
+
+**`src/index.css`** — `.glass-panel` class (darker dropdown backgrounds, 0.92 opacity, 32px blur)
+
+#### Tests
+
+**`tests/test_web_integration.py`** — 5 new switch tests:
+- `test_ws_switch_sends_connected_message` — switch calls manager + broadcasts connected
+- `test_ws_switch_missing_provider_returns_error` — missing provider → error
+- `test_ws_switch_failure_broadcasts_error` — switch exception → error + recovery
+- `test_switch_preserves_clients` — clients transfer from old to new bridge
+- `test_switch_reverts_on_failure` — provider/model revert on start failure
+
+### Bug Fixes
+
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| **Claude chat hangs forever** | `ClaudeBridge.start()` never creates `_stderr_task` — stderr buffer fills → subprocess blocks → stdout blocks → `_read_until_turn_complete()` hangs | Added `self._stderr_task = asyncio.create_task(self._monitor_stderr())` to `bridges/claude.py:168` |
+| **Claude response invisible in GUI** | React 18 automatic batching: `setMessages(updater)` enqueued → `currentAssistantIdRef.current = null` runs sync → updater reads null ref → returns prev unchanged | Capture ref into local variable BEFORE `setMessages` call, not inside updater |
+| **Switch broadcasts to empty set** | `session_manager.shutdown()` destroys old bridge (with clients), `start()` creates new bridge with 0 clients | Save clients before shutdown, transfer to new bridge after start |
+| **Stale references in server.py** | `_run_chat` closure captured local `engine`/`bridge` vars that become stale after switch | Read from `manager.engine`/`manager.ws_bridge` at execution time |
+| **Silent chat failures** | `_run_chat` returned silently when engine/bridge unavailable | Always send error via WS, log error, add task done callback |
+| **asyncio deprecation** | `asyncio.get_event_loop()` raises RuntimeError in Python 3.14 | Changed to `asyncio.run()` in test helper |
+| **MagicMock in JSON** | Test mock `engine._bridge._model` auto-created as MagicMock, not serializable | Set explicitly to None in mock setup |
+
+### End-to-End Verification
+
+All verified 2026-02-09:
+- ✅ Gemini start → chat → switch to Claude → chat with Claude → response displayed
+- ✅ Direct WS test on port 8420 (bypassing proxy)
+- ✅ Vite proxy WS test on port 5173 (same path as browser)
+- ✅ 52 unit tests pass (`test_web_server.py` + `test_web_integration.py`)
+- ✅ TypeScript clean (`npx tsc --noEmit`)
+- ✅ Provider dropdown UI: select provider → pick model → "Switching..." → new connected
+
+---
+
+## Model Sub-Options Analysis (2026-02-09)
+
+### Status: 🔍 RESEARCHED — implementation pending
+
+User wants model sub-options (thinking mode, temperature, etc.) selectable from the GUI.
+
+### What each provider supports
+
+| Parameter | Claude | Gemini | Codex |
+|-----------|--------|--------|-------|
+| Temperature | ❌ Not exposed | ✅ `generation_config.temperature` | ❌ Not exposed |
+| Max tokens | ❌ Not exposed | ✅ `generation_config.max_output_tokens` | ❌ Not exposed |
+| Thinking mode | ❌ `thinking_supported=False` | ✅ `generation_config.thinking_level` (minimal/low/medium/high) | ❌ Sends thinking but no control |
+| Include thoughts | — | ✅ `generation_config.include_thoughts` (bool) | — |
+| Top-P / Top-K | ❌ | ✅ via `generation_config` | ❌ |
+| Reasoning effort | ❌ | — | ❌ Not exposed |
+| Max turns | ✅ `max_turns` (cost control) | — | — |
+| Budget USD | ✅ `max_budget_usd` | — | — |
+| Permission mode | ✅ `permission_mode` | — | — |
+| Sandbox mode | — | — | ✅ `sandbox_mode` |
+
+### How parameters flow
+
+```
+Config YAML → AvatarConfig → engine._create_bridge() → Bridge constructor → CLI flags / API params
+```
+
+Parameters are **set at bridge creation time** and **immutable** during session.
+To change them, the entire bridge must be destroyed and recreated (`manager.switch()`).
+
+### What's needed for GUI sub-options
+
+1. **Extend `switch()` to accept `options: dict`** — pass through to engine/bridge constructor
+2. **Extend WS `switch` message** — add `data.options` field
+3. **Extend `EngineSessionManager`** — store `_options` dict, forward to bridge creation
+4. **Frontend: Sub-option panel per provider** — show only relevant options:
+   - Gemini: thinking_level dropdown, temperature slider, max_output_tokens
+   - Claude: max_turns, max_budget_usd
+   - Codex: sandbox_mode
+5. **Provider config extension** — add `availableOptions` to `providers.ts`
+
+### Architecture for sub-options
+
+```
+ProviderModelSelector dropdown:
+  ├── Provider section (existing)
+  ├── Model section (existing)
+  └── Options section (NEW):
+      ├── Gemini: [Thinking: high ▾] [Temp: 1.0] [Max tokens: 8192]
+      ├── Claude: [Max turns: ∞] [Budget: $5.00]
+      └── Codex:  [Sandbox: workspace-write ▾]
+```
+
+WS message becomes:
+```json
+{
+  "type": "switch",
+  "data": {
+    "provider": "gemini",
+    "model": "gemini-3-pro-preview",
+    "options": {
+      "thinking_level": "high",
+      "temperature": 0.7,
+      "max_output_tokens": 8192
+    }
+  }
+}
+```
+
+### Files to modify
+
+| File | Change |
+|------|--------|
+| `web/session_manager.py` | `switch()` accepts `options` dict, stores as `_options`, forwards to engine |
+| `web/server.py` | Pass `options` from WS switch message to `manager.switch()` |
+| `web/protocol.py` | Accept `options` field in switch message |
+| `engine.py` | `_create_bridge()` merges options into bridge kwargs |
+| `src/config/providers.ts` | Add `availableOptions` per provider |
+| `src/components/ProviderModelSelector.tsx` | Options UI section per provider |
+| `src/hooks/useAvatarWebSocket.ts` | `switchProvider` accepts options dict |
+| `src/hooks/useAvatarChat.ts` | Forward options through |
+| `src/api/types.ts` | Extend SwitchRequest with options |
+
+---
+
+## Implementation Log: Session GUI + History Display (2026-02-09)
+
+### Status: DONE
+
+Session management modal, session resume with history display for all 3 providers.
+
+### What was implemented
+
+See `plans/SESSION_GUI_PLAN.md` for full details.
+
+**Summary:**
+
+1. **Session Modal** — Centrovaný modal s backdrop, async loading, tabulkový layout (Title/ID/Updated)
+2. **Session Resume** — WS `resume_session` + REST `/api/avatar/sessions/{id}/messages` pro historii
+3. **Gemini Filesystem Resume** — `_find_session_file()` s glob-based vyhledáváním (timestamp-based filenames)
+4. **Codex Filesystem Store** — NOVÝ `_codex.py` čte `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
+5. **All 3 providers** — session listing, resume, history display funguje pro Gemini, Claude, Codex
+6. **Session Title Button** — History ikona + aktuální session title v StatusBar
+7. **47 unit testů** pro všechny 3 filesystem stores
+
+### Key bugs fixed
+
+| Bug | Fix |
+|-----|-----|
+| Gemini filenames use `session-{timestamp}-{shortId}.json` not `session-{uuid}.json` | `_find_session_file()` with glob + JSON verification |
+| Modal clipped by header stacking context | Overlays rendered outside `<header>` |
+| Codex "Session listing not supported" | Set `can_list_sessions` on `_provider_capabilities` |
+| Gemini startup timeout with `can_load=True` | Set AFTER `_create_or_resume_acp_session()` |
+| History race condition on slow Gemini restart | Fetch immediately in `resumeSession()`, not on `connected` event |

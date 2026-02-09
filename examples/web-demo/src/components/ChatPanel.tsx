@@ -3,10 +3,11 @@
  *
  * Glassmorphism container, gradient input bar, Enter-to-send.
  * Shows breathing orb as empty state.
+ * Stop button replaces Send during streaming.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUp, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowUp, Square, Trash2 } from 'lucide-react'
 import type { ChatMessage } from '../api/types'
 import { MessageBubble } from './MessageBubble'
 import { BreathingOrb } from './BreathingOrb'
@@ -14,12 +15,13 @@ import { BreathingOrb } from './BreathingOrb'
 interface ChatPanelProps {
   messages: ChatMessage[]
   onSend: (message: string) => void
+  onStop: () => void
   onClear: () => void
   isStreaming: boolean
   connected: boolean
 }
 
-export function ChatPanel({ messages, onSend, onClear, isStreaming, connected }: ChatPanelProps) {
+export function ChatPanel({ messages, onSend, onStop, onClear, isStreaming, connected }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -132,24 +134,35 @@ export function ChatPanel({ messages, onSend, onClear, isStreaming, connected }:
                 disabled:cursor-not-allowed"
             />
 
-            {/* Send button */}
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isStreaming || !connected}
-              className="absolute right-2 bottom-2 w-8 h-8 rounded-xl
-                flex items-center justify-center transition-all duration-200
-                disabled:opacity-30 disabled:cursor-not-allowed
-                bg-gradient-to-r from-synapse to-pulse text-white
-                shadow-lg shadow-synapse/25
-                hover:shadow-xl hover:shadow-synapse/30 hover:scale-105
-                active:scale-95"
-            >
-              {isStreaming ? (
-                <Sparkles className="w-4 h-4 animate-pulse" />
-              ) : (
+            {/* Send / Stop button */}
+            {isStreaming ? (
+              <button
+                onClick={onStop}
+                className="absolute right-2 bottom-2 w-8 h-8 rounded-xl
+                  flex items-center justify-center transition-all duration-200
+                  bg-red-500/80 text-white
+                  shadow-lg shadow-red-500/25
+                  hover:bg-red-500 hover:shadow-xl hover:shadow-red-500/30 hover:scale-105
+                  active:scale-95"
+                title="Stop response"
+              >
+                <Square className="w-3.5 h-3.5" fill="currentColor" />
+              </button>
+            ) : (
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || !connected}
+                className="absolute right-2 bottom-2 w-8 h-8 rounded-xl
+                  flex items-center justify-center transition-all duration-200
+                  disabled:opacity-30 disabled:cursor-not-allowed
+                  bg-gradient-to-r from-synapse to-pulse text-white
+                  shadow-lg shadow-synapse/25
+                  hover:shadow-xl hover:shadow-synapse/30 hover:scale-105
+                  active:scale-95"
+              >
                 <ArrowUp className="w-4 h-4" />
-              )}
-            </button>
+              </button>
+            )}
           </div>
 
           <p className="text-center text-xs text-text-muted mt-2">

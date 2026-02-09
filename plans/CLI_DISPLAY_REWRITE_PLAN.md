@@ -137,8 +137,8 @@ funkcich. 13 novych testu, vsechny prochazi.
 
 ### Manualni testy
     avatar repl              # Gemini (default)
-    avatar -p claude repl    # Claude
-    avatar -p codex repl     # Codex
+    avatar repl -p claude    # Claude
+    avatar repl -p codex     # Codex
 
 ---
 

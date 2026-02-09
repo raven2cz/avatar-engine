@@ -94,7 +94,7 @@ class TestChatCommand:
         mock_engine.chat = AsyncMock(return_value=make_mock_response("Claude here!"))
 
         with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
-            result = runner.invoke(cli, ["-p", "claude", "chat", "Hello"])
+            result = runner.invoke(cli, ["chat", "-p", "claude", "Hello"])
 
         # Verify provider was passed
         if mock_cls.call_args:
@@ -284,7 +284,7 @@ class TestCLIOptions:
 
     def test_provider_choices(self, runner):
         """Provider flag should only accept valid choices."""
-        result = runner.invoke(cli, ["-p", "invalid", "chat", "Hello"])
+        result = runner.invoke(cli, ["chat", "-p", "invalid", "Hello"])
 
         assert result.exit_code != 0
         assert "invalid" in result.output.lower() or "choice" in result.output.lower()
@@ -375,8 +375,8 @@ class TestProviderOverrideWithConfig:
 
         with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
             result = runner.invoke(cli, [
-                "-p", "codex", "-c", str(config_file),
-                "chat", "--no-stream", "Hello"
+                "-c", str(config_file),
+                "chat", "-p", "codex", "--no-stream", "Hello"
             ])
 
         assert result.exit_code == 0
@@ -397,8 +397,8 @@ class TestProviderOverrideWithConfig:
 
         with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
             result = runner.invoke(cli, [
-                "-p", "claude", "-c", str(config_file),
-                "chat", "--no-stream", "Hello"
+                "-c", str(config_file),
+                "chat", "-p", "claude", "--no-stream", "Hello"
             ])
 
         assert result.exit_code == 0
@@ -438,8 +438,8 @@ class TestProviderOverrideWithConfig:
 
         with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
             result = runner.invoke(cli, [
-                "-p", "claude", "-c", str(config_file),
-                "chat", "--no-stream", "Hello"
+                "-c", str(config_file),
+                "chat", "-p", "claude", "--no-stream", "Hello"
             ])
 
         assert result.exit_code == 0
@@ -460,8 +460,8 @@ class TestProviderOverrideWithConfig:
 
         with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
             result = runner.invoke(cli, [
-                "-p", "claude", "-c", str(config_file),
-                "chat", "--no-stream", "-m", "claude-sonnet-4-5-20250929", "Hello"
+                "-c", str(config_file),
+                "chat", "-p", "claude", "--no-stream", "-m", "claude-sonnet-4-5-20250929", "Hello"
             ])
 
         assert result.exit_code == 0
@@ -471,6 +471,110 @@ class TestProviderOverrideWithConfig:
             if config_obj:
                 assert config_obj.provider.value == "claude"
                 assert config_obj.model == "claude-sonnet-4-5-20250929"
+
+
+# =============================================================================
+# Provider on Subcommand Tests
+# =============================================================================
+
+
+class TestProviderOnSubcommand:
+    """Test --provider/-p on subcommands (not global group)."""
+
+    def test_chat_provider_flag(self, runner, mock_engine):
+        """avatar chat -p claude 'Hello' should work."""
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, ["chat", "-p", "claude", "--no-stream", "Hello"])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            assert kwargs.get("provider") == "claude"
+
+    def test_repl_provider_flag(self, runner):
+        """avatar repl -p gemini --help should show --provider in help."""
+        result = runner.invoke(cli, ["repl", "--help"])
+
+        assert result.exit_code == 0
+        assert "--provider" in result.output or "-p" in result.output
+
+    def test_health_provider_flag(self, runner, mock_engine):
+        """avatar health -p claude should work."""
+        with patch("avatar_engine.cli.commands.health.AvatarEngine", return_value=mock_engine):
+            result = runner.invoke(cli, ["health", "-p", "claude"])
+
+        assert result.exit_code == 0
+
+    def test_session_provider_flag(self, runner, mock_engine):
+        """avatar session -p codex list should work."""
+        mock_engine.session_capabilities = MagicMock(can_list=True)
+        mock_engine.list_sessions = AsyncMock(return_value=[])
+
+        with patch("avatar_engine.cli.commands.session.AvatarEngine", return_value=mock_engine):
+            result = runner.invoke(cli, ["session", "-p", "codex", "list"])
+
+        assert result.exit_code == 0
+
+    def test_provider_default_gemini(self, runner, mock_engine):
+        """No -p flag should default to gemini."""
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, ["chat", "--no-stream", "Hello"])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            assert kwargs.get("provider") == "gemini"
+
+    def test_provider_with_config_override(self, runner, mock_engine, tmp_path):
+        """-p codex should override config provider: gemini."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text('provider: "gemini"\ngemini:\n  timeout: 120\ncodex:\n  timeout: 60\n')
+
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-c", str(config_file),
+                "chat", "-p", "codex", "--no-stream", "Hello"
+            ])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            config_obj = kwargs.get("config")
+            if config_obj:
+                assert config_obj.provider.value == "codex"
+
+    def test_provider_without_flag_uses_config(self, runner, mock_engine, tmp_path):
+        """No -p + config provider: claude should use claude."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text('provider: "claude"\nclaude:\n  timeout: 60\n')
+
+        mock_engine.chat = AsyncMock(return_value=make_mock_response("OK"))
+
+        with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
+            result = runner.invoke(cli, [
+                "-c", str(config_file),
+                "chat", "--no-stream", "Hello"
+            ])
+
+        assert result.exit_code == 0
+        if mock_cls.call_args:
+            kwargs = mock_cls.call_args.kwargs
+            config_obj = kwargs.get("config")
+            if config_obj:
+                assert config_obj.provider.value == "claude"
+
+    def test_old_global_provider_syntax_rejected(self, runner):
+        """avatar -p claude chat 'Hello' should fail (breaking change)."""
+        result = runner.invoke(cli, ["-p", "claude", "chat", "Hello"])
+
+        # -p is no longer on the global group, so this should fail
+        assert result.exit_code != 0
 
 
 # =============================================================================
@@ -569,8 +673,7 @@ class TestAllowedToolsFlag:
 
         with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
             result = runner.invoke(cli, [
-                "-p", "claude",
-                "chat", "--no-stream",
+                "chat", "-p", "claude", "--no-stream",
                 "--allowed-tools", "Read,Grep,Glob",
                 "Hello"
             ])
@@ -586,8 +689,7 @@ class TestAllowedToolsFlag:
 
         with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
             result = runner.invoke(cli, [
-                "-p", "claude",
-                "chat", "--no-stream",
+                "chat", "-p", "claude", "--no-stream",
                 "--allowed-tools", "Bash",
                 "Hello"
             ])
@@ -603,8 +705,7 @@ class TestAllowedToolsFlag:
 
         with patch("avatar_engine.cli.commands.chat.AvatarEngine", return_value=mock_engine) as mock_cls:
             result = runner.invoke(cli, [
-                "-p", "gemini",
-                "chat", "--no-stream",
+                "chat", "-p", "gemini", "--no-stream",
                 "--allowed-tools", "Read",
                 "Hello"
             ])

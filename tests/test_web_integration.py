@@ -66,17 +66,22 @@ def _make_mock_manager(provider="gemini"):
     )
     engine.get_history.return_value = []
     engine._bridge = MagicMock()
+    engine._bridge._model = None
+    engine._bridge.model = None
     engine._bridge.get_usage.return_value = {
         "total_cost_usd": 0.0,
         "total_requests": 0,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
     }
+    engine._config = MagicMock()
+    engine._config.model = None
     engine._started = True
     engine.clear_history = MagicMock()
     engine.list_sessions = AsyncMock(return_value=[])
 
     manager.engine = engine
+    manager._model = None
     manager.ws_bridge = MagicMock()
     manager.ws_bridge.engine_state = MagicMock()
     manager.ws_bridge.engine_state.value = "idle"
@@ -115,7 +120,7 @@ class FakeWebSocket:
 
 def _run(coro):
     """Run async in sync tests."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ============================================================================
@@ -771,6 +776,110 @@ class TestProtocolRoundTrip:
 # ============================================================================
 
 
+class TestWebSocketSwitch:
+    """WebSocket switch provider/model flow."""
+
+    def test_ws_switch_sends_connected_message(self):
+        """Switch provider → manager.switch() called → new connected broadcast."""
+        manager = _make_mock_manager("gemini")
+        manager.switch = AsyncMock(return_value={
+            "provider": "claude",
+            "model": "claude-opus-4-6",
+            "session_id": "new-session-456",
+        })
+
+        # After switch, manager should report the new provider
+        new_engine = MagicMock()
+        new_engine.session_id = "new-session-456"
+        new_engine.current_provider = "claude"
+        new_engine._bridge = MagicMock()
+        new_engine._bridge._model = "claude-opus-4-6"
+        new_engine._config = MagicMock()
+        new_engine._config.model = "claude-opus-4-6"
+        new_engine.capabilities = ProviderCapabilities(
+            thinking_supported=True,
+            streaming=True,
+            cost_tracking=True,
+        )
+
+        new_bridge = MagicMock()
+        new_bridge.engine_state = MagicMock()
+        new_bridge.engine_state.value = "idle"
+        new_bridge.add_client = AsyncMock()
+        new_bridge.remove_client = AsyncMock()
+        new_bridge.set_loop = MagicMock()
+        new_bridge.broadcast_message = MagicMock()
+
+        # After switch is called, update manager refs to new engine/bridge
+        async def _do_switch(provider, model=None, options=None):
+            manager.engine = new_engine
+            manager.ws_bridge = new_bridge
+
+        manager.switch = AsyncMock(side_effect=_do_switch)
+
+        app = _make_app(manager)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            with client.websocket_connect("/api/avatar/ws") as ws:
+                msg = ws.receive_json()  # initial connected
+                assert msg["type"] == "connected"
+                assert msg["data"]["provider"] == "gemini"
+
+                # Send switch
+                ws.send_json({
+                    "type": "switch",
+                    "data": {"provider": "claude", "model": "claude-opus-4-6"},
+                })
+                # Synchronize: ping ensures switch handler completes first
+                ws.send_json({"type": "ping"})
+                pong = ws.receive_json()
+                assert pong["type"] == "pong"
+
+                # manager.switch should have been called
+                manager.switch.assert_called_once_with("claude", "claude-opus-4-6", options=None)
+                # bridge.broadcast_message should have been called with new connected
+                new_bridge.broadcast_message.assert_called()
+                call_args = new_bridge.broadcast_message.call_args[0][0]
+                assert call_args["type"] == "connected"
+                assert call_args["data"]["provider"] == "claude"
+                assert call_args["data"]["session_id"] == "new-session-456"
+
+    def test_ws_switch_missing_provider_returns_error(self):
+        """Switch without provider → error response."""
+        manager = _make_mock_manager()
+        app = _make_app(manager)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            with client.websocket_connect("/api/avatar/ws") as ws:
+                ws.receive_json()  # connected
+                ws.send_json({"type": "switch", "data": {}})
+                msg = ws.receive_json()
+                assert msg["type"] == "error"
+                assert "provider" in msg["data"]["error"].lower()
+
+    def test_ws_switch_failure_broadcasts_error(self):
+        """Switch that raises → error broadcast + recovery connected."""
+        manager = _make_mock_manager("gemini")
+        manager.switch = AsyncMock(side_effect=RuntimeError("API key invalid"))
+        app = _make_app(manager)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            with client.websocket_connect("/api/avatar/ws") as ws:
+                ws.receive_json()  # initial connected
+                ws.send_json({
+                    "type": "switch",
+                    "data": {"provider": "claude"},
+                })
+                # Synchronize: ping forces handler to finish switch processing first
+                ws.send_json({"type": "ping"})
+                pong = ws.receive_json()
+                assert pong["type"] == "pong"
+                # The error path broadcasts error + recovery connected via bridge
+                bridge = manager.ws_bridge
+                assert bridge.broadcast_message.called
+                calls = [c[0][0] for c in bridge.broadcast_message.call_args_list]
+                error_msgs = [c for c in calls if c["type"] == "error"]
+                assert len(error_msgs) >= 1
+                assert "Switch failed" in error_msgs[0]["data"]["error"]
+
+
 class TestSessionManagerLifecycle:
     """EngineSessionManager create → start → shutdown."""
 
@@ -825,3 +934,95 @@ class TestSessionManagerLifecycle:
                 mock_engine.stop.assert_called_once()
                 assert mgr.engine is None
                 assert mgr.ws_bridge is None
+
+    @pytest.mark.asyncio
+    async def test_switch_preserves_clients(self):
+        """switch() transfers WS clients from old bridge to new bridge."""
+        from avatar_engine.web.session_manager import EngineSessionManager
+
+        mock_engine_cls = MagicMock()
+        engine_instances = []
+
+        def _make_engine(**kwargs):
+            eng = MagicMock()
+            eng._started = True
+            eng.start = AsyncMock()
+            eng.stop = AsyncMock()
+            eng.session_id = f"session-{len(engine_instances)}"
+            engine_instances.append(eng)
+            return eng
+
+        mock_engine_cls.side_effect = _make_engine
+
+        bridge_instances = []
+
+        def _make_bridge(engine):
+            brg = MagicMock()
+            brg._clients = set()
+            brg.add_client = AsyncMock(side_effect=lambda ws: brg._clients.add(ws))
+            brg.unregister = MagicMock()
+            bridge_instances.append(brg)
+            return brg
+
+        with patch("avatar_engine.web.session_manager.AvatarEngine", mock_engine_cls):
+            with patch("avatar_engine.web.session_manager.WebSocketBridge", side_effect=_make_bridge):
+                mgr = EngineSessionManager(provider="gemini")
+                await mgr.start()
+
+                # Simulate 2 connected WS clients
+                ws1 = FakeWebSocket()
+                ws2 = FakeWebSocket()
+                await mgr.ws_bridge.add_client(ws1)
+                await mgr.ws_bridge.add_client(ws2)
+                old_bridge = mgr.ws_bridge
+                assert len(old_bridge._clients) == 2
+
+                # Switch to claude
+                await mgr.switch("claude", "claude-opus-4-6")
+
+                # New bridge should exist and be different from old
+                new_bridge = mgr.ws_bridge
+                assert new_bridge is not old_bridge
+                # Both clients should have been transferred
+                assert ws1 in new_bridge._clients
+                assert ws2 in new_bridge._clients
+
+    @pytest.mark.asyncio
+    async def test_switch_reverts_on_failure(self):
+        """switch() reverts provider/model if start fails."""
+        from avatar_engine.web.session_manager import EngineSessionManager
+
+        call_count = 0
+
+        def _make_engine(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            eng = MagicMock()
+            eng._started = True
+            eng.stop = AsyncMock()
+            if call_count == 2:
+                # Second engine creation (the switch target) fails on start
+                eng.start = AsyncMock(side_effect=RuntimeError("Bad API key"))
+            else:
+                eng.start = AsyncMock()
+            eng.session_id = f"session-{call_count}"
+            return eng
+
+        mock_engine_cls = MagicMock(side_effect=_make_engine)
+
+        with patch("avatar_engine.web.session_manager.AvatarEngine", mock_engine_cls):
+            with patch("avatar_engine.web.session_manager.WebSocketBridge") as mock_bridge_cls:
+                mock_bridge_cls.return_value = MagicMock()
+                mock_bridge_cls.return_value._clients = set()
+                mock_bridge_cls.return_value.add_client = AsyncMock()
+                mock_bridge_cls.return_value.unregister = MagicMock()
+
+                mgr = EngineSessionManager(provider="gemini", model="gemini-3-pro-preview")
+                await mgr.start()
+
+                with pytest.raises(RuntimeError, match="Bad API key"):
+                    await mgr.switch("claude", "claude-opus-4-6")
+
+                # Provider/model should have reverted
+                assert mgr._provider == "gemini"
+                assert mgr._model == "gemini-3-pro-preview"

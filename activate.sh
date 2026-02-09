@@ -21,5 +21,4 @@ echo "  Provider from .avatar.yaml: $(grep '^provider:' .avatar.yaml 2>/dev/null
 echo ""
 echo "Commands:"
 echo "  uv run avatar repl          # Interactive REPL"
-echo "  uv run avatar repl          # Interactive REPL"
 echo "  ./scripts/start-web.sh      # Web Demo (React UI)"

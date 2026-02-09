@@ -29,7 +29,7 @@ avatar chat -p claude --model claude-sonnet-4-5 "Write a haiku"
 # Interaktivní režim (REPL)
 avatar repl
 avatar repl -p gemini
-avatar repl --config custom.yaml
+avatar --config custom.yaml repl
 
 # Health check
 avatar health

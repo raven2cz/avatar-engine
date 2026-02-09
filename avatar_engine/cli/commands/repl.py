@@ -11,6 +11,7 @@ from rich.text import Text
 from ...config import AvatarConfig
 from ...engine import AvatarEngine
 from ...types import ProviderType
+from ..app import provider_option
 from ..display import DisplayManager
 
 console = Console(highlight=False)
@@ -74,6 +75,7 @@ async def _animate_spinner(display: DisplayManager) -> None:
 
 
 @click.command()
+@provider_option
 @click.option("--model", "-m", help="Model name")
 @click.option("--mcp", "-M", type=click.Path(exists=True), help="MCP config file")
 @click.option(
@@ -90,6 +92,7 @@ async def _animate_spinner(display: DisplayManager) -> None:
 @click.pass_context
 def repl(
     ctx: click.Context,
+    provider: str,
     model: str,
     mcp: str,
     mcp_server: tuple,
@@ -126,9 +129,10 @@ def repl(
 
         /resume ID    - Resume a session by ID
     """
-    provider = ctx.obj["provider"]
+    provider_explicit = provider is not None
+    if not provider:
+        provider = "gemini"
     config_path = ctx.obj.get("config")
-    provider_explicit = ctx.obj.get("provider_explicit", False)
     verbose = ctx.obj.get("verbose", False)
     working_dir = ctx.obj.get("working_dir")
 

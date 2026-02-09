@@ -15,24 +15,38 @@ import { Copy, Check } from 'lucide-react'
 
 /* ---------- Custom Synapse code theme (based on oneDark) ---------- */
 
-const synapseTheme: Record<string, React.CSSProperties> = {
-  ...oneDark,
+// Strip per-line gray backgrounds from oneDark tokens
+const synapseTheme: Record<string, React.CSSProperties> = Object.fromEntries(
+  Object.entries(oneDark).map(([key, value]) => {
+    const style = { ...(value as React.CSSProperties) }
+    // Remove background from all token/line styles — only keep pre background
+    if (!key.startsWith('pre[') && !key.startsWith('code[')) {
+      delete style.background
+      delete style.backgroundColor
+    }
+    return [key, style]
+  })
+)
+
+// Override container styles
+Object.assign(synapseTheme, {
   'pre[class*="language-"]': {
-    ...(oneDark['pre[class*="language-"]'] as React.CSSProperties),
-    background: '#0f0f17',
+    background: '#0d1117',
     margin: 0,
+    padding: '1.25rem',
     borderRadius: '0.75rem',
-    border: '1px solid rgba(26, 26, 46, 0.5)',
-    fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
-    fontSize: '0.85em',
-    lineHeight: '1.7',
+    border: '1px solid rgba(99, 110, 123, 0.25)',
+    fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: '0.925rem',
+    lineHeight: '1.65',
+    overflow: 'auto',
   },
   'code[class*="language-"]': {
-    ...(oneDark['code[class*="language-"]'] as React.CSSProperties),
-    fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
-    fontSize: '0.85em',
+    fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: '0.925rem',
+    background: 'none',
   },
-}
+})
 
 /* ---------- Copy button ---------- */
 
@@ -48,9 +62,8 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="absolute top-2 right-2 p-1.5 rounded-lg z-10
-        bg-slate-dark/80 hover:bg-slate-mid/80 border border-slate-mid/30
-        text-text-muted hover:text-text-secondary transition-all duration-200
+      className="p-1 rounded-md
+        text-[#8b949e] hover:text-[#c9d1d9] transition-colors duration-150
         opacity-0 group-hover:opacity-100"
       title="Copy code"
     >
@@ -82,20 +95,24 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
           const isBlock = match || codeStr.includes('\n')
 
           if (isBlock) {
+            const lang = match?.[1] || 'text'
             return (
-              <div className="relative group my-3">
-                {match && (
-                  <span className="absolute top-2 left-3 text-[10px] text-text-muted/50
-                    font-mono uppercase tracking-wider select-none z-10">
-                    {match[1]}
+              <div className="relative group my-4 rounded-xl overflow-hidden
+                border border-[rgba(99,110,123,0.25)] bg-[#0d1117]
+                shadow-lg shadow-black/20">
+                {/* Header bar with language + copy */}
+                <div className="flex items-center justify-between px-4 py-1.5
+                  bg-[#161b22] border-b border-[rgba(99,110,123,0.2)]">
+                  <span className="text-[11px] text-[#8b949e] font-mono uppercase tracking-wider select-none">
+                    {lang}
                   </span>
-                )}
-                <CopyButton text={codeStr} />
+                  <CopyButton text={codeStr} />
+                </div>
                 <SyntaxHighlighter
                   style={synapseTheme}
-                  language={match?.[1] || 'text'}
+                  language={lang}
                   PreTag="div"
-                  customStyle={{ paddingTop: match ? '2rem' : '1rem', margin: 0 }}
+                  customStyle={{ margin: 0, borderRadius: 0, border: 'none' }}
                 >
                   {codeStr}
                 </SyntaxHighlighter>
@@ -105,8 +122,8 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
 
           return (
             <code
-              className="px-1.5 py-0.5 rounded-md bg-synapse/10 border border-synapse/15
-                text-purple-300 font-mono text-[0.85em]"
+              className="px-1.5 py-0.5 rounded-md bg-[#1c2128] border border-[rgba(99,110,123,0.25)]
+                text-[#e2b5ff] font-mono text-[0.9em]"
               {...props}
             >
               {children}

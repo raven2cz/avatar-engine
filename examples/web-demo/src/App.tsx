@@ -20,10 +20,22 @@ export default function App() {
   const {
     messages,
     sendMessage,
+    stopResponse,
     clearHistory,
+    switchProvider,
+    resumeSession,
+    newSession,
+    activeOptions,
     isStreaming,
+    switching,
     connected,
+    wasConnected,
+    sessionId,
+    sessionTitle,
     provider,
+    model,
+    version,
+    cwd,
     engineState,
     cost,
     capabilities,
@@ -35,13 +47,35 @@ export default function App() {
       <StatusBar
         connected={connected}
         provider={provider}
+        model={model}
+        version={version}
+        cwd={cwd}
         engineState={engineState as any}
         capabilities={capabilities}
-        sessionId={null}
+        sessionId={sessionId}
+        sessionTitle={sessionTitle}
+        cost={cost}
+        switching={switching}
+        activeOptions={activeOptions}
+        onSwitch={switchProvider}
+        onResume={resumeSession}
+        onNewSession={newSession}
       />
 
-      {/* Error banner */}
-      {error && (
+      {/* Status banner — initialization or error */}
+      {!connected && !wasConnected && (
+        <div className="mx-6 mt-2 px-4 py-2 rounded-xl bg-synapse/10 border border-synapse/30 text-synapse text-sm animate-slide-up flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-synapse animate-pulse" />
+          Initializing provider...
+        </div>
+      )}
+      {!connected && wasConnected && (
+        <div className="mx-6 mt-2 px-4 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm animate-slide-up flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          Reconnecting...
+        </div>
+      )}
+      {error && connected && (
         <div className="mx-6 mt-2 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm animate-slide-up">
           {error}
         </div>
@@ -52,6 +86,7 @@ export default function App() {
         <ChatPanel
           messages={messages}
           onSend={sendMessage}
+          onStop={stopResponse}
           onClear={clearHistory}
           isStreaming={isStreaming}
           connected={connected}

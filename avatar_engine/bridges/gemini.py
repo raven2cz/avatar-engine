@@ -32,6 +32,7 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from .base import BaseBridge, BridgeResponse, BridgeState, Message
 from ..config_sandbox import ConfigSandbox
+from ..types import SessionInfo
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,10 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         self._provider_capabilities.parallel_tools = True
         self._provider_capabilities.cancellable = False
         self._provider_capabilities.mcp_supported = True
+        self._provider_capabilities.can_list_sessions = True  # filesystem fallback
+
+        # Session capabilities — filesystem fallback always available
+        self._session_capabilities.can_list = True
 
     @property
     def provider_name(self) -> str:
@@ -165,6 +170,71 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
     @property
     def is_persistent(self) -> bool:
         return self._acp_mode
+
+    # ======================================================================
+    # Session management — ACP first, filesystem fallback
+    # ======================================================================
+
+    async def list_sessions(self) -> List[SessionInfo]:
+        """List sessions — ACP first, filesystem fallback."""
+        # Try ACP first (if connected and protocol supports it)
+        if self._acp_conn and self._session_capabilities.can_list:
+            result = await ACPSessionMixin.list_sessions(self)
+            if result:
+                return result
+
+        # Filesystem fallback
+        from ..sessions import get_session_store
+
+        store = get_session_store("gemini")
+        if store:
+            return await store.list_sessions(self.working_dir)
+        return []
+
+    # ======================================================================
+    # Filesystem resume — load history when ACP resume fails
+    # ======================================================================
+
+    async def _load_filesystem_history(self, session_id: str) -> None:
+        """Load conversation history from filesystem after failed ACP resume."""
+        from ..sessions._gemini import GeminiFileSessionStore
+
+        store = GeminiFileSessionStore()
+        messages = store.load_session_messages(session_id, self.working_dir)
+        if messages:
+            with self._history_lock:
+                self.history.extend(messages)
+            self._fs_resume_pending = True
+            logger.info(
+                f"Loaded {len(messages)} messages from filesystem for session {session_id}"
+            )
+        else:
+            logger.warning(f"No messages found on filesystem for session {session_id}")
+
+    def _prepend_system_prompt(self, prompt: str) -> str:
+        """Prepend system prompt + resume context to the first ACP message."""
+        result = super()._prepend_system_prompt(prompt)
+        if getattr(self, '_fs_resume_pending', False):
+            self._fs_resume_pending = False
+            context = self._build_resume_context()
+            if context:
+                result = context + "\n\n" + result
+        return result
+
+    def _build_resume_context(self) -> str:
+        """Build conversation history context for filesystem resume."""
+        if not self.history:
+            return ""
+        lines = ["[Previous conversation:]"]
+        recent = self.history[-self.context_messages:]
+        for msg in recent:
+            role = "User" if msg.role == "user" else "Assistant"
+            text = msg.content
+            if len(text) > self.context_max_chars:
+                text = text[:self.context_max_chars] + "…"
+            lines.append(f"{role}: {text}")
+        lines.append("[Continue:]")
+        return "\n".join(lines)
 
     # ======================================================================
     # Lifecycle — ACP with fallback to oneshot
@@ -273,9 +343,27 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         logger.debug(f"ACP initialized: protocol v{init_resp.protocol_version}")
         self._store_acp_capabilities(init_resp)
 
+        # Filesystem fallback always available — override ACP detection
+        self._session_capabilities.can_list = True
+        self._provider_capabilities.can_list_sessions = True
+
+        # NOTE: Do NOT set can_load=True here — it would cause
+        # _create_or_resume_acp_session to attempt ACP load_session,
+        # which times out on Gemini CLI (-32601). Set it AFTER session creation.
+
         # Step 2: Create or resume session (auth handled by gemini-cli internally)
         mcp_servers_acp = self._build_mcp_servers_acp()
+        original_resume_id = self.resume_session_id
         await self._create_or_resume_acp_session(mcp_servers_acp)
+
+        # Now enable filesystem fallback for resume (after session is created)
+        self._session_capabilities.can_load = True
+        self._provider_capabilities.can_load_session = True
+
+        # If resume was requested but ACP created a new session instead,
+        # load history from filesystem and inject as context
+        if original_resume_id and self._acp_session_id != original_resume_id:
+            await self._load_filesystem_history(original_resume_id)
 
     def _build_mcp_servers_acp(self) -> list:
         """Convert MCP servers dict to ACP format."""

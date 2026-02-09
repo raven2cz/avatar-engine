@@ -100,13 +100,13 @@ def capabilities_to_dict(caps: ProviderCapabilities) -> Dict[str, Any]:
 def parse_client_message(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Parse and validate a client→server WebSocket message.
 
-    Expected format: {"type": "chat|stop|ping|clear_history", "data": {...}}
+    Expected format: {"type": "chat|stop|ping|clear_history|switch|resume_session|new_session", "data": {...}}
 
     Returns:
         Validated dict with "type" and "data" keys, or None if invalid.
     """
     msg_type = raw.get("type")
-    if msg_type not in ("chat", "stop", "ping", "clear_history"):
+    if msg_type not in ("chat", "stop", "ping", "clear_history", "switch", "resume_session", "new_session"):
         return None
     return {
         "type": msg_type,

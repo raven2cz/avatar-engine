@@ -272,6 +272,12 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         logger.debug(f"ACP initialized: protocol v{init_resp.protocol_version}")
         self._store_acp_capabilities(init_resp)
 
+        # Expose ACP session capabilities to the web frontend
+        if self._session_capabilities.can_list:
+            self._provider_capabilities.can_list_sessions = True
+        if self._session_capabilities.can_load:
+            self._provider_capabilities.can_load_session = True
+
         # Step 2: Authenticate
         try:
             await asyncio.wait_for(

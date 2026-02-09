@@ -12,6 +12,7 @@ from ...config import AvatarConfig
 from ...engine import AvatarEngine
 from ...events import TextEvent, ToolEvent, ThinkingEvent
 from ...types import ProviderType
+from ..app import provider_option
 from ..display import DisplayManager
 
 console = Console()
@@ -19,6 +20,7 @@ console = Console()
 
 @click.command()
 @click.argument("message")
+@provider_option
 @click.option("--model", "-m", help="Model name")
 @click.option("--stream/--no-stream", default=True, help="Stream output")
 @click.option("--json", "json_output", is_flag=True, help="JSON output format")
@@ -40,6 +42,7 @@ console = Console()
 def chat(
     ctx: click.Context,
     message: str,
+    provider: str,
     model: str,
     stream: bool,
     json_output: bool,
@@ -60,13 +63,14 @@ def chat(
 
         avatar chat "What is 2+2?"
 
-        avatar -p claude chat "Write a haiku"
+        avatar chat -p claude "Write a haiku"
 
         avatar chat --json "Hello" | jq .content
     """
-    provider = ctx.obj["provider"]
+    provider_explicit = provider is not None
+    if not provider:
+        provider = "gemini"
     config_path = ctx.obj.get("config")
-    provider_explicit = ctx.obj.get("provider_explicit", False)
     verbose = ctx.obj.get("verbose", False)
     debug = ctx.obj.get("debug", False)
     working_dir = ctx.obj.get("working_dir")

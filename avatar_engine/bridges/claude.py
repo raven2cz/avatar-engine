@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional
 
 from .base import BaseBridge, BridgeState
 from ..config_sandbox import ConfigSandbox
+from ..types import SessionInfo
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,7 @@ class ClaudeBridge(BaseBridge):
         self._persistent_mode = True
 
         # Session capabilities — Claude supports resume and continue via CLI flags
+        self._session_capabilities.can_list = True  # filesystem fallback
         self._session_capabilities.can_load = True
         self._session_capabilities.can_continue_last = True
 
@@ -100,7 +102,7 @@ class ClaudeBridge(BaseBridge):
         self._provider_capabilities.parallel_tools = True
         self._provider_capabilities.cancellable = False
         self._provider_capabilities.mcp_supported = True
-        self._provider_capabilities.can_list_sessions = False
+        self._provider_capabilities.can_list_sessions = True  # filesystem fallback
         self._provider_capabilities.can_load_session = True
         self._provider_capabilities.can_continue_last = True
         self._total_cost_usd = 0.0
@@ -122,6 +124,15 @@ class ClaudeBridge(BaseBridge):
         self.continue_session = False
         await self.start()
         return True
+
+    async def list_sessions(self) -> List[SessionInfo]:
+        """List sessions from Claude Code's filesystem store."""
+        from ..sessions import get_session_store
+
+        store = get_session_store("claude")
+        if store:
+            return await store.list_sessions(self.working_dir)
+        return []
 
     # === Start override (no warm-up wait for Claude stream-json) =========
 
@@ -162,6 +173,10 @@ class ClaudeBridge(BaseBridge):
                     f"Claude process exited immediately (code {self._proc.returncode}): "
                     f"{stderr.decode(errors='replace')[:500]}"
                 )
+
+            # Start stderr monitoring (prevents stderr buffer from filling up
+            # and blocking the subprocess — same as base._start_persistent)
+            self._stderr_task = asyncio.create_task(self._monitor_stderr())
 
             # Claude stream-json: no init event until first message
             self._set_state(BridgeState.READY)

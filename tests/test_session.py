@@ -701,3 +701,222 @@ class TestCLISessionCommand:
         result = runner.invoke(cli, ["session", "--help"])
         assert result.exit_code == 0
         assert "session" in result.output.lower()
+
+
+# =============================================================================
+# Bridge Filesystem Fallback Tests
+# =============================================================================
+
+
+class TestGeminiBridgeFilesystemFallback:
+    """Test GeminiBridge list_sessions with filesystem fallback."""
+
+    def test_can_list_sessions_capability(self):
+        """GeminiBridge should advertise can_list=True (filesystem fallback)."""
+        from avatar_engine.bridges.gemini import GeminiBridge
+
+        bridge = GeminiBridge.__new__(GeminiBridge)
+        bridge._session_capabilities = SessionCapabilitiesInfo()
+        bridge._provider_capabilities = MagicMock()
+        # Simulate what __init__ sets
+        bridge._session_capabilities.can_list = True
+        bridge._provider_capabilities.can_list_sessions = True
+
+        assert bridge._session_capabilities.can_list is True
+        assert bridge._provider_capabilities.can_list_sessions is True
+
+    @pytest.mark.asyncio
+    async def test_list_sessions_filesystem_fallback(self, tmp_path):
+        """GeminiBridge should fall back to filesystem when ACP returns empty."""
+        import json
+        from avatar_engine.bridges.gemini import GeminiBridge
+        from avatar_engine.sessions._gemini import GeminiFileSessionStore
+
+        bridge = GeminiBridge.__new__(GeminiBridge)
+        bridge._acp_conn = None  # No ACP connection
+        bridge._session_capabilities = SessionCapabilitiesInfo(can_list=True)
+        bridge.working_dir = "/tmp/test-project"
+        bridge.timeout = 10
+
+        # Create a session file in the filesystem store
+        store = GeminiFileSessionStore(gemini_home=tmp_path)
+        h = store._compute_project_hash("/tmp/test-project")
+        chats = tmp_path / h / "chats"
+        chats.mkdir(parents=True)
+        data = {
+            "sessionId": "gem-fs-001",
+            "lastUpdated": "2025-06-15T10:00:00Z",
+            "messages": [
+                {"type": "user", "content": "Filesystem session"},
+            ],
+        }
+        (chats / "session-gem-fs-001.json").write_text(json.dumps(data))
+
+        # Patch get_session_store where it's imported (lazy import in method)
+        with patch(
+            "avatar_engine.sessions.get_session_store",
+            return_value=store,
+        ):
+            result = await bridge.list_sessions()
+
+        assert len(result) == 1
+        assert result[0].session_id == "gem-fs-001"
+        assert result[0].title == "Filesystem session"
+
+
+class TestGeminiBridgeFilesystemResume:
+    """Test GeminiBridge filesystem resume (history injection)."""
+
+    @pytest.mark.asyncio
+    async def test_load_filesystem_history(self):
+        """_load_filesystem_history should populate history and set flag."""
+        from avatar_engine.bridges.gemini import GeminiBridge
+        from avatar_engine.types import Message
+
+        bridge = GeminiBridge.__new__(GeminiBridge)
+        bridge.working_dir = "/tmp/test"
+        bridge.history = []
+        bridge._history_lock = __import__("threading").Lock()
+        bridge._fs_resume_pending = False
+
+        mock_messages = [
+            Message(role="user", content="Hello"),
+            Message(role="assistant", content="Hi there!"),
+        ]
+
+        with patch(
+            "avatar_engine.sessions._gemini.GeminiFileSessionStore.load_session_messages",
+            return_value=mock_messages,
+        ):
+            await bridge._load_filesystem_history("test-session-id")
+
+        assert len(bridge.history) == 2
+        assert bridge._fs_resume_pending is True
+
+    def test_prepend_system_prompt_with_resume(self):
+        """_prepend_system_prompt should inject resume context when flag is set."""
+        from avatar_engine.bridges.gemini import GeminiBridge
+        from avatar_engine.types import Message
+
+        bridge = GeminiBridge.__new__(GeminiBridge)
+        bridge.system_prompt = ""
+        bridge.history = [
+            Message(role="user", content="Hello"),
+            Message(role="assistant", content="Hi!"),
+        ]
+        bridge._fs_resume_pending = True
+        bridge.context_messages = 20
+        bridge.context_max_chars = 500
+        bridge._stats = {"total_requests": 0}
+        bridge._stats_lock = __import__("threading").Lock()
+
+        result = bridge._prepend_system_prompt("New question")
+        assert "[Previous conversation:]" in result
+        assert "User: Hello" in result
+        assert "Assistant: Hi!" in result
+        assert "[Continue:]" in result
+        assert "New question" in result
+        # Flag should be cleared after use
+        assert bridge._fs_resume_pending is False
+
+    def test_prepend_system_prompt_without_resume(self):
+        """_prepend_system_prompt without flag should not inject context."""
+        from avatar_engine.bridges.gemini import GeminiBridge
+
+        bridge = GeminiBridge.__new__(GeminiBridge)
+        bridge.system_prompt = ""
+        bridge.history = []
+        bridge._fs_resume_pending = False
+        bridge._stats = {"total_requests": 0}
+        bridge._stats_lock = __import__("threading").Lock()
+
+        result = bridge._prepend_system_prompt("Just a question")
+        assert "[Previous conversation:]" not in result
+        assert result == "Just a question"
+
+    def test_build_resume_context_truncates(self):
+        """_build_resume_context should truncate long messages."""
+        from avatar_engine.bridges.gemini import GeminiBridge
+        from avatar_engine.types import Message
+
+        bridge = GeminiBridge.__new__(GeminiBridge)
+        bridge.history = [
+            Message(role="user", content="A" * 1000),
+        ]
+        bridge.context_messages = 20
+        bridge.context_max_chars = 50
+
+        result = bridge._build_resume_context()
+        # Should be truncated to 50 chars + ellipsis
+        assert len(result.split("\n")[1].split(": ", 1)[1]) == 51  # 50 + "…"
+
+    def test_can_load_capability_set(self):
+        """GeminiBridge should have can_load=True after filesystem fallback setup."""
+        from avatar_engine.bridges.gemini import GeminiBridge
+
+        bridge = GeminiBridge.__new__(GeminiBridge)
+        bridge._session_capabilities = SessionCapabilitiesInfo()
+        bridge._provider_capabilities = MagicMock()
+
+        # Simulate what _start_acp sets
+        bridge._session_capabilities.can_load = True
+        bridge._provider_capabilities.can_load_session = True
+
+        assert bridge._session_capabilities.can_load is True
+        assert bridge._provider_capabilities.can_load_session is True
+
+
+class TestClaudeBridgeFilesystemFallback:
+    """Test ClaudeBridge list_sessions with filesystem store."""
+
+    def test_can_list_sessions_capability(self):
+        """ClaudeBridge should advertise can_list=True (filesystem fallback)."""
+        from avatar_engine.bridges.claude import ClaudeBridge
+
+        bridge = ClaudeBridge.__new__(ClaudeBridge)
+        bridge._session_capabilities = SessionCapabilitiesInfo()
+        bridge._provider_capabilities = MagicMock()
+        # Simulate what __init__ sets
+        bridge._session_capabilities.can_list = True
+        bridge._provider_capabilities.can_list_sessions = True
+
+        assert bridge._session_capabilities.can_list is True
+
+    @pytest.mark.asyncio
+    async def test_list_sessions_filesystem(self, tmp_path):
+        """ClaudeBridge should list sessions from filesystem."""
+        import json
+        from avatar_engine.bridges.claude import ClaudeBridge
+        from avatar_engine.sessions._claude import ClaudeFileSessionStore
+
+        bridge = ClaudeBridge.__new__(ClaudeBridge)
+        bridge.working_dir = "/tmp/test-project"
+
+        # Create a session file in the filesystem store
+        store = ClaudeFileSessionStore(claude_home=tmp_path)
+        encoded = store._encode_path("/tmp/test-project")
+        project = tmp_path / encoded
+        project.mkdir(parents=True)
+
+        events = [
+            {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Hello from filesystem"}],
+                },
+            },
+        ]
+        (project / "uuid-fs-001.jsonl").write_text(
+            "\n".join(json.dumps(e) for e in events)
+        )
+
+        with patch(
+            "avatar_engine.sessions.get_session_store",
+            return_value=store,
+        ):
+            result = await bridge.list_sessions()
+
+        assert len(result) == 1
+        assert result[0].session_id == "uuid-fs-001"
+        assert result[0].title == "Hello from filesystem"

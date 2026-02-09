@@ -9,10 +9,16 @@ import type {
 
 interface AvatarWSState {
   connected: boolean
+  wasConnected: boolean
   sessionId: string | null
+  sessionTitle: string | null
   provider: string
+  model: string | null
+  version: string
+  cwd: string
   capabilities: ProviderCapabilities | null
   engineState: EngineState
+  switching: boolean
   thinking: {
     active: boolean
     phase: ThinkingPhase
@@ -33,13 +39,20 @@ type Action =
   | { type: 'COST'; costUsd: number; inputTokens: number; outputTokens: number }
   | { type: 'ERROR'; error: string }
   | { type: 'CLEAR_ERROR' }
+  | { type: 'SWITCHING' }
 
 const initialState: AvatarWSState = {
   connected: false,
+  wasConnected: false,
   sessionId: null,
+  sessionTitle: null,
   provider: '',
+  model: null,
+  version: '',
+  cwd: '',
   capabilities: null,
   engineState: 'idle',
+  switching: false,
   thinking: { active: false, phase: 'general', subject: '', startedAt: 0 },
   cost: { totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0 },
   error: null,
@@ -51,8 +64,14 @@ function reducer(state: AvatarWSState, action: Action): AvatarWSState {
       return {
         ...state,
         connected: true,
+        wasConnected: true,
+        switching: false,
         sessionId: action.payload.data.session_id,
+        sessionTitle: action.payload.data.session_title || null,
         provider: action.payload.data.provider,
+        model: action.payload.data.model || null,
+        version: action.payload.data.version || '',
+        cwd: action.payload.data.cwd || '',
         capabilities: action.payload.data.capabilities,
         engineState: action.payload.data.engine_state,
         error: null,
@@ -98,6 +117,8 @@ function reducer(state: AvatarWSState, action: Action): AvatarWSState {
       return { ...state, error: action.error }
     case 'CLEAR_ERROR':
       return { ...state, error: null }
+    case 'SWITCHING':
+      return { ...state, switching: true }
     default:
       return state
   }
@@ -106,7 +127,11 @@ function reducer(state: AvatarWSState, action: Action): AvatarWSState {
 export interface UseAvatarWebSocketReturn {
   state: AvatarWSState
   sendMessage: (message: string) => void
+  stopResponse: () => void
   clearHistory: () => void
+  switchProvider: (provider: string, model?: string, options?: Record<string, unknown>) => void
+  resumeSession: (sessionId: string) => void
+  newSession: () => void
   onServerMessage: (handler: (msg: ServerMessage) => void) => () => void
 }
 
@@ -200,7 +225,8 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
     }
 
     ws.onerror = () => {
-      dispatch({ type: 'ERROR', error: 'WebSocket connection failed' })
+      // Only show error if we had a previous connection — initial connect
+      // failures are handled gracefully as "Connecting..." state
     }
   }, [url])
 
@@ -223,9 +249,45 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
     }
   }, [])
 
+  const stopResponse = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'stop', data: {} }))
+    }
+  }, [])
+
   const clearHistory = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'clear_history', data: {} }))
+    }
+  }, [])
+
+  const switchProvider = useCallback((provider: string, model?: string, options?: Record<string, unknown>) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      dispatch({ type: 'SWITCHING' })
+      wsRef.current.send(JSON.stringify({
+        type: 'switch',
+        data: { provider, model: model || undefined, options: options || undefined },
+      }))
+    }
+  }, [])
+
+  const resumeSession = useCallback((sessionId: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      dispatch({ type: 'SWITCHING' })
+      wsRef.current.send(JSON.stringify({
+        type: 'resume_session',
+        data: { session_id: sessionId },
+      }))
+    }
+  }, [])
+
+  const newSession = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      dispatch({ type: 'SWITCHING' })
+      wsRef.current.send(JSON.stringify({
+        type: 'new_session',
+        data: {},
+      }))
     }
   }, [])
 
@@ -234,5 +296,5 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
     return () => { handlerRef.current = null }
   }, [])
 
-  return { state, sendMessage, clearHistory, onServerMessage }
+  return { state, sendMessage, stopResponse, clearHistory, switchProvider, resumeSession, newSession, onServerMessage }
 }

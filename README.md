@@ -120,10 +120,10 @@ asyncio.run(main())
 ### CLI Usage
 
 ```bash
-# Single message (provider flag -p goes BEFORE the subcommand)
+# Single message (provider flag -p goes on the subcommand)
 avatar chat "What is 2+2?"
-avatar -p claude chat "Write a haiku"
-avatar -p codex chat "Refactor this function"
+avatar chat -p claude "Write a haiku"
+avatar chat -p codex "Refactor this function"
 
 # Working directory override
 avatar -w /path/to/project chat "Analyze this codebase"
@@ -131,7 +131,7 @@ avatar --working-dir /tmp/sandbox repl
 
 # Interactive REPL
 avatar repl
-avatar -p codex repl
+avatar repl -p codex
 avatar repl --plain
 
 # Session management
@@ -142,10 +142,10 @@ avatar session list
 avatar session info abc123
 
 # Claude-specific: allowed tools filter
-avatar -p claude chat --allowed-tools "Read,Write,Bash" "Fix the bug"
+avatar chat -p claude --allowed-tools "Read,Write,Bash" "Fix the bug"
 
 # With config file: -p overrides config's provider
-avatar -p codex chat "Hello"     # uses codex even if .avatar.yaml says gemini
+avatar chat -p codex "Hello"     # uses codex even if .avatar.yaml says gemini
 
 # Health check
 avatar health --check-cli

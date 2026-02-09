@@ -100,6 +100,122 @@ class EngineSessionManager:
 
         logger.info("Web session shut down")
 
+    def _save_clients(self) -> set:
+        """Save connected WebSocket clients before bridge teardown."""
+        if self._ws_bridge:
+            return set(self._ws_bridge._clients)
+        return set()
+
+    async def _restore_clients(self, saved_clients: set) -> None:
+        """Restore saved WebSocket clients to the new bridge."""
+        if self._ws_bridge and saved_clients:
+            for ws in saved_clients:
+                await self._ws_bridge.add_client(ws)
+
+    async def switch(
+        self,
+        provider: str,
+        model: Optional[str] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Switch provider and/or model by restarting the engine.
+
+        Preserves connected WebSocket clients across the restart.
+        Options (if provided) are merged into engine kwargs — used for
+        generation_config, max_turns, max_budget_usd, etc.
+        Returns info dict with new provider/model/session_id.
+        """
+        old_provider = self._provider
+        old_model = self._model
+        old_kwargs = dict(self._kwargs)
+
+        saved_clients = self._save_clients()
+
+        self._provider = provider
+        self._model = model
+        if options:
+            self._kwargs.update(options)
+
+        try:
+            await self.shutdown()
+            await self.start()
+            await self._restore_clients(saved_clients)
+            logger.info(f"Switched to provider={provider} model={model}")
+            return {
+                "provider": self._provider,
+                "model": self._model,
+                "session_id": self._engine.session_id if self._engine else None,
+            }
+        except Exception as e:
+            logger.error(f"Switch failed: {e}, reverting to {old_provider}/{old_model}")
+            self._provider = old_provider
+            self._model = old_model
+            self._kwargs = old_kwargs
+            try:
+                await self.shutdown()
+                await self.start()
+                await self._restore_clients(saved_clients)
+            except Exception:
+                pass
+            raise
+
+    async def resume_session(self, session_id: str) -> Dict[str, Any]:
+        """Resume a previous session by restarting the engine with that session ID.
+
+        Same pattern as switch(): save clients → set resume ID → restart → restore.
+        """
+        saved_clients = self._save_clients()
+        self._kwargs["resume_session_id"] = session_id
+
+        try:
+            await self.shutdown()
+            await self.start()
+            await self._restore_clients(saved_clients)
+            logger.info(f"Resumed session={session_id}")
+            return {
+                "provider": self._provider,
+                "model": self._model,
+                "session_id": self._engine.session_id if self._engine else None,
+            }
+        except Exception as e:
+            logger.error(f"Resume session failed: {e}")
+            self._kwargs.pop("resume_session_id", None)
+            try:
+                await self.shutdown()
+                await self.start()
+                await self._restore_clients(saved_clients)
+            except Exception:
+                pass
+            raise
+
+    async def new_session(self) -> Dict[str, Any]:
+        """Start a fresh session by restarting the engine without a resume ID.
+
+        Same pattern as switch(): save clients → clear resume ID → restart → restore.
+        """
+        saved_clients = self._save_clients()
+        self._kwargs.pop("resume_session_id", None)
+
+        try:
+            await self.shutdown()
+            await self.start()
+            await self._restore_clients(saved_clients)
+            logger.info("Started new session")
+            return {
+                "provider": self._provider,
+                "model": self._model,
+                "session_id": self._engine.session_id if self._engine else None,
+            }
+        except Exception as e:
+            logger.error(f"New session failed: {e}")
+            try:
+                await self.shutdown()
+                await self.start()
+                await self._restore_clients(saved_clients)
+            except Exception:
+                pass
+            raise
+
     async def ensure_started(self) -> AvatarEngine:
         """Ensure engine is started and return it."""
         if not self.is_started:

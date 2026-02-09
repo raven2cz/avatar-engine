@@ -7,14 +7,16 @@ from rich.table import Table
 
 from ...engine import AvatarEngine
 from ...utils.version import check_cli_version
+from ..app import provider_option
 
 console = Console()
 
 
 @click.command()
+@provider_option
 @click.option("--check-cli", is_flag=True, help="Check CLI tool versions")
 @click.pass_context
-def health(ctx: click.Context, check_cli: bool) -> None:
+def health(ctx: click.Context, provider: str, check_cli: bool) -> None:
     """Check system health and CLI availability.
 
     Examples:
@@ -25,10 +27,12 @@ def health(ctx: click.Context, check_cli: bool) -> None:
 
         avatar health -p claude
     """
+    if not provider:
+        provider = "gemini"
     if check_cli:
         asyncio.run(_check_cli_versions())
     else:
-        asyncio.run(_check_bridge_health(ctx.obj["provider"], ctx.obj.get("config")))
+        asyncio.run(_check_bridge_health(provider, ctx.obj.get("config")))
 
 
 async def _check_cli_versions() -> None:

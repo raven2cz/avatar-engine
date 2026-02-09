@@ -29,6 +29,12 @@
   -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
 
+.glass-panel {
+  background: rgba(12, 12, 20, 0.92);
+  backdrop-filter: blur(32px) saturate(120%);
+  -webkit-backdrop-filter: blur(32px) saturate(120%);
+}
+
 .glass-light {
   background: rgba(26, 26, 46, 0.5);
   backdrop-filter: blur(12px);

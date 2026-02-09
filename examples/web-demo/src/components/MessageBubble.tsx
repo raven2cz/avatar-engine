@@ -5,11 +5,12 @@
  * cost/duration metadata, and formatted text content.
  */
 
-import { Bot, User } from 'lucide-react'
+import { User } from 'lucide-react'
 import type { ChatMessage } from '../api/types'
 import { ThinkingIndicator } from './ThinkingIndicator'
 import { ToolActivity } from './ToolActivity'
 import { MarkdownContent } from './MarkdownContent'
+import { AvatarLogo } from './AvatarLogo'
 
 interface MessageBubbleProps {
   message: ChatMessage
@@ -22,18 +23,18 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     <div
       className={`flex gap-3 animate-slide-up ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
     >
-      {/* Avatar */}
+      {/* Avatar — aligned to top of message */}
       <div
-        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+        className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mt-1 ${
           isUser
             ? 'bg-gradient-to-br from-synapse to-pulse'
             : 'bg-slate-dark border border-slate-mid/50'
         }`}
       >
         {isUser ? (
-          <User className="w-4 h-4 text-white" />
+          <User className="w-5 h-5 text-white" />
         ) : (
-          <Bot className="w-4 h-4 text-synapse" />
+          <AvatarLogo className="w-7 h-7" />
         )}
       </div>
 

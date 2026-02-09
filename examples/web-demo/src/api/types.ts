@@ -37,8 +37,12 @@ export interface ConnectedMessage {
   data: {
     session_id: string | null
     provider: string
+    model: string | null
+    version: string
     capabilities: ProviderCapabilities
     engine_state: EngineState
+    cwd?: string
+    session_title?: string
   }
 }
 
@@ -210,7 +214,32 @@ export interface ClearHistoryRequest {
   data: Record<string, never>
 }
 
-export type ClientMessage = ChatRequest | StopRequest | PingRequest | ClearHistoryRequest
+export interface SwitchRequest {
+  type: 'switch'
+  data: { provider: string; model?: string; options?: Record<string, unknown> }
+}
+
+export interface ResumeSessionRequest {
+  type: 'resume_session'
+  data: { session_id: string }
+}
+
+export interface NewSessionRequest {
+  type: 'new_session'
+  data: Record<string, never>
+}
+
+export type ClientMessage = ChatRequest | StopRequest | PingRequest | ClearHistoryRequest | SwitchRequest | ResumeSessionRequest | NewSessionRequest
+
+// === Session info (from GET /api/avatar/sessions) ===
+
+export interface SessionInfo {
+  session_id: string
+  provider: string
+  cwd: string
+  title: string
+  updated_at: string | null
+}
 
 // === UI State ===
 

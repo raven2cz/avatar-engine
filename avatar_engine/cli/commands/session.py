@@ -13,7 +13,14 @@ console = Console()
 
 
 @click.group()
-def session() -> None:
+@click.option(
+    "--provider", "-p",
+    type=click.Choice(["gemini", "claude", "codex"]),
+    default=None,
+    help="AI provider (default: from config or gemini)",
+)
+@click.pass_context
+def session(ctx: click.Context, provider: str) -> None:
     """Manage provider sessions.
 
     List and inspect sessions stored by the provider (Gemini, Claude, Codex).
@@ -23,11 +30,16 @@ def session() -> None:
 
         avatar session list
 
-        avatar -p codex session list
+        avatar session -p codex list
 
         avatar session info abc123
     """
-    pass
+    ctx.ensure_object(dict)
+    provider_explicit = provider is not None
+    if not provider:
+        provider = "gemini"
+    ctx.obj["session_provider"] = provider
+    ctx.obj["session_provider_explicit"] = provider_explicit
 
 
 @session.command("list")
@@ -35,9 +47,9 @@ def session() -> None:
 @click.pass_context
 def session_list(ctx: click.Context, limit: int) -> None:
     """List available sessions for the current provider."""
-    provider = ctx.obj["provider"]
+    provider = ctx.obj["session_provider"]
     config_path = ctx.obj.get("config")
-    provider_explicit = ctx.obj.get("provider_explicit", False)
+    provider_explicit = ctx.obj.get("session_provider_explicit", False)
 
     asyncio.run(_session_list_async(provider, config_path, provider_explicit, limit))
 
@@ -98,9 +110,9 @@ async def _session_list_async(
 @click.pass_context
 def session_info(ctx: click.Context, session_id: str) -> None:
     """Show details for a specific session."""
-    provider = ctx.obj["provider"]
+    provider = ctx.obj["session_provider"]
     config_path = ctx.obj.get("config")
-    provider_explicit = ctx.obj.get("provider_explicit", False)
+    provider_explicit = ctx.obj.get("session_provider_explicit", False)
 
     asyncio.run(_session_info_async(provider, config_path, provider_explicit, session_id))
 

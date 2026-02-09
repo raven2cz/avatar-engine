@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .. import __version__
 from .protocol import (
     capabilities_to_dict,
     event_to_dict,
@@ -90,7 +91,7 @@ def create_app(
     app = FastAPI(
         title="Avatar Engine",
         description="AI Avatar Engine — WebSocket + REST API",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
 
@@ -125,6 +126,11 @@ def create_app(
             )
         health = engine.get_health()
         return JSONResponse(health_to_dict(health))
+
+    @app.get("/api/avatar/version")
+    async def get_version() -> JSONResponse:
+        """Engine version."""
+        return JSONResponse({"version": __version__})
 
     @app.get("/api/avatar/capabilities")
     async def get_capabilities() -> JSONResponse:
@@ -173,6 +179,25 @@ def create_app(
             for s in sessions
         ])
 
+    @app.get("/api/avatar/sessions/{session_id}/messages")
+    async def get_session_messages(session_id: str) -> JSONResponse:
+        """Load messages from a specific session (for displaying history on resume)."""
+        from ..sessions import get_session_store
+
+        engine = manager.engine
+        current_provider = engine.current_provider if engine else manager._provider
+
+        store = get_session_store(current_provider)
+        if not store:
+            return JSONResponse([])
+
+        wd = manager._working_dir
+        messages = store.load_session_messages(session_id, wd)
+        return JSONResponse([
+            {"role": m.role, "content": m.content}
+            for m in messages
+        ])
+
     @app.post("/api/avatar/chat")
     async def post_chat(body: Dict[str, Any]) -> JSONResponse:
         """Non-streaming chat (for simple use cases)."""
@@ -197,6 +222,81 @@ def create_app(
             engine.clear_history()
         return JSONResponse({"status": "cleared"})
 
+    # === WebSocket helpers ===
+
+    def _get_model(mgr: EngineSessionManager) -> Optional[str]:
+        """Extract current model from engine/bridge/config."""
+        eng = mgr.engine
+        if not eng:
+            return None
+        mdl = None
+        if eng._bridge:
+            mdl = getattr(eng._bridge, '_model', None) or getattr(eng._bridge, 'model', None) or None
+        if mdl is None and eng._config:
+            mdl = eng._config.model
+        if mdl is None:
+            mdl = mgr._model
+        return mdl or None
+
+    def _get_session_title(mgr: EngineSessionManager, session_id: Optional[str]) -> Optional[str]:
+        """Look up the title for a session from the filesystem store."""
+        if not session_id:
+            return None
+        try:
+            from ..sessions import get_session_store
+
+            eng = mgr.engine
+            provider = eng.current_provider if eng else mgr._provider
+            store = get_session_store(provider)
+            if not store:
+                return None
+
+            # Load first user message as title
+            messages = store.load_session_messages(session_id, mgr._working_dir)
+            for m in messages:
+                if m.role == "user" and m.content.strip():
+                    text = m.content.strip()
+                    return text[:80] if len(text) > 80 else text
+        except Exception:
+            pass
+        return None
+
+    def _broadcast_connected(mgr: EngineSessionManager, provider_fallback: str = "") -> None:
+        """Broadcast a 'connected' message to all WS clients after engine restart."""
+        brg = mgr.ws_bridge
+        eng = mgr.engine
+        if not brg:
+            return
+        brg.set_loop(asyncio.get_running_loop())
+        sid = eng.session_id if eng else None
+        brg.broadcast_message({
+            "type": "connected",
+            "data": {
+                "session_id": sid,
+                "provider": eng.current_provider if eng else provider_fallback,
+                "model": _get_model(mgr),
+                "version": __version__,
+                "capabilities": capabilities_to_dict(eng.capabilities) if eng else {},
+                "engine_state": brg.engine_state.value,
+                "cwd": mgr._working_dir,
+                "session_title": _get_session_title(mgr, sid),
+            },
+        })
+
+    def _broadcast_error_and_connected(
+        mgr: EngineSessionManager, error_msg: str, provider_fallback: str = ""
+    ) -> None:
+        """Broadcast an error and then the current connected state."""
+        brg = mgr.ws_bridge
+        if not brg:
+            return
+        brg.set_loop(asyncio.get_running_loop())
+        brg.broadcast_message({
+            "type": "error",
+            "data": {"error": error_msg, "recoverable": True},
+        })
+        _broadcast_connected(mgr, provider_fallback=provider_fallback)
+
     # === WebSocket ===
 
     @app.websocket("/api/avatar/ws")
@@ -216,13 +316,19 @@ def create_app(
         await bridge.add_client(ws)
 
         # Send connected message with session info
+        model = _get_model(manager)
+        sid = engine.session_id
         await ws.send_json({
             "type": "connected",
             "data": {
-                "session_id": engine.session_id,
+                "session_id": sid,
                 "provider": engine.current_provider,
+                "model": model,
+                "version": __version__,
                 "capabilities": capabilities_to_dict(engine.capabilities),
                 "engine_state": bridge.engine_state.value,
+                "cwd": manager._working_dir,
+                "session_title": _get_session_title(manager, sid),
             },
         })
 
@@ -253,17 +359,59 @@ def create_app(
                         continue
 
                     # Run chat in background — events auto-broadcast via bridge
-                    async def _run_chat(msg: str) -> None:
+                    # Use manager refs (not local vars) so chat works after switch
+                    async def _run_chat(msg: str, client_ws: WebSocket = ws) -> None:
                         try:
-                            response = await engine.chat(msg)
-                            bridge.broadcast_message(response_to_dict(response))
+                            eng = manager.engine
+                            brg = manager.ws_bridge
+                            if not eng or not brg:
+                                logger.error("Chat failed: engine or bridge not available")
+                                try:
+                                    await client_ws.send_json({
+                                        "type": "error",
+                                        "data": {"error": "Engine not available — try reconnecting", "recoverable": True},
+                                    })
+                                except Exception:
+                                    pass
+                                return
+                            logger.debug(f"Chat request: {msg[:80]}...")
+                            response = await asyncio.wait_for(eng.chat(msg), timeout=120)
+                            brg.broadcast_message(response_to_dict(response))
                         except Exception as e:
-                            bridge.broadcast_message({
+                            logger.error(f"Chat error: {e}")
+                            # Try bridge broadcast first, fall back to direct WS send
+                            err_msg = {
                                 "type": "error",
                                 "data": {"error": str(e), "recoverable": True},
-                            })
+                            }
+                            brg = manager.ws_bridge
+                            if brg:
+                                brg.broadcast_message(err_msg)
+                            else:
+                                try:
+                                    await client_ws.send_json(err_msg)
+                                except Exception:
+                                    pass
 
-                    asyncio.create_task(_run_chat(message))
+                    task = asyncio.create_task(_run_chat(message))
+
+                    def _on_chat_done(t: asyncio.Task, client_ws: WebSocket = ws) -> None:
+                        if t.cancelled():
+                            return
+                        exc = t.exception()
+                        if exc:
+                            logger.error(f"Unhandled chat task error: {exc}")
+                            try:
+                                asyncio.get_running_loop().create_task(
+                                    client_ws.send_json({
+                                        "type": "error",
+                                        "data": {"error": f"Internal error: {exc}", "recoverable": True},
+                                    })
+                                )
+                            except Exception:
+                                pass
+
+                    task.add_done_callback(_on_chat_done)
 
                 elif msg_type == "stop":
                     # TODO: implement chat cancellation
@@ -272,8 +420,63 @@ def create_app(
                         "data": {"error": "Stop not yet implemented"},
                     })
 
+                elif msg_type == "switch":
+                    switch_provider = msg_data.get("provider", "")
+                    switch_model = msg_data.get("model") or None
+                    switch_options = msg_data.get("options") or None
+                    if not switch_provider:
+                        await ws.send_json({
+                            "type": "error",
+                            "data": {"error": "Missing provider for switch"},
+                        })
+                        continue
+
+                    try:
+                        await manager.switch(switch_provider, switch_model, options=switch_options)
+                        engine = manager.engine
+                        bridge = manager.ws_bridge
+                        _broadcast_connected(manager, provider_fallback=switch_provider)
+                    except Exception as e:
+                        logger.error(f"Switch failed: {e}")
+                        engine = manager.engine
+                        bridge = manager.ws_bridge
+                        _broadcast_error_and_connected(manager, f"Switch failed: {e}", provider_fallback=provider)
+
+                elif msg_type == "resume_session":
+                    session_id = msg_data.get("session_id", "")
+                    if not session_id:
+                        await ws.send_json({
+                            "type": "error",
+                            "data": {"error": "Missing session_id for resume_session"},
+                        })
+                        continue
+
+                    try:
+                        await manager.resume_session(session_id)
+                        engine = manager.engine
+                        bridge = manager.ws_bridge
+                        _broadcast_connected(manager, provider_fallback=provider)
+                    except Exception as e:
+                        logger.error(f"Resume session failed: {e}")
+                        engine = manager.engine
+                        bridge = manager.ws_bridge
+                        _broadcast_error_and_connected(manager, f"Resume session failed: {e}", provider_fallback=provider)
+
+                elif msg_type == "new_session":
+                    try:
+                        await manager.new_session()
+                        engine = manager.engine
+                        bridge = manager.ws_bridge
+                        _broadcast_connected(manager, provider_fallback=provider)
+                    except Exception as e:
+                        logger.error(f"New session failed: {e}")
+                        engine = manager.engine
+                        bridge = manager.ws_bridge
+                        _broadcast_error_and_connected(manager, f"New session failed: {e}", provider_fallback=provider)
+
                 elif msg_type == "clear_history":
-                    engine.clear_history()
+                    if manager.engine:
+                        manager.engine.clear_history()
                     await ws.send_json({"type": "history_cleared", "data": {}})
 
         except WebSocketDisconnect:
@@ -281,7 +484,10 @@ def create_app(
         except Exception as e:
             logger.error(f"WebSocket error: {e}")
         finally:
-            await bridge.remove_client(ws)
+            # Use current bridge (may differ from initial after switch)
+            current_bridge = manager.ws_bridge
+            if current_bridge:
+                await current_bridge.remove_client(ws)
 
     # === Optional: Serve static web-demo build ===
 

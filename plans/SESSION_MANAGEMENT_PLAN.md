@@ -399,7 +399,7 @@ nepotřebujeme duplicitní metadata store. `test_session_store.py` tím pádem t
 1. `python -m pytest tests/test_session.py -v` — Bridge capabilities + session params
 2. `python -m pytest tests/test_cli.py -v` — CLI flags (--resume, --continue)
 3. `python -m pytest tests/ -q` — Full suite (should be 561+ tests)
-4. Manual: `avatar session list`, `avatar -p codex repl --resume <id>`, REPL `/sessions`
+4. Manual: `avatar session list`, `avatar repl -p codex --resume <id>`, REPL `/sessions`
 
 ---
 
@@ -434,3 +434,73 @@ nepotřebujeme duplicitní metadata store. `test_session_store.py` tím pádem t
 - **561 unit testů** — všechny PASS (44 nových session testů)
 - **Integrace** — test_real_sessions.py (capabilities, list, resume, continue, fallback)
 - **Review** — čistý, žádné problémy nalezeny
+
+---
+
+## Fáze 15: Filesystem Session Store — Fallback pro ACP (HOTOVO)
+
+> Status: DONE (2026-02-09)
+
+### Kontext
+
+ACP `session/list` a `session/load` nejsou implementované Gemini CLI (vrací -32601 "Method not found").
+Claude CLI nepodporuje listing sessions vůbec. Pouze Codex má plnou ACP session podporu.
+
+Ale všichni provideři ukládají sessions na disk:
+- **Gemini**: `~/.gemini/tmp/<sha256(cwd)>/chats/session-*.json`
+- **Claude**: `~/.claude/projects/<cwd-nahrazené-lomítky>/*.jsonl`
+- **Codex**: `~/.codex/sessions/YYYY/MM/DD/rollout-{timestamp}-{sessionId}.jsonl` — ACP listing funguje, ale filesystem store potřebný pro zobrazení historie v GUI
+
+**Řešení**: Modul `avatar_engine/sessions/` s filesystem implementacemi. Když ACP funguje, má prioritu. Když ne, čteme přímo z disku. Filesystem stores slouží i pro zobrazení historie v GUI (ACP neposkytuje API pro čtení zpráv).
+
+### Architektura
+
+```
+avatar_engine/sessions/
+    __init__.py      # Factory: get_session_store(provider) -> SessionStore
+    _base.py         # ABC: SessionStore s list_sessions(working_dir) + load_session_messages()
+    _gemini.py       # GeminiFileSessionStore — čte ~/.gemini/tmp/<hash>/chats/
+    _claude.py       # ClaudeFileSessionStore — čte ~/.claude/projects/<encoded>/
+    _codex.py        # CodexFileSessionStore — čte ~/.codex/sessions/YYYY/MM/DD/
+```
+
+### Gemini formát session souborů
+
+```json
+{
+  "sessionId": "uuid",
+  "lastUpdated": "ISO 8601",
+  "startTime": "ISO 8601",
+  "messages": [
+    {"type": "user", "content": "text...", "timestamp": "..."},
+    {"type": "gemini", "content": "odpověď...", "thoughts": [...], "tokens": {...}}
+  ]
+}
+```
+
+Poznámka: Zprávy používají `type: "user"/"gemini"` (NE `role`), `content` je plain string.
+Pole `summary` neexistuje — titulek se bere z prvního user message.
+
+### Implementované soubory
+
+| Soubor | Změna |
+|--------|-------|
+| `avatar_engine/sessions/__init__.py` | **NOVÝ** — factory + public API |
+| `avatar_engine/sessions/_base.py` | **NOVÝ** — SessionStore ABC s `load_session_messages()` |
+| `avatar_engine/sessions/_gemini.py` | **NOVÝ** — Gemini filesystem store + `_find_session_file()` |
+| `avatar_engine/sessions/_claude.py` | **NOVÝ** — Claude filesystem store |
+| `avatar_engine/sessions/_codex.py` | **NOVÝ** — Codex filesystem store (JSONL z ~/.codex/sessions/) |
+| `avatar_engine/bridges/gemini.py` | Override `list_sessions()`, `can_list=True`, filesystem resume |
+| `avatar_engine/bridges/claude.py` | Přidán `list_sessions()`, `can_list=True` |
+| `avatar_engine/bridges/codex.py` | `can_list_sessions=True`, `can_load_session=True` |
+| `tests/test_session_stores.py` | **NOVÝ** — 47 unit testů pro všechny 3 stores |
+| `tests/test_session.py` | Přidány bridge fallback integrační testy |
+
+### Výsledky
+
+- 156 testů PASS v session testech, 0 nových selhání
+- `avatar session list` — zobrazuje Gemini sessions s titulky z filesystému (177 sessions)
+- `avatar session -p claude list` — zobrazuje Claude sessions (29 sessions)
+- `avatar session -p codex list` — zobrazuje Codex sessions (30 sessions)
+- Fallback funguje transparentně: ACP selže s -32601 → filesystem store převezme
+- Web GUI: session resume s historií funguje pro všechny 3 providery

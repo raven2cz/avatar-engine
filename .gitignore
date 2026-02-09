@@ -53,8 +53,8 @@ mcp_servers.json
 GEMINI.md
 CLAUDE.md
 
-# Session data
-sessions/
+# Session data (provider session files, not Python modules)
+/sessions/
 *.session
 
 # Test artifacts
