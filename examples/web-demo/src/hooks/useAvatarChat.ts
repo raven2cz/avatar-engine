@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ChatMessage, ServerMessage, ToolInfo } from '../api/types'
+import type { ChatAttachment, ChatMessage, ServerMessage, ToolInfo, UploadedFile } from '../api/types'
 import { useAvatarWebSocket } from './useAvatarWebSocket'
+import { useFileUpload } from './useFileUpload'
 import { buildOptionsDict } from '../config/providers'
 
 // REST API base — matches Vite proxy config
@@ -11,13 +12,17 @@ const API_BASE =
 
 export interface UseAvatarChatReturn {
   messages: ChatMessage[]
-  sendMessage: (text: string) => void
+  sendMessage: (text: string, attachments?: UploadedFile[]) => void
   stopResponse: () => void
   clearHistory: () => void
   switchProvider: (provider: string, model?: string, options?: Record<string, string | number>) => void
   resumeSession: (sessionId: string) => void
   newSession: () => void
   activeOptions: Record<string, string | number>
+  pendingFiles: UploadedFile[]
+  uploading: boolean
+  uploadFile: (file: File) => Promise<UploadedFile | null>
+  removeFile: (fileId: string) => void
   isStreaming: boolean
   switching: boolean
   connected: boolean
@@ -59,6 +64,8 @@ function summarizeParams(params: Record<string, unknown>): string {
 export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
   const { state, sendMessage: wsSend, clearHistory: wsClear, switchProvider: wsSwitch, resumeSession: wsResume, newSession: wsNew, onServerMessage, stopResponse: wsStop } =
     useAvatarWebSocket(wsUrl)
+  const { pending: pendingFiles, uploading, upload: uploadFile, remove: removeFile, clear: clearFiles } =
+    useFileUpload()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [activeOptions, setActiveOptions] = useState<Record<string, string | number>>({})
@@ -166,11 +173,12 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
               m.id === responseId
                 ? {
                     ...m,
-                    content: m.content || msg.data.content,
+                    content: m.content || msg.data.content || (msg.data.error ? `Error: ${msg.data.error}` : ''),
                     isStreaming: false,
                     durationMs: msg.data.duration_ms,
                     costUsd: msg.data.cost_usd || undefined,
                     thinking: m.thinking ? { ...m.thinking, isComplete: true } : undefined,
+                    images: msg.data.images,
                   }
                 : m
             )
@@ -209,8 +217,11 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
   }, [onServerMessage])
 
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, attachments?: UploadedFile[]) => {
       if (!text.trim() || isStreaming) return
+
+      // Merge explicit attachments with pending files
+      const allFiles = attachments?.length ? attachments : pendingFiles.length ? pendingFiles : undefined
 
       // Add user message
       const userMsg: ChatMessage = {
@@ -220,6 +231,7 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
         timestamp: Date.now(),
         tools: [],
         isStreaming: false,
+        attachments: allFiles,
       }
 
       // Create placeholder assistant message
@@ -235,10 +247,25 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
 
       setMessages((prev) => [...prev, userMsg, assistantMsg])
       setIsStreaming(true)
-      wsSend(text)
 
-      // Timeout: if no response event arrives within 30s, show error
+      // Build attachments for WS message
+      const wsAttachments: ChatAttachment[] | undefined = allFiles?.map((f) => ({
+        file_id: f.fileId,
+        filename: f.filename,
+        mime_type: f.mimeType,
+        path: f.path,
+      }))
+      wsSend(text, wsAttachments)
+      clearFiles()
+
+      // Timeout: if no response event arrives, show error.
+      // Dynamic: base 30s + 3s per MB of attachments (large files need more time)
       resetChatTimeout()
+      let clientTimeout = 30_000
+      if (allFiles?.length) {
+        const totalMb = allFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024)
+        clientTimeout += Math.round(totalMb * 3_000) // +3s per MB
+      }
       chatTimeoutRef.current = window.setTimeout(() => {
         const id = currentAssistantIdRef.current
         if (id) {
@@ -252,9 +279,9 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
           currentAssistantIdRef.current = null
           setIsStreaming(false)
         }
-      }, 30_000)
+      }, clientTimeout)
     },
-    [wsSend, isStreaming, resetChatTimeout]
+    [wsSend, isStreaming, resetChatTimeout, pendingFiles, clearFiles]
   )
 
   const clearHistory = useCallback(() => {
@@ -339,6 +366,10 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
     resumeSession,
     newSession,
     activeOptions,
+    pendingFiles,
+    uploading,
+    uploadFile,
+    removeFile,
     isStreaming,
     switching: state.switching,
     connected: state.connected,

@@ -25,6 +25,8 @@ from .protocol import (
     response_to_dict,
 )
 from .session_manager import EngineSessionManager
+from .uploads import UploadStorage
+from ..types import Attachment
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,7 @@ def create_app(
         FastAPI application instance
     """
     try:
-        from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+        from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import JSONResponse
     except ImportError:
@@ -95,8 +97,9 @@ def create_app(
         lifespan=lifespan,
     )
 
-    # Store manager on app state immediately (for tests that skip lifespan)
+    # Store manager and upload storage on app state (for tests that skip lifespan)
     app.state.manager = manager
+    app.state.upload_storage = None  # set after upload_storage is created below
 
     # CORS for React dev server
     origins = cors_origins or [
@@ -221,6 +224,43 @@ def create_app(
         if engine:
             engine.clear_history()
         return JSONResponse({"status": "cleared"})
+
+    # === File uploads ===
+
+    upload_storage = UploadStorage()
+    app.state.upload_storage = upload_storage
+
+    @app.post("/api/avatar/upload")
+    async def upload_file(request: Request) -> JSONResponse:
+        """Upload a file for attaching to a chat message (multipart/form-data)."""
+        form = await request.form()
+        uploaded = form.get("file")
+        if not uploaded or not hasattr(uploaded, "read"):
+            return JSONResponse({"error": "No file provided"}, status_code=400)
+
+        data = await uploaded.read()
+        filename = getattr(uploaded, "filename", "unnamed") or "unnamed"
+        content_type = getattr(uploaded, "content_type", "application/octet-stream") or "application/octet-stream"
+
+        try:
+            attachment = upload_storage.save(filename=filename, data=data, mime_type=content_type)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=413)
+
+        return JSONResponse({
+            "file_id": attachment.path.stem,
+            "filename": attachment.filename,
+            "mime_type": attachment.mime_type,
+            "size": attachment.size,
+            "path": str(attachment.path),
+        })
+
+    # Serve uploaded files (for generated image display in frontend)
+    try:
+        from starlette.staticfiles import StaticFiles
+        app.mount("/api/avatar/files", StaticFiles(directory=str(upload_storage.base_dir)), name="uploads")
+    except Exception:
+        logger.warning("Could not mount static file serving for uploads")
 
     # === WebSocket helpers ===
 
@@ -358,9 +398,25 @@ def create_app(
                         })
                         continue
 
+                    # Parse file attachments from message data
+                    raw_attachments = msg_data.get("attachments", [])
+                    chat_attachments: Optional[List[Attachment]] = None
+                    if raw_attachments:
+                        valid = []
+                        for a in raw_attachments:
+                            p = Path(a.get("path", ""))
+                            if p.exists() and upload_storage.is_valid_path(p):
+                                valid.append(Attachment(
+                                    path=p,
+                                    mime_type=a.get("mime_type", "application/octet-stream"),
+                                    filename=a.get("filename", p.name),
+                                    size=p.stat().st_size,
+                                ))
+                        chat_attachments = valid or None
+
                     # Run chat in background — events auto-broadcast via bridge
                     # Use manager refs (not local vars) so chat works after switch
-                    async def _run_chat(msg: str, client_ws: WebSocket = ws) -> None:
+                    async def _run_chat(msg: str, atts: Optional[List[Attachment]] = chat_attachments, client_ws: WebSocket = ws) -> None:
                         try:
                             eng = manager.engine
                             brg = manager.ws_bridge
@@ -374,12 +430,38 @@ def create_app(
                                 except Exception:
                                     pass
                                 return
-                            logger.debug(f"Chat request: {msg[:80]}...")
-                            response = await asyncio.wait_for(eng.chat(msg), timeout=120)
+
+                            # Dynamic timeout: extend for large attachments
+                            chat_timeout = 120
+                            total_att_mb = 0.0
+                            if atts:
+                                total_att_mb = sum(a.size for a in atts) / (1024 * 1024)
+                                chat_timeout += int(total_att_mb * 3)  # +3s per MB
+
+                            logger.debug(f"Chat request: {msg[:80]}... (attachments: {len(atts) if atts else 0}, {total_att_mb:.1f} MB, timeout: {chat_timeout}s)")
+                            response = await asyncio.wait_for(eng.chat(msg, attachments=atts), timeout=chat_timeout)
                             brg.broadcast_message(response_to_dict(response))
+                        except asyncio.TimeoutError:
+                            size_hint = ""
+                            if atts:
+                                total_mb = sum(a.size for a in atts) / (1024 * 1024)
+                                size_hint = f" (attachments: {total_mb:.1f} MB — try a smaller file)"
+                            error_text = f"No response from engine — request timed out{size_hint}"
+                            logger.error(f"Chat timeout: {error_text}")
+                            err_msg = {
+                                "type": "error",
+                                "data": {"error": error_text, "recoverable": True},
+                            }
+                            brg = manager.ws_bridge
+                            if brg:
+                                brg.broadcast_message(err_msg)
+                            else:
+                                try:
+                                    await client_ws.send_json(err_msg)
+                                except Exception:
+                                    pass
                         except Exception as e:
                             logger.error(f"Chat error: {e}")
-                            # Try bridge broadcast first, fall back to direct WS send
                             err_msg = {
                                 "type": "error",
                                 "data": {"error": str(e), "recoverable": True},

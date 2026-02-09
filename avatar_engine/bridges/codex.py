@@ -35,6 +35,8 @@ import time
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from .base import BaseBridge, BridgeResponse, BridgeState, Message
+from .gemini import _build_prompt_blocks
+from ..types import Attachment
 
 logger = logging.getLogger(__name__)
 
@@ -494,7 +496,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
     # send() / send_stream() — ACP only
     # ======================================================================
 
-    async def send(self, prompt: str) -> BridgeResponse:
+    async def send(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> BridgeResponse:
         """Send prompt through the ACP warm session."""
         if self.state == BridgeState.DISCONNECTED:
             await self.start()
@@ -513,12 +515,20 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             self._recent_thinking_norm.clear()
 
         try:
+            prompt_blocks = _build_prompt_blocks(effective_prompt, attachments)
+
+            # Dynamic timeout for large attachments
+            effective_timeout = self.timeout
+            if attachments:
+                total_mb = sum(a.size for a in attachments) / (1024 * 1024)
+                effective_timeout += int(total_mb * 3)  # +3s per MB
+
             result = await asyncio.wait_for(
                 self._acp_conn.prompt(
                     session_id=self._acp_session_id,
-                    prompt=[text_block(effective_prompt)],
+                    prompt=prompt_blocks,
                 ),
-                timeout=self.timeout,
+                timeout=effective_timeout,
             )
 
             elapsed = int((time.time() - t0) * 1000)
@@ -606,7 +616,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             try:
                 await self._acp_conn.prompt(
                     session_id=self._acp_session_id,
-                    prompt=[text_block(effective_prompt)],
+                    prompt=_build_prompt_blocks(effective_prompt),
                 )
             finally:
                 await queue.put(None)  # Signal completion
@@ -661,7 +671,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
     def _build_persistent_command(self) -> List[str]:
         raise NotImplementedError("Codex uses ACP, not raw subprocess")
 
-    def _format_user_message(self, prompt: str) -> str:
+    def _format_user_message(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> str:
         raise NotImplementedError("Codex uses ACP, not raw subprocess")
 
     def _build_oneshot_command(self, prompt: str) -> List[str]:

@@ -24,6 +24,7 @@ Stream-JSON event types:
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -31,6 +32,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .base import BaseBridge, BridgeState
+from ..types import Attachment
 from ..config_sandbox import ConfigSandbox
 from ..types import SessionInfo
 
@@ -292,18 +294,38 @@ class ClaudeBridge(BaseBridge):
 
         return cmd
 
-    def _format_user_message(self, prompt: str) -> str:
+    def _format_user_message(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> str:
         """
         Format a user prompt as JSONL for Claude's --input-format stream-json.
 
         Format documented at:
         https://code.claude.com/docs/en/headless#streaming-json-input
         """
-        msg = {
+        content: List[Dict[str, Any]] = []
+
+        # Attachments before text (Claude docs recommend documents first)
+        if attachments:
+            for att in attachments:
+                b64 = base64.b64encode(att.path.read_bytes()).decode("ascii")
+                if att.mime_type.startswith("image/"):
+                    content.append({
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": att.mime_type, "data": b64},
+                    })
+                elif att.mime_type == "application/pdf":
+                    content.append({
+                        "type": "document",
+                        "source": {"type": "base64", "media_type": att.mime_type, "data": b64},
+                        "title": att.filename,
+                    })
+
+        content.append({"type": "text", "text": prompt})
+
+        msg: Dict[str, Any] = {
             "type": "user",
             "message": {
                 "role": "user",
-                "content": [{"type": "text", "text": prompt}],
+                "content": content,
             },
         }
         # Include session_id if we have one

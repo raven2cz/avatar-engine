@@ -8,6 +8,7 @@ Uses httpx TestClient for REST and FastAPI's WS test support for WebSocket.
 
 import asyncio
 import time
+from pathlib import Path
 
 import pytest
 
@@ -82,6 +83,8 @@ def _make_mock_manager(provider="gemini"):
 
     manager.engine = engine
     manager._model = None
+    manager._provider = provider
+    manager._working_dir = "/tmp/test-project"
     manager.ws_bridge = MagicMock()
     manager.ws_bridge.engine_state = MagicMock()
     manager.ws_bridge.engine_state.value = "idle"
@@ -1026,3 +1029,206 @@ class TestSessionManagerLifecycle:
                 # Provider/model should have reverted
                 assert mgr._provider == "gemini"
                 assert mgr._model == "gemini-3-pro-preview"
+
+
+# ============================================================================
+# File Upload: Multipart endpoint integration
+# ============================================================================
+
+
+class TestFileUploadEndpoint:
+    """Test the POST /api/avatar/upload endpoint with real HTTP multipart.
+
+    These tests exercise the actual FastAPI multipart parsing pipeline, catching
+    issues like wrong Request type hint (422) or missing python-multipart (500).
+    """
+
+    def _make_app(self):
+        manager = _make_mock_manager()
+        return _make_app(manager)
+
+    def test_upload_image_file(self):
+        """Upload an image via multipart/form-data."""
+        app = self._make_app()
+        img_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        with TestClient(app, raise_server_exceptions=False) as client:
+            resp = client.post(
+                "/api/avatar/upload",
+                files={"file": ("photo.png", img_data, "image/png")},
+            )
+            assert resp.status_code == 200, f"Upload failed: {resp.text}"
+            data = resp.json()
+            assert data["filename"] == "photo.png"
+            assert data["mime_type"] == "image/png"
+            assert data["size"] == len(img_data)
+            assert "file_id" in data
+            assert "path" in data
+
+    def test_upload_pdf_file(self):
+        """Upload a PDF via multipart/form-data."""
+        app = self._make_app()
+        pdf_data = b"%PDF-1.4 " + b"\x00" * 200
+        with TestClient(app, raise_server_exceptions=False) as client:
+            resp = client.post(
+                "/api/avatar/upload",
+                files={"file": ("document.pdf", pdf_data, "application/pdf")},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["filename"] == "document.pdf"
+            assert data["mime_type"] == "application/pdf"
+            assert data["size"] == len(pdf_data)
+
+    def test_upload_no_file_returns_400(self):
+        """Missing file field returns 400."""
+        app = self._make_app()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            # Send form without file field
+            resp = client.post("/api/avatar/upload", data={"other": "value"})
+            assert resp.status_code == 400
+            assert "No file" in resp.json().get("error", "")
+
+    def test_upload_file_too_large(self):
+        """File exceeding max size returns 413."""
+        app = self._make_app()
+        # Override max size on the storage to something tiny
+        app.state.upload_storage._max_bytes = 100
+        big_data = b"x" * 200
+        with TestClient(app, raise_server_exceptions=False) as client:
+            resp = client.post(
+                "/api/avatar/upload",
+                files={"file": ("big.bin", big_data, "application/octet-stream")},
+            )
+            assert resp.status_code == 413
+            assert "too large" in resp.json().get("error", "").lower()
+
+    def test_uploaded_file_accessible_via_static(self):
+        """Uploaded file can be read back via /api/avatar/files/."""
+        app = self._make_app()
+        content = b"Hello, this is a test file"
+        with TestClient(app, raise_server_exceptions=False) as client:
+            # Upload
+            resp = client.post(
+                "/api/avatar/upload",
+                files={"file": ("test.txt", content, "text/plain")},
+            )
+            assert resp.status_code == 200
+            path = resp.json()["path"]
+            filename = Path(path).name
+
+            # Read back via static mount
+            resp2 = client.get(f"/api/avatar/files/{filename}")
+            assert resp2.status_code == 200
+            assert resp2.content == content
+
+    def test_upload_multiple_files_unique_ids(self):
+        """Multiple uploads with same name get unique file_ids."""
+        app = self._make_app()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            r1 = client.post(
+                "/api/avatar/upload",
+                files={"file": ("same.txt", b"one", "text/plain")},
+            )
+            r2 = client.post(
+                "/api/avatar/upload",
+                files={"file": ("same.txt", b"two", "text/plain")},
+            )
+            assert r1.status_code == 200
+            assert r2.status_code == 200
+            assert r1.json()["file_id"] != r2.json()["file_id"]
+
+    def test_ws_chat_with_uploaded_attachment(self):
+        """Full flow: upload file → send chat with attachment via WS."""
+        manager = _make_mock_manager()
+        received_attachments = []
+
+        async def _chat(msg, attachments=None):
+            if attachments:
+                received_attachments.extend(attachments)
+            return BridgeResponse(
+                content=f"Got {len(attachments or [])} files",
+                success=True,
+                duration_ms=100,
+            )
+
+        manager.engine.chat = AsyncMock(side_effect=_chat)
+        app = _make_app(manager)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            # 1. Upload a file
+            img_data = b"\x89PNG" + b"\x00" * 50
+            resp = client.post(
+                "/api/avatar/upload",
+                files={"file": ("test.png", img_data, "image/png")},
+            )
+            assert resp.status_code == 200
+            upload_info = resp.json()
+
+            # 2. Send chat with attachment ref via WS
+            with client.websocket_connect("/api/avatar/ws") as ws:
+                ws.receive_json()  # connected
+
+                ws.send_json({
+                    "type": "chat",
+                    "data": {
+                        "message": "What is in this image?",
+                        "attachments": [{
+                            "path": upload_info["path"],
+                            "mime_type": upload_info["mime_type"],
+                            "filename": upload_info["filename"],
+                        }],
+                    },
+                })
+
+                # Wait for chat task to process — send ping to sync
+                import time as _time
+                _time.sleep(0.3)
+                ws.send_json({"type": "ping"})
+                pong = ws.receive_json()
+                assert pong["type"] == "pong"
+
+                # Verify engine.chat was called with attachments
+                assert manager.engine.chat.called
+                call_kwargs = manager.engine.chat.call_args
+                # chat() receives (message, attachments=...)
+                atts = call_kwargs.kwargs.get("attachments") or call_kwargs[1].get("attachments") if len(call_kwargs) > 1 else None
+                if atts is None and received_attachments:
+                    atts = received_attachments
+                assert atts is not None and len(atts) > 0
+                assert atts[0].mime_type == "image/png"
+
+    def test_ws_chat_rejects_path_traversal(self):
+        """Attachment paths outside upload dir are rejected."""
+        manager = _make_mock_manager()
+        manager.engine.chat = AsyncMock(
+            return_value=BridgeResponse(content="ok", success=True, duration_ms=50)
+        )
+        app = _make_app(manager)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            with client.websocket_connect("/api/avatar/ws") as ws:
+                ws.receive_json()  # connected
+                ws.send_json({
+                    "type": "chat",
+                    "data": {
+                        "message": "read this",
+                        "attachments": [{
+                            "path": "/etc/passwd",
+                            "mime_type": "text/plain",
+                            "filename": "passwd",
+                        }],
+                    },
+                })
+                # Sync
+                import time as _time
+                _time.sleep(0.2)
+                ws.send_json({"type": "ping"})
+                pong = ws.receive_json()
+                assert pong["type"] == "pong"
+
+                # engine.chat should have been called with NO attachments
+                # (the path traversal attempt should be filtered out)
+                if manager.engine.chat.called:
+                    call_kwargs = manager.engine.chat.call_args
+                    atts = call_kwargs.kwargs.get("attachments")
+                    assert atts is None or len(atts) == 0

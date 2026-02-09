@@ -45,6 +45,7 @@ web = [
     "fastapi>=0.100",
     "uvicorn[standard]>=0.20",
     "httpx>=0.24",
+    "python-multipart>=0.0.5",
 ]
 
 [project.scripts]

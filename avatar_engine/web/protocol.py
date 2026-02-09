@@ -67,18 +67,21 @@ def event_to_dict(event: AvatarEvent) -> Optional[Dict[str, Any]]:
 
 def response_to_dict(response: BridgeResponse) -> Dict[str, Any]:
     """Convert BridgeResponse to a chat_response WebSocket message."""
-    return {
-        "type": "chat_response",
-        "data": {
-            "content": response.content,
-            "success": response.success,
-            "error": response.error,
-            "duration_ms": response.duration_ms,
-            "session_id": response.session_id,
-            "cost_usd": response.cost_usd,
-            "tool_calls": response.tool_calls,
-        },
+    data: Dict[str, Any] = {
+        "content": response.content,
+        "success": response.success,
+        "error": response.error,
+        "duration_ms": response.duration_ms,
+        "session_id": response.session_id,
+        "cost_usd": response.cost_usd,
+        "tool_calls": response.tool_calls,
     }
+    if response.generated_images:
+        data["images"] = [
+            {"url": f"/api/avatar/files/{p.name}", "filename": p.name}
+            for p in response.generated_images
+        ]
+    return {"type": "chat_response", "data": data}
 
 
 def health_to_dict(health: HealthStatus) -> Dict[str, Any]:

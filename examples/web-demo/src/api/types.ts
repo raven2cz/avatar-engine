@@ -154,6 +154,11 @@ export interface ActivityMessage {
   }
 }
 
+export interface GeneratedImage {
+  url: string
+  filename: string
+}
+
 export interface ChatResponseMessage {
   type: 'chat_response'
   data: {
@@ -164,6 +169,7 @@ export interface ChatResponseMessage {
     session_id: string | null
     cost_usd: number | null
     tool_calls: unknown[]
+    images?: GeneratedImage[]
   }
 }
 
@@ -194,9 +200,25 @@ export type ServerMessage =
 
 // === Client → Server messages ===
 
+export interface UploadedFile {
+  fileId: string
+  filename: string
+  mimeType: string
+  size: number
+  path: string
+  previewUrl?: string  // Object URL for image thumbnails
+}
+
+export interface ChatAttachment {
+  file_id: string
+  filename: string
+  mime_type: string
+  path: string
+}
+
 export interface ChatRequest {
   type: 'chat'
-  data: { message: string }
+  data: { message: string; attachments?: ChatAttachment[] }
 }
 
 export interface StopRequest {
@@ -253,6 +275,8 @@ export interface ChatMessage {
   isStreaming: boolean
   durationMs?: number
   costUsd?: number
+  attachments?: UploadedFile[]
+  images?: GeneratedImage[]
 }
 
 export interface ToolInfo {

@@ -5,7 +5,7 @@
  * cost/duration metadata, and formatted text content.
  */
 
-import { User } from 'lucide-react'
+import { FileText, Image, User } from 'lucide-react'
 import type { ChatMessage } from '../api/types'
 import { ThinkingIndicator } from './ThinkingIndicator'
 import { ToolActivity } from './ToolActivity'
@@ -57,6 +57,40 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             />
           )}
 
+          {/* User attachments */}
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {message.attachments.map((att) => (
+                <div
+                  key={att.fileId}
+                  className="rounded-lg overflow-hidden bg-black/20"
+                >
+                  {att.mimeType.startsWith('image/') && att.previewUrl ? (
+                    <div className="relative">
+                      <img
+                        src={att.previewUrl}
+                        alt={att.filename}
+                        className="max-h-40 max-w-56 min-w-16 min-h-12 object-cover rounded-lg"
+                      />
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-2 py-1">
+                        <span className="text-[10px] text-white/70 truncate block">{att.filename}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 px-3 py-2">
+                      {att.mimeType.startsWith('image/') ? (
+                        <Image className="w-4 h-4 text-blue-400" />
+                      ) : (
+                        <FileText className="w-4 h-4 text-amber-400" />
+                      )}
+                      <span className="text-xs text-text-secondary truncate max-w-[140px]">{att.filename}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Tool activity */}
           {message.tools.length > 0 && <ToolActivity tools={message.tools} />}
 
@@ -68,6 +102,22 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               ) : (
                 <MarkdownContent content={message.content} />
               )}
+            </div>
+          )}
+
+          {/* Generated images */}
+          {message.images && message.images.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {message.images.map((img, i) => (
+                <div key={i} className="rounded-lg overflow-hidden border border-slate-mid/30">
+                  <img
+                    src={img.url}
+                    alt={img.filename}
+                    className="max-w-full max-h-96 cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => window.open(img.url, '_blank')}
+                  />
+                </div>
+              ))}
             </div>
           )}
 

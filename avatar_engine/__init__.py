@@ -57,6 +57,7 @@ from .config import AvatarConfig
 
 # Type definitions
 from .types import (
+    Attachment,
     BridgeResponse,
     BridgeState,
     HealthStatus,

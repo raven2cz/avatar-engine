@@ -42,7 +42,7 @@ from .events import (
     classify_thinking,
 )
 from .types import (
-    BridgeResponse, BridgeState, HealthStatus, Message, ProviderType,
+    Attachment, BridgeResponse, BridgeState, HealthStatus, Message, ProviderType,
     SessionInfo, SessionCapabilitiesInfo, ProviderCapabilities, ToolPolicy,
 )
 
@@ -262,12 +262,13 @@ class AvatarEngine(EventEmitter):
 
     # === Chat API (async) ===
 
-    async def chat(self, message: str) -> BridgeResponse:
+    async def chat(self, message: str, attachments: Optional[List["Attachment"]] = None) -> BridgeResponse:
         """
         Send a message and get response (async).
 
         Args:
             message: User message to send
+            attachments: Optional file attachments (images, PDFs, etc.)
 
         Returns:
             BridgeResponse with content and metadata
@@ -297,13 +298,19 @@ class AvatarEngine(EventEmitter):
         if wait_time > 0:
             logger.debug(f"Rate limited, waited {wait_time:.2f}s")
 
-        response = await self._bridge.send(message)
+        response = await self._bridge.send(message, attachments=attachments)
 
-        # Auto-restart on failure
-        if not response.success and self._should_restart():
+        # Auto-restart on failure — but only for non-recoverable errors.
+        # If bridge is still READY (e.g. file too large), the error is
+        # recoverable and restart would just hit the same error again.
+        if (
+            not response.success
+            and self._bridge.state != BridgeState.READY
+            and self._should_restart()
+        ):
             logger.warning(f"Restarting due to error: {response.error}")
             await self._restart()
-            response = await self._bridge.send(message)
+            response = await self._bridge.send(message, attachments=attachments)
 
         # Emit cost event
         if response.cost_usd:

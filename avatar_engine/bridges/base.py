@@ -20,9 +20,10 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
-from ..types import SessionInfo, SessionCapabilitiesInfo, ProviderCapabilities
+from ..types import Attachment, SessionInfo, SessionCapabilitiesInfo, ProviderCapabilities
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ class Message:
     content: str
     timestamp: float = field(default_factory=time.time)
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
+    attachments: List[Attachment] = field(default_factory=list)
 
 
 @dataclass
@@ -54,6 +56,7 @@ class BridgeResponse:
     token_usage: Optional[Dict[str, Any]] = None
     success: bool = True
     error: Optional[str] = None
+    generated_images: List[Path] = field(default_factory=list)
 
 
 def _classify_stderr_level(text: str) -> str:
@@ -167,7 +170,7 @@ class BaseBridge(ABC):
     def _build_persistent_command(self) -> List[str]: ...
 
     @abstractmethod
-    def _format_user_message(self, prompt: str) -> str:
+    def _format_user_message(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> str:
         """Encode user prompt as a single JSONL line for stdin."""
         ...
 
@@ -340,8 +343,8 @@ class BaseBridge(ABC):
 
     # === Core API =======================================================
 
-    async def send(self, prompt: str) -> BridgeResponse:
-        """Send prompt, get complete response."""
+    async def send(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> BridgeResponse:
+        """Send prompt with optional file attachments, get complete response."""
         if self.state == BridgeState.DISCONNECTED:
             await self.start()
 
@@ -350,8 +353,13 @@ class BaseBridge(ABC):
 
         try:
             if self.is_persistent:
-                events = await self._send_persistent(prompt)
+                events = await self._send_persistent(prompt, attachments=attachments)
             else:
+                if attachments:
+                    logger.warning(
+                        f"Attachments not supported in oneshot mode — "
+                        f"{len(attachments)} file(s) will be ignored"
+                    )
                 events = await self._send_oneshot(prompt)
 
             elapsed = int((time.time() - t0) * 1000)
@@ -363,7 +371,7 @@ class BaseBridge(ABC):
             if sid:
                 self.session_id = sid
             with self._history_lock:  # RC-9
-                self.history.append(Message(role="user", content=prompt))
+                self.history.append(Message(role="user", content=prompt, attachments=attachments or []))
                 self.history.append(Message(role="assistant", content=content, tool_calls=tools))
 
             self._set_state(BridgeState.READY)
@@ -428,10 +436,10 @@ class BaseBridge(ABC):
 
     # === PERSISTENT internals ===========================================
 
-    async def _send_persistent(self, prompt: str) -> List[Dict[str, Any]]:
+    async def _send_persistent(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> List[Dict[str, Any]]:
         if not self._proc or self._proc.returncode is not None:
             raise RuntimeError("Persistent process not running")
-        line = self._format_user_message(prompt)
+        line = self._format_user_message(prompt, attachments=attachments)
         logger.debug(f"stdin> {line.strip()}")
         async with self._stdin_lock:  # RC-7: prevent garbled input
             self._proc.stdin.write((line + "\n").encode())

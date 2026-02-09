@@ -26,6 +26,10 @@ export default function App() {
     resumeSession,
     newSession,
     activeOptions,
+    pendingFiles,
+    uploading,
+    uploadFile,
+    removeFile,
     isStreaming,
     switching,
     connected,
@@ -90,6 +94,10 @@ export default function App() {
           onClear={clearHistory}
           isStreaming={isStreaming}
           connected={connected}
+          pendingFiles={pendingFiles}
+          uploading={uploading}
+          onUpload={uploadFile}
+          onRemoveFile={removeFile}
         />
       </main>
 

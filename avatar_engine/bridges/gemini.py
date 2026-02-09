@@ -21,6 +21,7 @@ Requirements:
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -32,7 +33,7 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from .base import BaseBridge, BridgeResponse, BridgeState, Message
 from ..config_sandbox import ConfigSandbox
-from ..types import SessionInfo
+from ..types import Attachment, SessionInfo
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ logger = logging.getLogger(__name__)
 _ACP_AVAILABLE = False
 try:
     from acp import PROTOCOL_VERSION, connect_to_agent, text_block
+    from acp.helpers import audio_block, embedded_blob_resource, image_block, resource_block
     from acp.interfaces import Client as ACPClient
     from acp.schema import (
         AgentMessageChunk,
@@ -68,6 +70,35 @@ except ImportError:
 
 
 from ._acp_session import ACPSessionMixin
+
+
+def _build_prompt_blocks(text: str, attachments: Optional[List[Attachment]] = None) -> list:
+    """Build ACP prompt content blocks from text + optional attachments.
+
+    Returns [text_block(text)] when no attachments (zero overhead for 95% of calls).
+    When attachments are present, prepends image/resource/audio blocks before the text.
+    Requires ACP SDK — caller must only invoke this when _ACP_AVAILABLE is True.
+    """
+    if not _ACP_AVAILABLE:
+        raise RuntimeError("ACP SDK required for multimodal prompt blocks")
+
+    if not attachments:
+        return [text_block(text)]
+
+    blocks = []
+    for att in attachments:
+        b64 = base64.b64encode(att.path.read_bytes()).decode("ascii")
+        if att.mime_type.startswith("image/"):
+            blocks.append(image_block(b64, att.mime_type))
+        elif att.mime_type.startswith("audio/"):
+            blocks.append(audio_block(b64, att.mime_type))
+        else:
+            # PDF, video, and other binary formats → embedded blob resource
+            blocks.append(resource_block(
+                embedded_blob_resource(f"file://{att.filename}", b64, mime_type=att.mime_type)
+            ))
+    blocks.append(text_block(text))
+    return blocks
 
 
 class GeminiBridge(ACPSessionMixin, BaseBridge):
@@ -141,6 +172,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         self._acp_proc = None
         self._acp_session_id: Optional[str] = None
         self._acp_mode = False  # True = running in ACP warm session
+        self._acp_restart_task: Optional[asyncio.Task] = None
 
         # Collected events from ACP session_update notifications
         self._acp_events: List[Dict[str, Any]] = []
@@ -422,6 +454,21 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         self._acp_proc = None
         self._acp_session_id = None
 
+    async def _restart_acp(self) -> None:
+        """Restart ACP connection (cleanup + fresh start).
+
+        Used after unrecoverable ACP errors (e.g. large file rejection)
+        where the Gemini CLI session is left in a broken state.
+        """
+        try:
+            await self._cleanup_acp()
+            await self._start_acp()
+            logger.info(f"ACP restarted successfully (session: {self._acp_session_id})")
+        except Exception as exc:
+            logger.error(f"ACP restart failed: {exc}")
+            self._acp_mode = False  # Fall back to oneshot
+            self._set_state(BridgeState.ERROR)
+
     def _handle_acp_update(self, session_id: str, update: Any) -> None:
         """Callback for ACP session/update notifications (streaming text + thinking).
 
@@ -535,15 +582,20 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
     # send() / send_stream() — dispatches to ACP or oneshot
     # ======================================================================
 
-    async def send(self, prompt: str) -> BridgeResponse:
+    async def send(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> BridgeResponse:
         """Send prompt. Uses ACP warm session if active, otherwise oneshot."""
         if self.state == BridgeState.DISCONNECTED:
             await self.start()
 
+        # Wait for background ACP restart (e.g. after large-file rejection)
+        if self._acp_restart_task and not self._acp_restart_task.done():
+            logger.debug("Waiting for ACP restart to complete before sending")
+            await self._acp_restart_task
+
         if self._acp_mode:
-            return await self._send_acp(prompt)
+            return await self._send_acp(prompt, attachments=attachments)
         else:
-            return await super().send(prompt)
+            return await super().send(prompt, attachments=attachments)
 
     async def send_stream(self, prompt: str) -> AsyncIterator[str]:
         """Send prompt with streaming. ACP or oneshot."""
@@ -561,7 +613,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
     # ACP send/stream implementation
     # ======================================================================
 
-    async def _send_acp(self, prompt: str) -> BridgeResponse:
+    async def _send_acp(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> BridgeResponse:
         """Send a prompt through the ACP warm session."""
         # GAP-5: Inject system prompt into first ACP message
         effective_prompt = self._prepend_system_prompt(prompt)
@@ -573,12 +625,24 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             self._acp_text_buffer = ""
 
         try:
+            # Build content blocks: attachments (if any) + text
+            prompt_blocks = _build_prompt_blocks(effective_prompt, attachments)
+
+            # Dynamic timeout: add extra time for large attachments
+            # (base64 encoding + transfer + API processing)
+            effective_timeout = self.timeout
+            if attachments:
+                total_mb = sum(a.size for a in attachments) / (1024 * 1024)
+                effective_timeout += int(total_mb * 3)  # +3s per MB
+                if total_mb > 1:
+                    logger.info(f"Large payload ({total_mb:.1f} MB), timeout extended to {effective_timeout}s")
+
             result = await asyncio.wait_for(
                 self._acp_conn.prompt(
                     session_id=self._acp_session_id,
-                    prompt=[text_block(effective_prompt)],
+                    prompt=prompt_blocks,
                 ),
-                timeout=self.timeout,
+                timeout=effective_timeout,
             )
 
             elapsed = int((time.time() - t0) * 1000)
@@ -589,8 +653,28 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 content = self._acp_text_buffer or _extract_text_from_result(result)
                 events_copy = self._acp_events.copy()
 
+            # Extract generated images from response
+            generated_images: List[Path] = []
+            raw_images = _extract_images_from_result(result)
+            if raw_images:
+                import tempfile
+                from uuid import uuid4
+                upload_dir = os.environ.get("AVATAR_UPLOAD_DIR")
+                img_dir = Path(upload_dir) if upload_dir else Path(tempfile.gettempdir()) / "avatar-engine" / "uploads"
+                img_dir.mkdir(parents=True, exist_ok=True)
+                for img_b64, img_mime in raw_images:
+                    try:
+                        ext = img_mime.split("/")[-1].split(";")[0] or "png"
+                        fname = f"generated_{uuid4().hex[:8]}.{ext}"
+                        fpath = img_dir / fname
+                        fpath.write_bytes(base64.b64decode(img_b64))
+                        generated_images.append(fpath)
+                        logger.info(f"Saved generated image: {fname}")
+                    except Exception as img_err:
+                        logger.warning(f"Failed to save generated image: {img_err}")
+
             with self._history_lock:  # RC-9
-                self.history.append(Message(role="user", content=prompt))
+                self.history.append(Message(role="user", content=prompt, attachments=attachments or []))
                 self.history.append(Message(role="assistant", content=content))
             self._set_state(BridgeState.READY)
 
@@ -600,6 +684,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 duration_ms=elapsed,
                 session_id=self._acp_session_id,
                 success=True,
+                generated_images=generated_images,
             )
             self._update_stats(response)
             return response
@@ -618,11 +703,33 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             logger.error(f"ACP send failed: {exc}", exc_info=True)
             self._set_state(BridgeState.ERROR)
 
+            # Large attachment + "Internal error" = API rejected the payload size
+            if attachments and "internal error" in str(exc).lower():
+                total_mb = sum(a.size for a in attachments) / (1024 * 1024)
+                error_msg = (
+                    f"File too large for inline upload ({total_mb:.0f} MB). "
+                    f"Gemini supports up to ~20 MB inline. "
+                    f"Try a smaller file or split the PDF."
+                )
+                logger.warning(error_msg)
+                response = BridgeResponse(
+                    content="",
+                    duration_ms=int((time.time() - t0) * 1000),
+                    success=False,
+                    error=error_msg,
+                )
+                self._update_stats(response)
+                # ACP session is corrupted after "Internal error" — restart
+                # in background so next message works on a fresh session.
+                logger.info("Restarting ACP after large-file rejection")
+                self._acp_restart_task = asyncio.create_task(self._restart_acp())
+                return response
+
             # Attempt fallback to oneshot for this single request
             if self.acp_enabled:
                 logger.warning("ACP error — falling back to oneshot for this request")
                 self._acp_mode = False
-                return await super().send(prompt)
+                return await super().send(prompt, attachments=attachments)
 
             response = BridgeResponse(
                 content="",
@@ -860,7 +967,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
     def _build_persistent_command(self) -> List[str]:
         raise NotImplementedError("Use ACP mode for persistent Gemini sessions")
 
-    def _format_user_message(self, prompt: str) -> str:
+    def _format_user_message(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> str:
         raise NotImplementedError("Use ACP mode for persistent Gemini sessions")
 
     # ======================================================================
@@ -1122,6 +1229,32 @@ def _extract_text_from_update(update: Any) -> Optional[str]:
     except Exception as exc:
         logger.debug(f"Could not extract text from update: {exc}")
     return None
+
+
+def _extract_images_from_result(result: Any) -> List[tuple]:
+    """Extract image content blocks from an ACP prompt result.
+
+    Returns list of (base64_data, mime_type) tuples.
+    """
+    images = []
+    try:
+        if hasattr(result, "content") and isinstance(result.content, list):
+            for block in result.content:
+                # ImageContentBlock has .data (base64) and .mime_type
+                if hasattr(block, "type") and getattr(block, "type", None) == "image":
+                    data = getattr(block, "data", None)
+                    mime = getattr(block, "mime_type", "image/png")
+                    if data:
+                        images.append((data, mime))
+                # Also check for dict-based blocks
+                elif isinstance(block, dict) and block.get("type") == "image":
+                    data = block.get("data")
+                    mime = block.get("mimeType", block.get("mime_type", "image/png"))
+                    if data:
+                        images.append((data, mime))
+    except Exception as exc:
+        logger.debug(f"Could not extract images from result: {exc}")
+    return images
 
 
 def _extract_text_from_result(result: Any) -> str:

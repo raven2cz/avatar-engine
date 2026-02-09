@@ -6,6 +6,7 @@ This module contains all public types used by the Avatar Engine library.
 
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 import time
 
@@ -27,12 +28,22 @@ class BridgeState(Enum):
 
 
 @dataclass
+class Attachment:
+    """File attachment metadata (image, PDF, audio, etc.)."""
+    path: Path          # Local file path on disk
+    mime_type: str       # MIME type (image/png, application/pdf, ...)
+    filename: str        # Original filename
+    size: int           # File size in bytes
+
+
+@dataclass
 class Message:
     """A conversation message."""
     role: str  # "user" | "assistant"
     content: str
     timestamp: float = field(default_factory=time.time)
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
+    attachments: List[Attachment] = field(default_factory=list)
 
 
 @dataclass
@@ -47,6 +58,7 @@ class BridgeResponse:
     session_id: Optional[str] = None
     cost_usd: Optional[float] = None
     token_usage: Optional[Dict[str, Any]] = None
+    generated_images: List[Path] = field(default_factory=list)
 
     def __bool__(self) -> bool:
         """Allow `if response:` checks."""

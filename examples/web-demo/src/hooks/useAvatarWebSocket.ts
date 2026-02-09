@@ -126,7 +126,7 @@ function reducer(state: AvatarWSState, action: Action): AvatarWSState {
 
 export interface UseAvatarWebSocketReturn {
   state: AvatarWSState
-  sendMessage: (message: string) => void
+  sendMessage: (message: string, attachments?: import('../api/types').ChatAttachment[]) => void
   stopResponse: () => void
   clearHistory: () => void
   switchProvider: (provider: string, model?: string, options?: Record<string, unknown>) => void
@@ -243,9 +243,11 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
     }
   }, [connect])
 
-  const sendMessage = useCallback((message: string) => {
+  const sendMessage = useCallback((message: string, attachments?: import('../api/types').ChatAttachment[]) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'chat', data: { message } }))
+      const data: Record<string, unknown> = { message }
+      if (attachments?.length) data.attachments = attachments
+      wsRef.current.send(JSON.stringify({ type: 'chat', data }))
     }
   }, [])
 
