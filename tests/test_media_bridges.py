@@ -167,3 +167,71 @@ class TestGeminiMultimodal:
         assert len(blocks) == 4  # 3 attachments + 1 text
         types = [b.type for b in blocks]
         assert types == ["image", "resource", "audio", "text"]
+
+    def test_large_file_uses_resource_link(self, tmp_path):
+        """Files > INLINE_LIMIT_BYTES use resource_link_block (file:// URI)."""
+        from avatar_engine.bridges.gemini import _build_prompt_blocks, INLINE_LIMIT_BYTES
+
+        # Create a file just over the limit (we fake the size in Attachment)
+        data = b"%PDF-1.4" + b"\x00" * 100
+        path = tmp_path / "big.pdf"
+        path.write_bytes(data)
+        att = Attachment(
+            path=path, mime_type="application/pdf", filename="big.pdf",
+            size=INLINE_LIMIT_BYTES + 1,  # Over threshold
+        )
+
+        blocks = _build_prompt_blocks("analyze this", [att])
+        assert len(blocks) == 2
+        # First block should be resource_link (not embedded blob)
+        block = blocks[0]
+        assert block.type == "resource_link"
+        assert block.uri == path.as_uri()
+        assert block.name == "big.pdf"
+        assert block.mime_type == "application/pdf"
+        # Text block last
+        assert blocks[1].type == "text"
+        assert blocks[1].text == "analyze this"
+
+    def test_small_file_uses_inline(self, tmp_path):
+        """Files <= INLINE_LIMIT_BYTES use inline base64."""
+        from avatar_engine.bridges.gemini import _build_prompt_blocks, INLINE_LIMIT_BYTES
+
+        data = b"%PDF-1.4" + b"\x00" * 100
+        path = tmp_path / "small.pdf"
+        path.write_bytes(data)
+        att = Attachment(
+            path=path, mime_type="application/pdf", filename="small.pdf",
+            size=INLINE_LIMIT_BYTES,  # Exactly at threshold — inline
+        )
+
+        blocks = _build_prompt_blocks("read", [att])
+        assert len(blocks) == 2
+        assert blocks[0].type == "resource"  # embedded blob, not resource_link
+        assert base64.b64decode(blocks[0].resource.blob) == data
+
+    def test_mixed_small_and_large(self, tmp_path):
+        """Mix of small inline and large resource_link attachments."""
+        from avatar_engine.bridges.gemini import _build_prompt_blocks, INLINE_LIMIT_BYTES
+
+        small_data = b"\x89PNG" + b"\x00" * 20
+        small_path = tmp_path / "small.png"
+        small_path.write_bytes(small_data)
+        small_att = Attachment(
+            path=small_path, mime_type="image/png", filename="small.png",
+            size=len(small_data),
+        )
+
+        big_data = b"%PDF" + b"\x00" * 50
+        big_path = tmp_path / "big.pdf"
+        big_path.write_bytes(big_data)
+        big_att = Attachment(
+            path=big_path, mime_type="application/pdf", filename="big.pdf",
+            size=INLINE_LIMIT_BYTES + 1000,
+        )
+
+        blocks = _build_prompt_blocks("both", [small_att, big_att])
+        assert len(blocks) == 3
+        assert blocks[0].type == "image"  # small → inline
+        assert blocks[1].type == "resource_link"  # big → file:// reference
+        assert blocks[2].type == "text"

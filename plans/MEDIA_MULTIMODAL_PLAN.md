@@ -1,6 +1,6 @@
 # Plán: Media Input & Image Generation
 
-> Status: IMPLEMENTOVÁNO (Fáze 1–5 hotové, Fáze 6 částečně, Fáze 7 naplánovaná)
+> Status: IMPLEMENTOVÁNO (Fáze 1–5 hotové, Fáze 6 částečně, Fáze 7 hotová)
 > Vytvořeno: 2026-02-09
 > Aktualizováno: 2026-02-09
 > Závisí na: PHASE7_WEB_BRIDGE_PLAN.md (web GUI), SESSION_GUI_PLAN.md (session modal)
@@ -502,254 +502,140 @@ V `MessageBubble.tsx`:
 
 ---
 
-## Fáze 7 (budoucí): Gemini Files API pro velké soubory
+## Fáze 7: Velké soubory přes ACP `resource_link_block` ✅ HOTOVO
 
-> Status: NAPLÁNOVÁNO — implementace odložena
+> Status: HOTOVO (2026-02-09)
 > Aktualizováno: 2026-02-09
 
 ### Kontext a motivace
 
-Inline base64 v ACP promptech má **praktický limit ~20 MB** (ne 50 MB jak uvádí
-dokumentace). Gemini API vrací `Internal error` pro inline base64 payloady překračující
-tento limit — chyba přijde po ~40 s a není to timeout, ale odmítnutí na straně API.
+Inline base64 v ACP promptech má **praktický limit ~20 MB**. Gemini API vrací
+`Internal error` pro větší payloady (~40 s čekání, pak odmítnutí).
 
-Aktuální stav (implementováno ve Fázi 6):
-- Soubory ≤ ~20 MB: fungují přes inline base64 v ACP promptu
-- Soubory > ~20 MB: srozumitelná chybová zpráva uživateli s vysvětlením limitu
-- Session zůstane v READY stavu (obnovitelná chyba)
+**Původní plán** počítal s Gemini Files API (upload na Google servery, `file_uri`).
+Ale OAuth token z Gemini CLI je omezený — nepřijímá ho ani REST API
+`generativelanguage.googleapis.com` (403 wrong scope), ani Drive API, ani Files API.
+Token funguje jen uvnitř CLI procesu.
 
-**Gemini Files API** umožňuje upload až **2 GB** na servery Google s 48h retencí.
-Soubor dostane URI (`files/abc123`), které lze použít v libovolném promptu místo base64.
+### Objev: `resource_link_block` s `file://` URI
 
-### Klíčové vlastnosti Gemini Files API
+**Ověřeno experimentem (2026-02-09)**: ACP SDK obsahuje `resource_link_block(name, uri)`
+který posílá odkaz na soubor místo inline dat. Gemini CLI pak soubor přečte z disku
+samo, svým vlastním auth kontextem.
 
-| Vlastnost | Hodnota |
-|-----------|---------|
-| Max velikost | 2 GB |
-| Retence | 48 hodin od uploadu |
-| URI formát | `files/<id>` (např. `files/abc123xyz`) |
-| Scope | **Session-independent** — URI lze použít v jakémkoliv promptu, jakékoliv session |
-| Autentizace | Google OAuth token (stejný jako Gemini CLI) |
-| SDK | `google-genai` Python package |
-
-### Architektura
-
+**Test s 56 MB PDF** (`Zeměpis-Evropa.pdf`):
 ```
-avatar_engine/files/
-    __init__.py          # Public API: get_or_upload(path, provider) → file_uri | None
-    _cache.py            # FileURICache — disk-persisted cache s TTL
-    _gemini_upload.py    # GeminiFilesUploader — upload + polling stavu
+resource_link_block(
+    name="Zeměpis-Evropa.pdf",
+    uri="file:///home/box/Downloads/Zeměpis-Evropa.pdf",
+    mime_type="application/pdf",
+    size=58720256,
+)
 ```
+CLI úspěšně načetlo a analyzovalo celý 50stránkový PDF s Gemini 3 Pro.
+Vytvořilo kompletní obsah všech kapitol (Východní Evropa, Severní, Jižní,
+Jihovýchodní, Západní, Střední Evropa — 50 stran).
 
-### Automatický threshold
+### Výhody oproti Gemini Files API
+
+| Vlastnost | Files API (starý plán) | resource_link_block (nový) |
+|-----------|----------------------|---------------------------|
+| Auth | Vyžaduje API klíč nebo SDK | Žádné — CLI má vlastní OAuth |
+| Max velikost | 2 GB | Závisí na CLI/Gemini API limitu |
+| Modely | Jen Flash (free klíč) | Jakýkoliv (včetně Gemini 3 Pro) |
+| Nové závislosti | `google-genai` SDK | Žádné |
+| Cache/expiry | 48h retence, URI cache | Nepotřeba — soubor na disku |
+| Architektura | Nový modul `avatar_engine/files/` | Změna v jedné funkci |
+| Cross-session | Komplikované (URI expiry) | Triviální (soubor vždy na disku) |
+
+### Implementace
+
+Jediná změna: v `_build_prompt_blocks()` (gemini.py) pro velké soubory použít
+`resource_link_block` místo `embedded_blob_resource`:
 
 ```python
-INLINE_LIMIT_MB = 20  # Praktický limit pro base64 inline
+from acp.helpers import resource_link_block
 
-def should_use_files_api(attachment: UploadedFile) -> bool:
-    """Soubory > 20 MB automaticky přes Files API, menší inline."""
-    return attachment.size > INLINE_LIMIT_MB * 1024 * 1024
-```
+INLINE_LIMIT_BYTES = 20 * 1024 * 1024  # ~20 MB
 
-V `_build_prompt_blocks()` (gemini.py):
-- Pokud `should_use_files_api(att)` → použít `file_uri` z cache/uploadu
-- Jinak → stávající inline base64 (`embedded_blob_resource`)
-
-### URI Cache — sdílená napříč sessions
-
-Cache mapuje lokální soubor na vzdálené URI:
-
-```python
-@dataclass
-class CachedFileURI:
-    file_uri: str           # "files/abc123xyz"
-    local_path: str         # "/home/user/docs/huge.pdf"
-    sha256: str             # Hash obsahu souboru
-    size_bytes: int         # Velikost souboru
-    uploaded_at: float      # Unix timestamp uploadu
-    expires_at: float       # uploaded_at + 48h (172800s)
-    mime_type: str          # "application/pdf"
-
-class FileURICache:
-    """Disk-persisted cache: (local_path, sha256) → CachedFileURI"""
-
-    def __init__(self, cache_dir: Path = Path("~/.avatar-engine/file-cache")):
-        self._cache_dir = cache_dir.expanduser()
-        self._cache_file = self._cache_dir / "uri_cache.json"
-
-    def get(self, path: str, sha256: str) -> str | None:
-        """Vrátí URI pokud existuje a nevypršelo, jinak None."""
-
-    def put(self, entry: CachedFileURI) -> None:
-        """Uloží URI do cache na disk."""
-
-    def evict_expired(self) -> int:
-        """Smaže všechny expired záznamy, vrátí počet smazaných."""
-```
-
-**Klíčový princip**: Cache klíčem je `(local_path, sha256)` — pokud se soubor změní
-(jiný hash), stará URI se nepoužije a provede se nový upload.
-
-**Persistence na disku**: `~/.avatar-engine/file-cache/uri_cache.json` — přežije
-restart serveru, restart CLI. Cache se načte při prvním volání.
-
-**TTL**: 48h od uploadu. Při `get()` se kontroluje `expires_at` — pokud < now,
-záznam se automaticky smaže a vrátí None (trigger re-upload).
-
-**Safety margin**: Nastavit expiry na 47h místo 48h — bezpečnostní marže, aby URI
-nevypršelo uprostřed dlouhého promptu.
-
-### Upload flow
-
-```python
-class GeminiFilesUploader:
-    """Upload souborů přes Gemini Files API."""
-
-    def __init__(self, cache: FileURICache):
-        self._cache = cache
-        self._client: genai.Client | None = None
-
-    async def get_or_upload(self, attachment: UploadedFile) -> str:
-        """Vrátí file_uri — z cache nebo po uploadu."""
-        sha256 = compute_sha256(attachment.path)
-
-        # 1. Zkusit cache
-        cached = self._cache.get(str(attachment.path), sha256)
-        if cached:
-            return cached
-
-        # 2. Upload
-        client = self._get_client()
-        uploaded = client.files.upload(
-            file=str(attachment.path),
-            config={"mime_type": attachment.mime_type},
-        )
-
-        # 3. Polling — čekat na ACTIVE stav (velké soubory se procesují)
-        while uploaded.state == "PROCESSING":
-            await asyncio.sleep(2)
-            uploaded = client.files.get(name=uploaded.name)
-
-        if uploaded.state != "ACTIVE":
-            raise RuntimeError(f"File upload failed: {uploaded.state}")
-
-        # 4. Uložit do cache
-        self._cache.put(CachedFileURI(
-            file_uri=uploaded.uri,
-            local_path=str(attachment.path),
-            sha256=sha256,
-            size_bytes=attachment.size,
-            uploaded_at=time.time(),
-            expires_at=time.time() + 47 * 3600,  # 47h safety margin
-            mime_type=attachment.mime_type,
-        ))
-
-        return uploaded.uri
-```
-
-### Autentizace — reuse OAuth tokenu z Gemini CLI
-
-Gemini CLI ukládá OAuth credentials v `~/.gemini/google_accounts.json`:
-
-```json
-{
-  "accounts": [{
-    "auth_credential": {
-      "oauth2": {
-        "client_id": "...",
-        "client_secret": "...",
-        "refresh_token": "..."
-      }
-    }
-  }]
-}
-```
-
-`GeminiFilesUploader._get_client()` načte tyto credentials a vytvoří `genai.Client`
-bez potřeby samostatného API klíče. Pokud soubor neexistuje, Files API není dostupné
-(graceful degradation — zůstane inline limit 20 MB).
-
-### Cross-session přenos souborů
-
-**URI je session-independent** — soubor uploadovaný v session A je dostupný v session B,
-C, i v CLI režimu. URI žije na serverech Google 48h od uploadu, nezávisle na session.
-
-**Use-cases:**
-
-1. **Stejná session, opakované dotazy**: Upload jednou, URI z cache se použije
-   pro všechny následující prompty ve stejné session.
-
-2. **Jiná session, stejný soubor**: Uživatel otevře novou session a přetáhne
-   stejný PDF → cache hit (path + sha256 se shodují) → žádný re-upload.
-
-3. **Jiná session, jiný stroj**: Cache je lokální na disk. Na jiném stroji
-   se provede nový upload (cache miss).
-
-4. **Po 48h**: Cache entry expired → automatický re-upload při dalším použití.
-
-5. **Session resume s referencí na soubor**: Při resume se historie načte
-   z filesystému (Fáze 15). Pokud historie obsahuje file_uri reference,
-   tyto URI mohou být expired. Řešení:
-   - Při resume detekovat `files/` URI v historii
-   - Zkontrolovat cache — pokud expired, zobrazit upozornění uživateli
-   - NEPOKOUŠET SE automaticky re-uploadovat (soubor mohl být smazán/změněn)
-
-### Integrace do `_build_prompt_blocks()`
-
-```python
-async def _build_prompt_blocks(
+def _build_prompt_blocks(
     prompt: str,
-    attachments: list[UploadedFile] | None = None,
-    uploader: GeminiFilesUploader | None = None,  # NOVÝ parametr
+    attachments: list[Attachment] | None = None,
 ) -> list:
-    """Sestaví ACP content blocks — s automatickým Files API pro velké soubory."""
-    blocks = [text_block(prompt)]
-    if not attachments:
-        return blocks
+    """Sestaví ACP content blocks pro prompt s přílohami."""
+    blocks = []
 
-    for att in attachments:
-        if uploader and should_use_files_api(att):
-            # Velký soubor → Files API
-            file_uri = await uploader.get_or_upload(att)
-            # ACP resource_block s URI (TBD: závisí na ACP SDK podpoře file_uri)
-            blocks.append(resource_block(uri=file_uri, mime_type=att.mime_type))
-        else:
-            # Malý soubor → inline base64 (stávající logika)
-            blocks.append(_inline_block(att))
+    if attachments:
+        for att in attachments:
+            if att.size > INLINE_LIMIT_BYTES:
+                # Velký soubor → file:// odkaz, CLI čte z disku
+                blocks.append(resource_link_block(
+                    name=att.filename,
+                    uri=att.path.as_uri(),   # file:///path/to/file.pdf
+                    mime_type=att.mime_type,
+                    size=att.size,
+                ))
+            else:
+                # Malý soubor → inline base64 (stávající logika)
+                blocks.append(_inline_block(att))
 
+    blocks.append(text_block(prompt))
     return blocks
 ```
 
-**Poznámka**: `_build_prompt_blocks` se změní na `async` — nutné aktualizovat
-všechny call sites (gemini.py, codex.py).
+**Funkce zůstává synchronní** — žádné async, žádné síťové volání.
+Stávající call sites (gemini.py, codex.py) se nemusí měnit.
 
-### Závislosti
+### Změny v error handlingu
 
-```toml
-[project.optional-dependencies]
-gemini-files = ["google-genai>=1.0"]
-```
+Aktuální chování pro soubory > 20 MB:
+1. Base64 inline → Gemini API vrátí "Internal error" po ~40 s
+2. Bridge detekuje chybu → zobrazí "File too large" → restartuje ACP
 
-Volitelná závislost — pokud `google-genai` není nainstalované, Files API
-není dostupné a platí inline limit 20 MB.
+S `resource_link_block`:
+1. CLI čte soubor z disku → žádné base64 omezení
+2. Chybová hláška "File too large for inline upload" se zobrazí jen pokud
+   `resource_link_block` selže (fallback)
 
-### Otevřené otázky k dořešení
+### Soubory ke změně
 
-1. **ACP SDK podpora file_uri**: Má ACP `resource_block()` parametr pro file URI,
-   nebo je potřeba bypass ACP a volat Gemini API přímo?
+| # | Soubor | Změna |
+|---|--------|-------|
+| 1 | `avatar_engine/bridges/gemini.py` | `_build_prompt_blocks()`: threshold → `resource_link_block` |
+| 2 | `avatar_engine/bridges/gemini.py` | Odebrat "File too large" error (už nepotřeba) |
+| 3 | `tests/test_media_bridges.py` | Test pro `resource_link_block` generování |
 
-2. **Codex/Claude**: Files API je specifické pro Gemini. Pro Claude existuje
-   podobný limit (~32 MB) ale bez Files API alternativy. Pro Codex nemá inline
-   base64 praktický problém (OpenAI API akceptuje větší payloady).
+### Omezení a otevřené otázky
 
-3. **Progress indikátor**: Upload 2 GB souboru trvá minuty. Frontend by měl
-   zobrazovat progress bar s procentuální indikací.
+1. **Soubor musí být na lokálním disku**: `resource_link_block` používá `file://` URI.
+   Pro web GUI je to OK — soubory se uploadují do `/tmp/avatar-engine/uploads/`.
+   Pro vzdálený přístup (soubor na jiném stroji) by to nefungovalo.
 
-4. **Concurrent uploads**: Pokud uživatel přetáhne 5 velkých souborů najednou,
-   měly by se uploadovat paralelně (asyncio.gather) s limitem concurrency.
+2. **Codex/Claude**: `resource_link_block` závisí na tom, jestli daný CLI
+   implementuje čtení `file://` URI. Ověřeno pro Gemini CLI, neověřeno
+   pro Claude Code a Codex. Pro tyto bridgy zůstane inline base64 s limitem.
 
-5. **Čištění cache**: Automatické `evict_expired()` při startu serveru +
-   periodicky (např. co hodinu). Nebo lazy při každém `get()` volání.
+3. **Max velikost na straně Gemini API**: CLI přečte soubor z disku, ale Gemini API
+   má vlastní limity (1000 stránek PDF, 100 MB na obrázek). Tyto limity platí
+   i s `resource_link_block` — jde o serverový limit, ne transportní.
+
+4. **Obrázky a audio**: Test proběhl s PDF. Ověřit, že `resource_link_block`
+   funguje i pro velké obrázky (>20 MB RAW/TIFF) a audio soubory.
+
+5. **Timeout**: CLI zpracování velkého souboru trvá déle (56 MB PDF ≈ 5+ min).
+   Dynamický timeout v `_send_acp()` už existuje (+3s/MB), ale pro
+   `resource_link_block` neznáme přesnou dobu — CLI může soubor uploadovat
+   interně přes Files API. Timeout zvýšit na min 10 min pro soubory > 20 MB.
+
+### Gemini Files API — archivovaný plán (záloha)
+
+Pokud by `resource_link_block` přestal fungovat (CLI update, ACP změna), existuje
+záložní plán přes Gemini Files API s free API klíčem (ai.google.dev):
+
+- Free API klíč: 10 RPM, 250 RPD, modely Flash (ne Pro)
+- Upload až 2 GB, 48h retence, `file_uri` reference
+- Vyžaduje `google-genai` SDK + URI cache + credentials management
+- Viz git historie tohoto souboru pro kompletní plán
 
 ---
 

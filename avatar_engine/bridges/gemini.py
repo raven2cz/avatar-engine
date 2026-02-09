@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 _ACP_AVAILABLE = False
 try:
     from acp import PROTOCOL_VERSION, connect_to_agent, text_block
-    from acp.helpers import audio_block, embedded_blob_resource, image_block, resource_block
+    from acp.helpers import audio_block, embedded_blob_resource, image_block, resource_block, resource_link_block
     from acp.interfaces import Client as ACPClient
     from acp.schema import (
         AgentMessageChunk,
@@ -72,11 +72,18 @@ except ImportError:
 from ._acp_session import ACPSessionMixin
 
 
+INLINE_LIMIT_BYTES = 20 * 1024 * 1024  # ~20 MB — Gemini API rejects larger inline base64
+
+
 def _build_prompt_blocks(text: str, attachments: Optional[List[Attachment]] = None) -> list:
     """Build ACP prompt content blocks from text + optional attachments.
 
     Returns [text_block(text)] when no attachments (zero overhead for 95% of calls).
     When attachments are present, prepends image/resource/audio blocks before the text.
+
+    Files larger than INLINE_LIMIT_BYTES use resource_link_block with file:// URI
+    so the CLI reads them from disk directly (no base64 overhead, no size limit).
+
     Requires ACP SDK — caller must only invoke this when _ACP_AVAILABLE is True.
     """
     if not _ACP_AVAILABLE:
@@ -87,16 +94,26 @@ def _build_prompt_blocks(text: str, attachments: Optional[List[Attachment]] = No
 
     blocks = []
     for att in attachments:
-        b64 = base64.b64encode(att.path.read_bytes()).decode("ascii")
-        if att.mime_type.startswith("image/"):
-            blocks.append(image_block(b64, att.mime_type))
-        elif att.mime_type.startswith("audio/"):
-            blocks.append(audio_block(b64, att.mime_type))
-        else:
-            # PDF, video, and other binary formats → embedded blob resource
-            blocks.append(resource_block(
-                embedded_blob_resource(f"file://{att.filename}", b64, mime_type=att.mime_type)
+        if att.size and att.size > INLINE_LIMIT_BYTES:
+            # Large file → file:// reference, CLI reads from disk
+            blocks.append(resource_link_block(
+                name=att.filename,
+                uri=att.path.as_uri(),
+                mime_type=att.mime_type,
+                size=att.size,
             ))
+        else:
+            # Small file → inline base64
+            b64 = base64.b64encode(att.path.read_bytes()).decode("ascii")
+            if att.mime_type.startswith("image/"):
+                blocks.append(image_block(b64, att.mime_type))
+            elif att.mime_type.startswith("audio/"):
+                blocks.append(audio_block(b64, att.mime_type))
+            else:
+                # PDF, video, and other binary formats → embedded blob resource
+                blocks.append(resource_block(
+                    embedded_blob_resource(f"file://{att.filename}", b64, mime_type=att.mime_type)
+                ))
     blocks.append(text_block(text))
     return blocks
 
