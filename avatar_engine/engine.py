@@ -600,10 +600,11 @@ class AvatarEngine(EventEmitter):
         )))
 
         # State change callback
-        def on_state_change(state: BridgeState) -> None:
+        def on_state_change(state: BridgeState, detail: str = "") -> None:
             self.emit(StateEvent(
                 provider=self._provider.value,
                 new_state=state,
+                detail=detail,
             ))
         self._bridge.on_state_change(on_state_change)
 

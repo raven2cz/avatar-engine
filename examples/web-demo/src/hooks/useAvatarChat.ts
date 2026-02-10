@@ -27,6 +27,7 @@ export interface UseAvatarChatReturn {
   switching: boolean
   connected: boolean
   wasConnected: boolean
+  initDetail: string
   sessionId: string | null
   sessionTitle: string | null
   provider: string
@@ -374,8 +375,11 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
     switching: state.switching,
     connected: state.connected,
     wasConnected: state.wasConnected,
+    initDetail: state.initDetail,
     sessionId: state.sessionId,
-    sessionTitle: state.sessionTitle,
+    sessionTitle: state.sessionTitle
+      || messages.find((m) => m.role === 'user')?.content?.slice(0, 80)
+      || null,
     provider: state.provider,
     model: state.model,
     version: state.version,

@@ -105,7 +105,8 @@ class BaseBridge(ABC):
         self._stderr_lock = threading.Lock()  # RC-8: protect stderr buffer
 
         self._on_output: Optional[Callable[[str], None]] = None
-        self._on_state_change: Optional[Callable[[BridgeState], None]] = None
+        self._on_state_change: Optional[Callable[[BridgeState, str], None]] = None
+        self._state_detail: str = ""
         self._on_event: Optional[Callable[[Dict[str, Any]], None]] = None
         self._on_stderr: Optional[Callable[[str], None]] = None
 
@@ -187,7 +188,7 @@ class BaseBridge(ABC):
     def on_output(self, cb: Callable[[str], None]) -> None:
         self._on_output = cb
 
-    def on_state_change(self, cb: Callable[[BridgeState], None]) -> None:
+    def on_state_change(self, cb: Callable[[BridgeState, str], None]) -> None:
         self._on_state_change = cb
 
     def on_event(self, cb: Callable[[Dict[str, Any]], None]) -> None:
@@ -231,11 +232,13 @@ class BaseBridge(ABC):
 
     # === State ===========================================================
 
-    def _set_state(self, state: BridgeState) -> None:
+    def _set_state(self, state: BridgeState, detail: str = "") -> None:
         old = self.state
+        old_detail = self._state_detail
         self.state = state
-        if self._on_state_change and old != state:
-            self._on_state_change(state)
+        self._state_detail = detail
+        if self._on_state_change and (old != state or old_detail != detail):
+            self._on_state_change(state, detail)
 
     # === Lifecycle ======================================================
 

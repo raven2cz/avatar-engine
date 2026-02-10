@@ -47,6 +47,7 @@ class EngineSessionManager:
 
         self._engine: Optional[AvatarEngine] = None
         self._ws_bridge: Optional[WebSocketBridge] = None
+        self._ready: bool = False
 
     @property
     def engine(self) -> Optional[AvatarEngine]:
@@ -60,8 +61,16 @@ class EngineSessionManager:
     def is_started(self) -> bool:
         return self._engine is not None and self._engine._started
 
-    async def start(self) -> None:
-        """Create and start the engine + WebSocket bridge."""
+    @property
+    def is_ready(self) -> bool:
+        return self._ready
+
+    async def prepare(self) -> None:
+        """Create engine + WS bridge (fast, non-blocking).
+
+        Does NOT start the engine — call start_engine() after WS clients
+        can connect so they receive state events during initialization.
+        """
         if self._engine is not None:
             return
 
@@ -79,17 +88,34 @@ class EngineSessionManager:
 
         # Create WS bridge (registers event handlers on engine)
         self._ws_bridge = WebSocketBridge(self._engine)
+        self._ready = False
 
-        # Start engine
+    async def start_engine(self) -> None:
+        """Start engine (slow — ACP spawn, auth, session). Call after prepare()."""
+        if self._ready:
+            return
+        if not self._engine:
+            raise RuntimeError("Call prepare() before start_engine()")
         await self._engine.start()
-
+        self._ready = True
         logger.info(
             f"Web session started: provider={self._engine.current_provider} "
             f"session_id={self._engine.session_id}"
         )
 
+    async def start(self) -> None:
+        """Create and start the engine + WebSocket bridge.
+
+        Convenience wrapper combining prepare() + start_engine().
+        Used by switch/resume/new_session where WS is already connected.
+        """
+        await self.prepare()
+        await self.start_engine()
+
     async def shutdown(self) -> None:
         """Stop the engine and clean up."""
+        self._ready = False
+
         if self._ws_bridge:
             self._ws_bridge.unregister()
             self._ws_bridge = None

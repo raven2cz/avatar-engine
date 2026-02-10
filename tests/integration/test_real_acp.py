@@ -176,7 +176,7 @@ class TestGeminiBridgeDirect:
 
         states = []
 
-        def capture_state(state):
+        def capture_state(state, detail=""):
             states.append(state)
 
         bridge.on_state_change(capture_state)

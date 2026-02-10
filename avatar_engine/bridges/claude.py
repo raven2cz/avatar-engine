@@ -153,7 +153,7 @@ class ClaudeBridge(BaseBridge):
         self._persistent_mode = True
 
         try:
-            self._set_state(BridgeState.WARMING_UP)
+            self._set_state(BridgeState.WARMING_UP, "Spawning Claude CLI...")
             cmd = self._build_persistent_command()
             env = {**os.environ, **self.env}
 
@@ -168,6 +168,7 @@ class ClaudeBridge(BaseBridge):
             )
 
             # Quick check: did the process die immediately?
+            self._set_state(BridgeState.WARMING_UP, "Checking process health...")
             await asyncio.sleep(0.1)
             if self._proc.returncode is not None:
                 stderr = await self._proc.stderr.read()

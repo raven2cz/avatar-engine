@@ -27,6 +27,7 @@ interface StatusBarProps {
   cost: CostInfo
   switching?: boolean
   activeOptions?: Record<string, string | number>
+  availableProviders?: Set<string> | null
   onSwitch?: (provider: string, model?: string, options?: Record<string, string | number>) => void
   onResume?: (sessionId: string) => void
   onNewSession?: () => void
@@ -90,6 +91,7 @@ export function StatusBar({
   cost,
   switching = false,
   activeOptions,
+  availableProviders,
   onSwitch,
   onResume,
   onNewSession,
@@ -99,6 +101,18 @@ export function StatusBar({
   const [showDetail, setShowDetail] = useState(false)
   const [showSessions, setShowSessions] = useState(false)
   const [usage, setUsage] = useState<UsageData | null>(null)
+  const [localTitle, setLocalTitle] = useState<string | null>(null)
+
+  // Clear local override only when server confirms the rename (sessionTitle matches)
+  // or when there's no local override. Don't wipe localTitle on unrelated sessionTitle changes.
+  useEffect(() => {
+    setLocalTitle(prev => {
+      if (prev === null || sessionTitle === prev) return null
+      return prev
+    })
+  }, [sessionTitle])
+
+  const displayTitle = localTitle ?? sessionTitle
 
   // Fetch usage from REST API when detail panel opens
   useEffect(() => {
@@ -163,6 +177,7 @@ export function StatusBar({
                 currentModel={model}
                 switching={switching}
                 activeOptions={activeOptions}
+                availableProviders={availableProviders}
                 onSwitch={onSwitch}
               />
             ) : (
@@ -213,14 +228,14 @@ export function StatusBar({
             {onResume && onNewSession && (
               <button
                 onClick={() => setShowSessions((v) => !v)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-mid/30 border border-slate-mid/30 hover:border-slate-mid/50 transition-colors max-w-[220px]"
-                title="Session management"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-mid/30 border border-slate-mid/30 hover:border-slate-mid/50 transition-colors max-w-[180px]"
+                title={displayTitle || sessionId || 'Sessions'}
               >
                 <History className="w-3.5 h-3.5 flex-shrink-0 text-text-muted" />
-                {sessionTitle ? (
-                  <span className="truncate text-text-primary font-medium">{sessionTitle}</span>
+                {displayTitle ? (
+                  <span className="truncate text-text-primary">{displayTitle.length > 30 ? displayTitle.slice(0, 28) + '...' : displayTitle}</span>
                 ) : sessionId ? (
-                  <span className="truncate text-text-secondary font-mono">{sessionId.slice(0, 12)}</span>
+                  <span className="truncate text-text-secondary font-mono">{sessionId.slice(0, 8)}</span>
                 ) : (
                   <span className="text-text-muted">Sessions</span>
                 )}
@@ -237,12 +252,12 @@ export function StatusBar({
         <SessionPanel
           open={showSessions}
           onClose={() => setShowSessions(false)}
-          currentSessionId={sessionId}
           provider={provider}
           cwd={cwd || ''}
           capabilities={capabilities}
           onResume={onResume}
           onNewSession={onNewSession}
+          onTitleUpdated={setLocalTitle}
         />
       )}
 
@@ -253,30 +268,55 @@ export function StatusBar({
           <div className="fixed inset-0 z-[60]" onClick={() => setShowDetail(false)} />
 
           {/* Panel */}
-          <div className="fixed right-4 top-16 z-[70] w-80 glass-panel rounded-xl border border-slate-mid/40 shadow-2xl shadow-black/60 animate-slide-up">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-mid/30">
-              <h3 className="text-sm font-semibold text-text-primary">Session Details</h3>
-              <button
-                onClick={() => setShowDetail(false)}
-                className="p-1 rounded-lg text-text-muted hover:text-text-secondary hover:bg-slate-mid/30 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
+          <div className="fixed right-4 top-16 z-[70] w-80 glass-panel rounded-2xl border border-slate-mid/40 shadow-2xl shadow-black/60 animate-slide-up overflow-hidden">
+            {/* Header with gradient accent */}
+            <div className="relative px-5 py-4 border-b border-slate-mid/30">
+              <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-synapse/50 to-transparent" />
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold gradient-text">Session Details</h3>
+                <button
+                  onClick={() => setShowDetail(false)}
+                  className="p-1 rounded-lg text-text-muted hover:text-text-secondary hover:bg-slate-mid/30 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            <div className="px-4 py-3 space-y-3 text-sm">
-              <DetailRow label="Provider" value={provider || '-'} />
-              <DetailRow label="Model" value={model || '(default)'} />
-              <DetailRow label="Version" value={version ? `v${version}` : '-'} />
-              <DetailRow label="State" value={stateConfig.label} />
-              <DetailRow label="Session" value={sessionId ? sessionId.slice(0, 16) : '-'} mono />
+            <div className="px-5 py-4 space-y-4 text-sm">
+              {/* Provider + Model */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted text-xs">Provider</span>
+                  {providerConfig ? (
+                    <div className={`px-2 py-0.5 rounded-md text-xs font-medium bg-gradient-to-r ${providerConfig.gradient} border`}>
+                      {providerConfig.label}
+                    </div>
+                  ) : (
+                    <span className="text-text-secondary">{provider || '-'}</span>
+                  )}
+                </div>
+                <DetailRow label="Model" value={model || providerConfig?.defaultModel || '-'} mono />
+                <DetailRow label="Engine" value={version ? `v${version}` : '-'} />
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted text-xs">State</span>
+                  <span className={`text-xs font-medium ${stateConfig.color}`}>{stateConfig.label}</span>
+                </div>
+              </div>
+
+              {/* Session */}
+              <div className="rounded-lg bg-slate-mid/20 border border-slate-mid/30 px-3 py-2.5 space-y-1">
+                <span className="text-xs text-text-muted">Session</span>
+                {displayTitle && (
+                  <p className="text-xs text-text-secondary truncate">{displayTitle}</p>
+                )}
+                <p className="text-xs text-text-muted font-mono">{sessionId ? sessionId.slice(0, 24) : '-'}</p>
+              </div>
 
               {/* Capabilities */}
               {capabilities && (
-                <>
-                  <div className="border-t border-slate-mid/30 pt-3">
-                    <span className="text-xs text-text-muted uppercase tracking-wide">Capabilities</span>
-                  </div>
+                <div className="space-y-2">
+                  <SectionLabel label="Capabilities" />
                   <div className="flex flex-wrap gap-1.5">
                     {capabilities.thinking_supported && <CapBadge label="Thinking" />}
                     {capabilities.cost_tracking && <CapBadge label="Cost" />}
@@ -285,25 +325,21 @@ export function StatusBar({
                     {capabilities.parallel_tools && <CapBadge label="Parallel tools" />}
                     {capabilities.can_list_sessions && <CapBadge label="Sessions" />}
                   </div>
-                </>
+                </div>
               )}
 
               {/* Usage stats (fetched from REST API) */}
-              {usage && (
-                <>
-                  <div className="border-t border-slate-mid/30 pt-3">
-                    <span className="text-xs text-text-muted uppercase tracking-wide">Usage</span>
-                  </div>
+              {usage && usage.total_requests > 0 && (
+                <div className="space-y-2.5">
+                  <SectionLabel label="Usage" />
                   <DetailRow
                     label="Requests"
                     value={`${usage.successful_requests}/${usage.total_requests}${usage.failed_requests ? ` (${usage.failed_requests} failed)` : ''}`}
                   />
-                  {usage.total_requests > 0 && (
-                    <DetailRow
-                      label="Avg latency"
-                      value={formatDuration(Math.round(usage.total_duration_ms / usage.total_requests))}
-                    />
-                  )}
+                  <DetailRow
+                    label="Avg latency"
+                    value={formatDuration(Math.round(usage.total_duration_ms / usage.total_requests))}
+                  />
                   {(usage.total_input_tokens > 0 || usage.total_output_tokens > 0) && (
                     <>
                       <DetailRow label="Input tokens" value={formatTokens(usage.total_input_tokens)} />
@@ -319,11 +355,16 @@ export function StatusBar({
                       value={`$${(usage.budget_remaining_usd ?? 0).toFixed(2)} / $${usage.budget_usd.toFixed(2)}`}
                     />
                   )}
-                </>
+                </div>
               )}
               {!usage && showDetail && connected && (
-                <div className="border-t border-slate-mid/30 pt-3">
-                  <span className="text-xs text-text-muted">Loading usage...</span>
+                <div className="pt-1">
+                  <span className="text-xs text-text-muted animate-pulse">Loading usage...</span>
+                </div>
+              )}
+              {usage && usage.total_requests === 0 && (
+                <div className="pt-1">
+                  <span className="text-xs text-text-muted">No requests yet</span>
                 </div>
               )}
             </div>
@@ -337,15 +378,25 @@ export function StatusBar({
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-text-muted">{label}</span>
-      <span className={`text-text-secondary ${mono ? 'font-mono' : ''}`}>{value}</span>
+      <span className="text-text-muted text-xs">{label}</span>
+      <span className={`text-text-secondary text-xs ${mono ? 'font-mono' : ''}`}>{value}</span>
+    </div>
+  )
+}
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-[1px] flex-1 bg-gradient-to-r from-slate-mid/50 to-transparent" />
+      <span className="text-[10px] text-text-muted uppercase tracking-widest">{label}</span>
+      <div className="h-[1px] flex-1 bg-gradient-to-l from-slate-mid/50 to-transparent" />
     </div>
   )
 }
 
 function CapBadge({ label }: { label: string }) {
   return (
-    <span className="px-2 py-0.5 rounded-full text-xs bg-slate-mid/30 text-text-secondary border border-slate-mid/30">
+    <span className="px-2 py-0.5 rounded-md text-[10px] bg-synapse/8 text-text-secondary border border-synapse/15">
       {label}
     </span>
   )

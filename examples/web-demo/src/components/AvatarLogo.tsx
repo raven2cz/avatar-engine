@@ -1,7 +1,7 @@
 /**
- * Avatar Engine logo — inline SVG matching assets/logo.svg.
+ * Avatar Engine logo — inline SVG.
  *
- * AI face with antenna, curved ^ eyes, and smile inside a gradient circle.
+ * AI face with antenna, curved ^ eyes, and smile.
  * Accepts size via className (e.g. "w-5 h-5", "w-8 h-8").
  */
 
@@ -12,18 +12,17 @@ interface AvatarLogoProps {
 export function AvatarLogo({ className = 'w-6 h-6' }: AvatarLogoProps) {
   return (
     <svg
-      viewBox="0 0 128 128"
+      viewBox="24 16 80 80"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
       <defs>
-        <linearGradient id="avatar-grad" x1="0" y1="0" x2="128" y2="128">
+        <linearGradient id="avatar-grad" x1="24" y1="16" x2="104" y2="96">
           <stop offset="0%" stopColor="#58a6ff" />
           <stop offset="100%" stopColor="#bc8cff" />
         </linearGradient>
       </defs>
-      <circle cx="64" cy="64" r="58" stroke="url(#avatar-grad)" strokeWidth="4" fill="#0d1117" />
       <rect x="34" y="42" width="60" height="46" rx="12" fill="url(#avatar-grad)" opacity="0.12" />
       <rect x="34" y="42" width="60" height="46" rx="12" stroke="url(#avatar-grad)" strokeWidth="2.5" fill="none" />
       <path d="M41 60 Q49 51 57 60" stroke="#58a6ff" strokeWidth="3" fill="none" strokeLinecap="round" />

@@ -335,7 +335,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         deprecated spawn_agent_process. Passes ClientCapabilities so gemini-cli
         knows our client supports file I/O and terminal operations.
         """
-        self._set_state(BridgeState.WARMING_UP)
+        self._set_state(BridgeState.WARMING_UP, "Spawning Gemini CLI...")
 
         # Verify Gemini CLI is available
         gemini_bin = shutil.which(self.executable)
@@ -376,6 +376,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         )
 
         # Step 1: Initialize protocol with client capabilities
+        self._set_state(BridgeState.WARMING_UP, "Initializing ACP protocol...")
         init_resp = await asyncio.wait_for(
             self._acp_conn.initialize(
                 protocol_version=PROTOCOL_VERSION,
@@ -401,6 +402,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         # which times out on Gemini CLI (-32601). Set it AFTER session creation.
 
         # Step 2: Create or resume session (auth handled by gemini-cli internally)
+        self._set_state(BridgeState.WARMING_UP, "Creating session...")
         mcp_servers_acp = self._build_mcp_servers_acp()
         original_resume_id = self.resume_session_id
         await self._create_or_resume_acp_session(mcp_servers_acp)

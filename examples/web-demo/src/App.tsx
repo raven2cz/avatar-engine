@@ -9,6 +9,7 @@ import { StatusBar } from './components/StatusBar'
 import { ChatPanel } from './components/ChatPanel'
 import { CostTracker } from './components/CostTracker'
 import { useAvatarChat } from './hooks/useAvatarChat'
+import { useAvailableProviders } from './hooks/useAvailableProviders'
 
 // WebSocket URL — uses Vite proxy in dev, direct in production
 const WS_URL =
@@ -17,6 +18,7 @@ const WS_URL =
     : `ws://${window.location.host}/api/avatar/ws`
 
 export default function App() {
+  const availableProviders = useAvailableProviders()
   const {
     messages,
     sendMessage,
@@ -26,6 +28,7 @@ export default function App() {
     resumeSession,
     newSession,
     activeOptions,
+    initDetail,
     pendingFiles,
     uploading,
     uploadFile,
@@ -61,6 +64,7 @@ export default function App() {
         cost={cost}
         switching={switching}
         activeOptions={activeOptions}
+        availableProviders={availableProviders}
         onSwitch={switchProvider}
         onResume={resumeSession}
         onNewSession={newSession}
@@ -70,7 +74,7 @@ export default function App() {
       {!connected && !wasConnected && (
         <div className="mx-6 mt-2 px-4 py-2 rounded-xl bg-synapse/10 border border-synapse/30 text-synapse text-sm animate-slide-up flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-synapse animate-pulse" />
-          Initializing provider...
+          {initDetail || 'Initializing provider...'}
         </div>
       )}
       {!connected && wasConnected && (

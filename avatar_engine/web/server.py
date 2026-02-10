@@ -11,6 +11,7 @@ Provides:
 import asyncio
 import json
 import logging
+import shutil
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -26,9 +27,13 @@ from .protocol import (
 )
 from .session_manager import EngineSessionManager
 from .uploads import UploadStorage
+from ..sessions._titles import SessionTitleRegistry
 from ..types import Attachment
 
 logger = logging.getLogger(__name__)
+
+# Shared title registry (one per process, covers all providers)
+title_registry = SessionTitleRegistry()
 
 
 def create_app(
@@ -76,17 +81,41 @@ def create_app(
         **kwargs,
     )
 
+    async def _run_startup(mgr: EngineSessionManager) -> None:
+        """Background task: start engine and broadcast connected."""
+        try:
+            await mgr.start_engine()
+            _broadcast_connected(mgr)
+        except Exception as exc:
+            logger.error(f"Engine startup failed: {exc}")
+            if mgr.ws_bridge:
+                mgr.ws_bridge.broadcast_message({
+                    "type": "error",
+                    "data": {"error": f"Engine startup failed: {exc}", "recoverable": False},
+                })
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        """Startup/shutdown lifecycle."""
+        """Startup/shutdown lifecycle.
+
+        Uses non-blocking startup: prepare() creates objects instantly,
+        then start_engine() runs in background so WS clients can connect
+        and see granular init status events in real time.
+        """
         logger.info("Starting Avatar Engine web server...")
-        await manager.start()
+        await manager.prepare()
         if manager.ws_bridge:
             manager.ws_bridge.set_loop(asyncio.get_running_loop())
-        logger.info("Avatar Engine web server ready")
         app.state.manager = manager
+        _startup_task = asyncio.create_task(_run_startup(manager))
+        logger.info("Avatar Engine web server accepting connections")
         yield
         logger.info("Shutting down Avatar Engine web server...")
+        _startup_task.cancel()
+        try:
+            await _startup_task
+        except asyncio.CancelledError:
+            pass
         await manager.shutdown()
         logger.info("Avatar Engine web server stopped")
 
@@ -135,6 +164,26 @@ def create_app(
         """Engine version."""
         return JSONResponse({"version": __version__})
 
+    # Provider → CLI executable mapping (used for availability detection)
+    _PROVIDER_EXECUTABLES = {
+        "gemini": "gemini",
+        "claude": "claude",
+        "codex": "npx",
+    }
+
+    @app.get("/api/avatar/providers")
+    async def get_providers() -> JSONResponse:
+        """List all known providers with CLI availability on this machine."""
+        providers = []
+        for provider_id, executable in _PROVIDER_EXECUTABLES.items():
+            available = shutil.which(executable) is not None
+            providers.append({
+                "id": provider_id,
+                "available": available,
+                "executable": executable,
+            })
+        return JSONResponse(providers)
+
     @app.get("/api/avatar/capabilities")
     async def get_capabilities() -> JSONResponse:
         """Provider capabilities for UI adaptation."""
@@ -171,16 +220,50 @@ def create_app(
         if not engine:
             return JSONResponse([])
         sessions = await engine.list_sessions()
-        return JSONResponse([
-            {
+        # Normalize current session ID for reliable comparison
+        current_sid = str(engine.session_id) if engine.session_id else None
+        result = []
+        for s in sessions:
+            custom = title_registry.get(s.session_id)
+            result.append({
                 "session_id": s.session_id,
                 "provider": s.provider,
                 "cwd": s.cwd,
-                "title": s.title,
+                "title": custom or s.title,
                 "updated_at": s.updated_at,
-            }
-            for s in sessions
-        ])
+                "is_current": current_sid is not None and str(s.session_id) == current_sid,
+            })
+        return JSONResponse(result)
+
+    @app.put("/api/avatar/sessions/{session_id}/title")
+    async def set_session_title(session_id: str, request: Request) -> JSONResponse:
+        """Set or clear a custom session title."""
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+        new_title = body.get("title", "").strip() if isinstance(body, dict) else ""
+        if not new_title:
+            title_registry.delete(session_id)
+        else:
+            title_registry.set(session_id, new_title)
+
+        # Broadcast title update to all WS clients
+        # Include is_current_session so frontend doesn't need ID comparison
+        engine = manager.engine
+        current_sid = str(engine.session_id) if engine and engine.session_id else None
+        is_current = current_sid is not None and str(session_id) == current_sid
+        if manager.ws_bridge:
+            manager.ws_bridge.broadcast_message({
+                "type": "session_title_updated",
+                "data": {
+                    "session_id": session_id,
+                    "title": new_title or None,
+                    "is_current_session": is_current,
+                },
+            })
+
+        return JSONResponse({"session_id": session_id, "title": new_title or None})
 
     @app.get("/api/avatar/sessions/{session_id}/messages")
     async def get_session_messages(session_id: str) -> JSONResponse:
@@ -279,9 +362,19 @@ def create_app(
         return mdl or None
 
     def _get_session_title(mgr: EngineSessionManager, session_id: Optional[str]) -> Optional[str]:
-        """Look up the title for a session from the filesystem store."""
+        """Look up the title for a session.
+
+        Priority: custom title (from registry) > provider title (first user message).
+        """
         if not session_id:
             return None
+
+        # 1. Custom title (highest priority)
+        custom = title_registry.get(session_id)
+        if custom:
+            return custom
+
+        # 2. Provider title (from first user message)
         try:
             from ..sessions import get_session_store
 
@@ -345,32 +438,47 @@ def create_app(
         await ws.accept()
 
         bridge = manager.ws_bridge
-        engine = manager.engine
 
-        if not bridge or not engine:
-            await ws.send_json({"type": "error", "data": {"error": "Engine not started"}})
+        if not bridge:
+            await ws.send_json({"type": "error", "data": {"error": "Engine not created"}})
             await ws.close()
             return
 
-        # Add client to broadcast set
+        # Add client to broadcast set — events will flow automatically
         await bridge.add_client(ws)
 
-        # Send connected message with session info
-        model = _get_model(manager)
-        sid = engine.session_id
-        await ws.send_json({
-            "type": "connected",
-            "data": {
-                "session_id": sid,
-                "provider": engine.current_provider,
-                "model": model,
-                "version": __version__,
-                "capabilities": capabilities_to_dict(engine.capabilities),
-                "engine_state": bridge.engine_state.value,
-                "cwd": manager._working_dir,
-                "session_title": _get_session_title(manager, sid),
-            },
-        })
+        engine = manager.engine
+
+        if manager.is_ready and engine:
+            # Engine already running — send connected immediately
+            model = _get_model(manager)
+            sid = engine.session_id
+            await ws.send_json({
+                "type": "connected",
+                "data": {
+                    "session_id": sid,
+                    "provider": engine.current_provider,
+                    "model": model,
+                    "version": __version__,
+                    "capabilities": capabilities_to_dict(engine.capabilities),
+                    "engine_state": bridge.engine_state.value,
+                    "cwd": manager._working_dir,
+                    "session_title": _get_session_title(manager, sid),
+                },
+            })
+        else:
+            # Engine still starting — send initializing message.
+            # State events with detail will flow automatically via ws_bridge.
+            detail = ""
+            if engine and engine._bridge:
+                detail = engine._bridge._state_detail
+            await ws.send_json({
+                "type": "initializing",
+                "data": {
+                    "provider": manager._provider or "",
+                    "detail": detail,
+                },
+            })
 
         try:
             while True:

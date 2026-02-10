@@ -18,6 +18,7 @@ interface AvatarWSState {
   cwd: string
   capabilities: ProviderCapabilities | null
   engineState: EngineState
+  initDetail: string
   switching: boolean
   thinking: {
     active: boolean
@@ -33,6 +34,8 @@ type Action =
   | { type: 'CONNECTED'; payload: ServerMessage & { type: 'connected' } }
   | { type: 'DISCONNECTED' }
   | { type: 'ENGINE_STATE'; state: EngineState }
+  | { type: 'INITIALIZING'; payload: ServerMessage & { type: 'initializing' } }
+  | { type: 'STATE_UPDATE'; detail: string; state: string }
   | { type: 'THINKING_START'; phase: ThinkingPhase; subject: string }
   | { type: 'THINKING_UPDATE'; phase: ThinkingPhase; subject: string }
   | { type: 'THINKING_END' }
@@ -40,6 +43,8 @@ type Action =
   | { type: 'ERROR'; error: string }
   | { type: 'CLEAR_ERROR' }
   | { type: 'SWITCHING' }
+  | { type: 'SESSION_TITLE_UPDATED'; sessionId: string; title: string | null; isCurrentSession: boolean }
+  | { type: 'SESSION_ID_DISCOVERED'; sessionId: string }
 
 const initialState: AvatarWSState = {
   connected: false,
@@ -52,6 +57,7 @@ const initialState: AvatarWSState = {
   cwd: '',
   capabilities: null,
   engineState: 'idle',
+  initDetail: '',
   switching: false,
   thinking: { active: false, phase: 'general', subject: '', startedAt: 0 },
   cost: { totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0 },
@@ -66,6 +72,7 @@ function reducer(state: AvatarWSState, action: Action): AvatarWSState {
         connected: true,
         wasConnected: true,
         switching: false,
+        initDetail: '',
         sessionId: action.payload.data.session_id,
         sessionTitle: action.payload.data.session_title || null,
         provider: action.payload.data.provider,
@@ -75,6 +82,18 @@ function reducer(state: AvatarWSState, action: Action): AvatarWSState {
         capabilities: action.payload.data.capabilities,
         engineState: action.payload.data.engine_state,
         error: null,
+      }
+    case 'INITIALIZING':
+      return {
+        ...state,
+        connected: false,
+        initDetail: action.payload.data.detail || '',
+        provider: action.payload.data.provider || state.provider,
+      }
+    case 'STATE_UPDATE':
+      return {
+        ...state,
+        initDetail: action.detail || state.initDetail,
       }
     case 'DISCONNECTED':
       return { ...state, connected: false, engineState: 'idle' }
@@ -119,6 +138,19 @@ function reducer(state: AvatarWSState, action: Action): AvatarWSState {
       return { ...state, error: null }
     case 'SWITCHING':
       return { ...state, switching: true }
+    case 'SESSION_TITLE_UPDATED':
+      // Use server-provided is_current_session flag to avoid ID format mismatch
+      if (action.isCurrentSession) {
+        return { ...state, sessionTitle: action.title }
+      }
+      return state
+    case 'SESSION_ID_DISCOVERED':
+      // Backfill session ID from first chat_response (oneshot providers
+      // don't emit session_id on startup, only after the first exchange)
+      if (!state.sessionId) {
+        return { ...state, sessionId: action.sessionId }
+      }
+      return state
     default:
       return state
   }
@@ -175,6 +207,14 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
           case 'connected':
             dispatch({ type: 'CONNECTED', payload: msg })
             break
+          case 'initializing':
+            dispatch({ type: 'INITIALIZING', payload: msg })
+            break
+          case 'state':
+            if (msg.data.detail) {
+              dispatch({ type: 'STATE_UPDATE', detail: msg.data.detail, state: msg.data.new_state || '' })
+            }
+            break
           case 'engine_state':
             dispatch({ type: 'ENGINE_STATE', state: msg.data.state })
             break
@@ -205,6 +245,20 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
             break
           case 'error':
             dispatch({ type: 'ERROR', error: msg.data.error })
+            break
+          case 'session_title_updated':
+            dispatch({
+              type: 'SESSION_TITLE_UPDATED',
+              sessionId: msg.data.session_id,
+              title: msg.data.title,
+              isCurrentSession: !!msg.data.is_current_session,
+            })
+            break
+          case 'chat_response':
+            // Backfill session ID for oneshot providers that don't emit it on startup
+            if (msg.data.session_id) {
+              dispatch({ type: 'SESSION_ID_DISCOVERED', sessionId: msg.data.session_id })
+            }
             break
         }
         // Notify registered handler

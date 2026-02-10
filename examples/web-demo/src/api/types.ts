@@ -91,6 +91,7 @@ export interface StateMessage {
   data: {
     old_state: BridgeState | null
     new_state: BridgeState | null
+    detail?: string
     timestamp: number
     provider: string
   }
@@ -183,6 +184,23 @@ export interface HistoryClearedMessage {
   data: Record<string, never>
 }
 
+export interface InitializingMessage {
+  type: 'initializing'
+  data: {
+    provider: string
+    detail: string
+  }
+}
+
+export interface SessionTitleUpdatedMessage {
+  type: 'session_title_updated'
+  data: {
+    session_id: string
+    title: string | null
+    is_current_session?: boolean
+  }
+}
+
 export type ServerMessage =
   | ConnectedMessage
   | TextMessage
@@ -197,6 +215,8 @@ export type ServerMessage =
   | ChatResponseMessage
   | PongMessage
   | HistoryClearedMessage
+  | InitializingMessage
+  | SessionTitleUpdatedMessage
 
 // === Client → Server messages ===
 
@@ -261,6 +281,7 @@ export interface SessionInfo {
   cwd: string
   title: string
   updated_at: string | null
+  is_current: boolean
 }
 
 // === UI State ===

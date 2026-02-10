@@ -990,7 +990,7 @@ class TestCodexBridgeState:
         """Should call state change callback."""
         bridge = CodexBridge()
         states = []
-        bridge.on_state_change(lambda s: states.append(s))
+        bridge.on_state_change(lambda s, d="": states.append(s))
 
         bridge._set_state(BridgeState.WARMING_UP)
         bridge._set_state(BridgeState.READY)

@@ -6,8 +6,8 @@
  * Shows project name from cwd, table layout with clickable rows.
  */
 
-import { useState, useEffect } from 'react'
-import { Plus, Loader2, X } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Plus, Loader2, X, Pencil } from 'lucide-react'
 import type { SessionInfo, ProviderCapabilities } from '../api/types'
 
 // REST API base — matches Vite proxy config
@@ -36,26 +36,74 @@ function basename(path: string): string {
 interface SessionPanelProps {
   open: boolean
   onClose: () => void
-  currentSessionId: string | null
   provider: string
   cwd: string
   capabilities: ProviderCapabilities | null
   onResume: (sessionId: string) => void
   onNewSession: () => void
+  onTitleUpdated?: (title: string | null) => void
 }
 
 export function SessionPanel({
   open,
   onClose,
-  currentSessionId,
   provider,
   cwd,
   capabilities,
   onResume,
   onNewSession,
+  onTitleUpdated,
 }: SessionPanelProps) {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [loading, setLoading] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const canceledRef = useRef(false)
+
+  const startEdit = useCallback((s: SessionInfo) => {
+    canceledRef.current = false
+    setEditingId(s.session_id)
+    setEditValue(s.title || '')
+  }, [])
+
+  const cancelEdit = useCallback(() => {
+    canceledRef.current = true
+    setEditingId(null)
+    setEditValue('')
+    onTitleUpdated?.(null)
+  }, [onTitleUpdated])
+
+  const saveTitle = useCallback(async (sessionId: string, isCurrent: boolean) => {
+    if (canceledRef.current) return
+    canceledRef.current = true  // guard against double-fire (Enter + blur)
+    const trimmed = editValue.trim()
+    // Immediately update parent — don't wait for network round-trip.
+    // Use server-provided is_current flag to avoid session ID format mismatch.
+    if (isCurrent) {
+      onTitleUpdated?.(trimmed || null)
+    }
+    // Update local session list optimistically
+    if (trimmed) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.session_id === sessionId ? { ...s, title: trimmed } : s
+        )
+      )
+    }
+    setEditingId(null)
+    try {
+      await fetch(`${API_BASE}/sessions/${sessionId}/title`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: trimmed }),
+      })
+    } catch {
+      // Revert on network failure
+      if (isCurrent) {
+        onTitleUpdated?.(null)
+      }
+    }
+  }, [editValue, onTitleUpdated])
 
   // Fetch sessions when modal opens (if provider supports it)
   useEffect(() => {
@@ -82,6 +130,16 @@ export function SessionPanel({
     return () => document.removeEventListener('keydown', handler)
   }, [open, onClose])
 
+  // Reset editing state and live preview when modal closes
+  useEffect(() => {
+    if (!open) {
+      canceledRef.current = true
+      setEditingId(null)
+      setEditValue('')
+      // Don't call onTitleUpdated(null) here — keep the saved title
+    }
+  }, [open])
+
   if (!open) return null
 
   const projectName = basename(cwd)
@@ -94,17 +152,18 @@ export function SessionPanel({
         onClick={onClose}
       />
 
-      {/* Modal — pt-20 accounts for browser chrome + status bar */}
+      {/* Modal */}
       <div className="fixed inset-0 z-[70] flex items-start justify-center px-4 pt-20 pb-6 pointer-events-none overflow-y-auto">
         <div
-          className="pointer-events-auto w-full max-w-2xl max-h-[75vh] glass-panel rounded-2xl border border-slate-mid/40 shadow-2xl shadow-black/60 animate-slide-up flex flex-col"
+          className="pointer-events-auto w-full max-w-3xl max-h-[75vh] glass-panel rounded-2xl border border-slate-mid/40 shadow-2xl shadow-black/60 animate-slide-up flex flex-col overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-slate-mid/30 flex-shrink-0">
+          {/* Header with gradient accent */}
+          <div className="relative px-6 py-4 border-b border-slate-mid/30 flex-shrink-0">
+            <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-synapse/50 to-transparent" />
             <div className="flex items-start justify-between">
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-text-primary truncate">
+                <h2 className="text-lg font-semibold gradient-text truncate">
                   {projectName || 'Sessions'}
                 </h2>
                 {cwd && (
@@ -126,7 +185,7 @@ export function SessionPanel({
           <div className="px-6 py-3 border-b border-slate-mid/30 flex-shrink-0">
             <button
               onClick={() => { onNewSession(); onClose() }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-synapse/20 to-pulse/20 text-synapse border border-synapse/30 hover:from-synapse/30 hover:to-pulse/30 transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-synapse/20 to-pulse/20 text-synapse border border-synapse/30 hover:from-synapse/30 hover:to-pulse/30 transition-all hover:shadow-lg hover:shadow-synapse/10"
             >
               <Plus className="w-4 h-4" />
               New Session
@@ -150,39 +209,69 @@ export function SessionPanel({
                 <p className="text-xs mt-1">Start a conversation to create one</p>
               </div>
             ) : (
-              <div className="px-3 py-2">
+              <div className="px-4 py-3">
                 {/* Table header */}
-                <div className="grid grid-cols-[1fr_100px_90px] gap-2 px-3 py-2 text-xs text-text-muted uppercase tracking-wide">
+                <div className="grid grid-cols-[1fr_120px_100px] gap-3 px-4 py-2 text-[10px] text-text-muted uppercase tracking-widest">
                   <span>Title</span>
                   <span>Session ID</span>
                   <span className="text-right">Updated</span>
                 </div>
 
                 {/* Rows */}
-                <div className="space-y-0.5">
+                <div className="space-y-1 mt-1">
                   {sessions.map((s) => {
-                    const isCurrent = s.session_id === currentSessionId
+                    const isCurrent = s.is_current
                     return (
-                      <button
+                      <div
                         key={s.session_id}
                         onClick={() => {
-                          if (!isCurrent) {
+                          if (!isCurrent && editingId !== s.session_id) {
                             onResume(s.session_id)
                             onClose()
                           }
                         }}
-                        disabled={isCurrent}
-                        className={`w-full grid grid-cols-[1fr_100px_90px] gap-2 items-center px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
+                        className={`group/row w-full grid grid-cols-[1fr_120px_100px] gap-3 items-center px-4 py-3 rounded-xl text-left text-sm transition-all ${
                           isCurrent
-                            ? 'bg-synapse/10 border border-synapse/25 cursor-default'
-                            : 'hover:bg-slate-mid/20 border border-transparent'
+                            ? 'bg-gradient-to-r from-synapse/10 to-pulse/5 border border-synapse/25 cursor-default shadow-sm shadow-synapse/5'
+                            : 'hover:bg-slate-mid/25 border border-transparent hover:border-slate-mid/30 cursor-pointer'
                         }`}
                       >
                         {/* Title */}
                         <div className="min-w-0">
-                          <span className="text-text-secondary truncate block">
-                            {s.title || s.session_id.slice(0, 20)}
-                          </span>
+                          {editingId === s.session_id ? (
+                            <input
+                              autoFocus
+                              value={editValue}
+                              onChange={(e) => {
+                                setEditValue(e.target.value)
+                                if (isCurrent) {
+                                  onTitleUpdated?.(e.target.value || null)
+                                }
+                              }}
+                              onBlur={() => saveTitle(s.session_id, isCurrent)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveTitle(s.session_id, isCurrent)
+                                if (e.key === 'Escape') { e.stopPropagation(); cancelEdit() }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full bg-slate-mid/40 border border-synapse/40 rounded px-2 py-0.5 text-sm text-text-primary outline-none focus:border-synapse/70"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span
+                                className={`truncate ${isCurrent ? 'text-text-primary font-medium' : 'text-text-secondary'}`}
+                              >
+                                {s.title || s.session_id.slice(0, 24)}
+                              </span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); startEdit(s) }}
+                                className="flex-none p-0.5 rounded text-text-muted opacity-0 group-hover/row:opacity-60 hover:!opacity-100 hover:text-synapse transition-opacity"
+                                title="Rename session"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Session ID */}
@@ -191,7 +280,7 @@ export function SessionPanel({
                             <span className="text-xs text-synapse font-medium">current</span>
                           ) : (
                             <span className="text-xs text-text-muted font-mono truncate block">
-                              {s.session_id.slice(0, 8)}
+                              {s.session_id.slice(0, 10)}
                             </span>
                           )}
                         </div>
@@ -202,7 +291,7 @@ export function SessionPanel({
                             {s.updated_at ? timeAgo(s.updated_at) : '-'}
                           </span>
                         </div>
-                      </button>
+                      </div>
                     )
                   })}
                 </div>
@@ -218,9 +307,9 @@ export function SessionPanel({
               </span>
               <button
                 onClick={onClose}
-                className="px-3 py-1 rounded-lg text-xs text-text-muted hover:text-text-secondary hover:bg-slate-mid/30 transition-colors"
+                className="px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-text-secondary hover:bg-slate-mid/30 transition-colors"
               >
-                Cancel
+                Close
               </button>
             </div>
           </div>

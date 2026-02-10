@@ -335,7 +335,7 @@ class TestBridgeState:
         bridge = ClaudeBridge()
         states = []
 
-        def on_state(state: BridgeState) -> None:
+        def on_state(state: BridgeState, detail: str = "") -> None:
             states.append(state)
 
         bridge.on_state_change(on_state)

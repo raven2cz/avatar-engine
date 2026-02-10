@@ -17,6 +17,7 @@ interface ProviderModelSelectorProps {
   currentModel: string | null
   switching: boolean
   activeOptions?: Record<string, string | number>
+  availableProviders?: Set<string> | null
   onSwitch: (provider: string, model?: string, options?: Record<string, string | number>) => void
 }
 
@@ -25,6 +26,7 @@ export function ProviderModelSelector({
   currentModel,
   switching,
   activeOptions = {},
+  availableProviders,
   onSwitch,
 }: ProviderModelSelectorProps) {
   const [open, setOpen] = useState(false)
@@ -93,6 +95,11 @@ export function ProviderModelSelector({
     setOptionValues((prev) => ({ ...prev, [key]: value }))
   }, [])
 
+  // Filter providers to only those available on this machine (null = show all)
+  const visibleProviders = availableProviders
+    ? PROVIDERS.filter((p) => availableProviders.has(p.id))
+    : PROVIDERS
+
   const providerConfig = getProvider(currentProvider)
   const selectedConfig = getProvider(selectedProvider)
   const models = getModelsForProvider(selectedProvider)
@@ -141,7 +148,7 @@ export function ProviderModelSelector({
             <span className="text-xs text-text-muted uppercase tracking-wide">Provider</span>
           </div>
           <div className="px-2 pb-2 space-y-0.5">
-            {PROVIDERS.map((p) => (
+            {visibleProviders.map((p) => (
               <button
                 key={p.id}
                 onClick={() => handleProviderClick(p.id)}

@@ -220,7 +220,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
 
     async def _start_acp(self) -> None:
         """Spawn codex-acp via connect_to_agent (official SDK API)."""
-        self._set_state(BridgeState.WARMING_UP)
+        self._set_state(BridgeState.WARMING_UP, "Spawning Codex ACP...")
 
         # Verify executable is available
         exe_bin = shutil.which(self.executable)
@@ -258,6 +258,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         )
 
         # Step 1: Initialize protocol with client capabilities
+        self._set_state(BridgeState.WARMING_UP, "Initializing ACP protocol...")
         init_resp = await asyncio.wait_for(
             self._acp_conn.initialize(
                 protocol_version=PROTOCOL_VERSION,
@@ -281,6 +282,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             self._provider_capabilities.can_load_session = True
 
         # Step 2: Authenticate
+        self._set_state(BridgeState.WARMING_UP, "Authenticating...")
         try:
             await asyncio.wait_for(
                 self._acp_conn.authenticate(method_id=self.auth_method),
@@ -305,6 +307,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 )
 
         # Step 3: Create or resume session
+        self._set_state(BridgeState.WARMING_UP, "Creating session...")
         mcp_servers_acp = self._build_mcp_servers_acp()
         await self._create_or_resume_acp_session(mcp_servers_acp)
 

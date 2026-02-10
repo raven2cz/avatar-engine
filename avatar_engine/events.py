@@ -107,6 +107,7 @@ class StateEvent(AvatarEvent):
     """
     old_state: Optional[BridgeState] = None
     new_state: Optional[BridgeState] = None
+    detail: str = ""  # Human-readable description of current init step
 
 
 @dataclass

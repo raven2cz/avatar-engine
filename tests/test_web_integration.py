@@ -93,6 +93,9 @@ def _make_mock_manager(provider="gemini"):
     manager.ws_bridge.broadcast_message = MagicMock()
     manager.ensure_started = AsyncMock(return_value=engine)
     manager.start = AsyncMock()
+    manager.prepare = AsyncMock()
+    manager.start_engine = AsyncMock()
+    manager.is_ready = True
     manager.shutdown = AsyncMock()
 
     return manager
@@ -375,7 +378,7 @@ class TestWebSocketLifecycle:
             with client.websocket_connect("/api/avatar/ws") as ws:
                 msg = ws.receive_json()
                 assert msg["type"] == "error"
-                assert "not started" in msg["data"]["error"].lower()
+                assert "not created" in msg["data"]["error"].lower()
 
 
 # ============================================================================

@@ -574,9 +574,9 @@ class TestACPStateMachine:
 
                     # Track state changes
                     original_set_state = bridge._set_state
-                    def track_state(state):
+                    def track_state(state, detail=""):
                         states.append(state)
-                        original_set_state(state)
+                        original_set_state(state, detail)
                     bridge._set_state = track_state
 
                     assert bridge.state == BridgeState.DISCONNECTED
