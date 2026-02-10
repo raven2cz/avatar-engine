@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { ChevronDown, Loader2 } from 'lucide-react'
-import { PROVIDERS, getProvider, getModelsForProvider, getOptionsForProvider, getFeaturedLabel } from '../config/providers'
+import { PROVIDERS, getProvider, getModelsForProvider, getOptionsForProvider, getFeaturedLabel, filterChoicesForModel } from '../config/providers'
 import type { ProviderOption } from '../config/providers'
 
 interface ProviderModelSelectorProps {
@@ -71,25 +71,40 @@ export function ProviderModelSelector({
     setOptionValues(providerId === currentProvider ? activeOptions : {})
   }, [currentProvider, activeOptions])
 
-  const getFlatOptions = useCallback(() => {
-    return Object.keys(optionValues).length > 0 ? optionValues : undefined
-  }, [optionValues])
+  /** Sanitize option values for a target model: reset choices invalid for that model. */
+  const sanitizeOptions = useCallback((model: string) => {
+    const opts = getOptionsForProvider(selectedProvider)
+    const sanitized = { ...optionValues }
+    for (const opt of opts) {
+      // Remove hidden options entirely (e.g. thinking_level for image models)
+      if (opt.hideForModelPattern && new RegExp(opt.hideForModelPattern, 'i').test(model)) {
+        delete sanitized[opt.key]
+        continue
+      }
+      if (opt.type !== 'select' || !opt.choices) continue
+      const valid = filterChoicesForModel(opt.choices, model)
+      if (sanitized[opt.key] !== undefined && !valid.some((c) => c.value === String(sanitized[opt.key]))) {
+        sanitized[opt.key] = opt.defaultValue as string | number
+      }
+    }
+    return Object.keys(sanitized).length > 0 ? sanitized : undefined
+  }, [selectedProvider, optionValues])
 
   const handleModelClick = useCallback((model: string) => {
-    onSwitch(selectedProvider, model, getFlatOptions())
+    onSwitch(selectedProvider, model, sanitizeOptions(model))
     setOpen(false)
     setCustomModel('')
-  }, [selectedProvider, onSwitch, getFlatOptions])
+  }, [selectedProvider, onSwitch, sanitizeOptions])
 
   const handleCustomSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
     const model = customModel.trim()
     if (model) {
-      onSwitch(selectedProvider, model, getFlatOptions())
+      onSwitch(selectedProvider, model, sanitizeOptions(model))
       setOpen(false)
       setCustomModel('')
     }
-  }, [selectedProvider, customModel, onSwitch, getFlatOptions])
+  }, [selectedProvider, customModel, onSwitch, sanitizeOptions])
 
   const handleOptionChange = useCallback((key: string, value: string | number) => {
     setOptionValues((prev) => ({ ...prev, [key]: value }))
@@ -106,6 +121,9 @@ export function ProviderModelSelector({
   const providerOptions = getOptionsForProvider(selectedProvider)
   const featuredLabel = getFeaturedLabel(currentProvider, activeOptions)
   const displayModel = currentModel || providerConfig?.defaultModel || null
+  // Model used to filter model-specific option choices (e.g. thinking levels)
+  const effectiveModel = (selectedProvider === currentProvider ? currentModel : null)
+    || selectedConfig?.defaultModel || null
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -227,10 +245,13 @@ export function ProviderModelSelector({
                 <span className="text-xs text-text-muted uppercase tracking-wide">Options</span>
               </div>
               <div className="px-2 pb-3 space-y-2.5">
-                {providerOptions.map((opt) => (
+                {providerOptions
+                  .filter((opt) => !opt.hideForModelPattern || !effectiveModel || !new RegExp(opt.hideForModelPattern, 'i').test(effectiveModel))
+                  .map((opt) => (
                   <OptionControl
                     key={opt.key}
                     option={opt}
+                    model={effectiveModel}
                     value={optionValues[opt.key]}
                     onChange={(val) => handleOptionChange(opt.key, val)}
                   />
@@ -246,14 +267,28 @@ export function ProviderModelSelector({
 
 function OptionControl({
   option,
+  model,
   value,
   onChange,
 }: {
   option: ProviderOption
+  model: string | null
   value: string | number | undefined
   onChange: (value: string | number) => void
 }) {
   const current = value ?? option.defaultValue
+
+  // Filter choices based on model (e.g. 'minimal'/'medium' only for Flash)
+  const filteredChoices = option.choices ? filterChoicesForModel(option.choices, model) : []
+
+  // Auto-reset if current value is no longer available
+  useEffect(() => {
+    if (option.type !== 'select' || !filteredChoices.length) return
+    const isValid = filteredChoices.some((c) => c.value === String(current))
+    if (!isValid) {
+      onChange(option.defaultValue as string | number)
+    }
+  }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="px-1">
@@ -261,9 +296,9 @@ function OptionControl({
         {option.label}
       </label>
 
-      {option.type === 'select' && option.choices && (
+      {option.type === 'select' && filteredChoices.length > 0 && (
         <div className="flex gap-0.5 rounded-lg bg-obsidian/50 p-0.5 border border-slate-mid/30">
-          {option.choices.map((c) => (
+          {filteredChoices.map((c) => (
             <button
               key={c.value}
               onClick={() => onChange(c.value)}

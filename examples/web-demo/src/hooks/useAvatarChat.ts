@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChatAttachment, ChatMessage, ServerMessage, ToolInfo, UploadedFile } from '../api/types'
 import { useAvatarWebSocket } from './useAvatarWebSocket'
 import { useFileUpload } from './useFileUpload'
-import { buildOptionsDict } from '../config/providers'
+import { buildOptionsDict, isImageModel } from '../config/providers'
 
 // REST API base — matches Vite proxy config
 const API_BASE =
@@ -297,9 +297,22 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
     currentAssistantIdRef.current = null
     setIsStreaming(false)
     setActiveOptions(flatOptions && Object.keys(flatOptions).length > 0 ? flatOptions : {})
-    const builtOptions = flatOptions && Object.keys(flatOptions).length > 0
-      ? buildOptionsDict(provider, flatOptions)
-      : undefined
+
+    let builtOptions: Record<string, unknown> | undefined =
+      flatOptions && Object.keys(flatOptions).length > 0
+        ? buildOptionsDict(provider, flatOptions)
+        : undefined
+
+    // Auto-inject response_modalities for image generation models.
+    // Must be nested under generation_config for proper routing to bridge.
+    if (model && isImageModel(model)) {
+      const genCfg = ((builtOptions?.generation_config ?? {}) as Record<string, unknown>)
+      builtOptions = {
+        ...(builtOptions ?? {}),
+        generation_config: { ...genCfg, response_modalities: 'TEXT,IMAGE' },
+      }
+    }
+
     wsSwitch(provider, model, builtOptions)
   }, [wsSwitch])
 

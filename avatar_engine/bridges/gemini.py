@@ -843,17 +843,24 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
 
         Zero Footprint: uses env vars to point Gemini CLI to temp config.
         Host application's .gemini/settings.json and GEMINI.md are untouched.
+
+        ACP mode uses two settings mechanisms:
+          - ``customOverrides`` (array): generateContentConfig applied AFTER
+            alias resolution — preserves the entire built-in alias chain.
+          - ``customAliases``: model routing only (when non-default model).
+
+        Runtime config methods (setSessionConfigOption, setSessionModel)
+        are NOT implemented by gemini-cli.
+
+        NEVER set ``model.name`` in ACP mode — it bypasses the entire alias
+        chain and causes "Internal error" from the API.
         """
         self._sandbox = ConfigSandbox()
 
         settings: Dict[str, Any] = {}
 
-        # Model name — only set for oneshot mode.
-        # ACP mode: let gemini-cli use its default alias chain ("auto-gemini-3"
-        # → "gemini-3-pro-preview") which carries proper generateContentConfig
-        # (thinkingConfig, temperature, etc.). Setting model.name as system
-        # settings (highest priority) bypasses this chain and can cause
-        # "Internal error" from the API.
+        # model.name — only for oneshot mode.
+        # ACP: NEVER set model.name (bypasses alias chain → "Internal error").
         if not self.acp_enabled and self.model:
             settings["model"] = {"name": self.model}
 
@@ -866,21 +873,60 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                     mcp[name]["env"] = srv["env"]
             settings["mcpServers"] = mcp
 
-        # Model configuration with thinking and generation parameters
-        # NOTE: customAliases breaks ACP mode with "Internal error", so we only
-        # use it for oneshot mode. ACP mode uses default model settings.
-        if not self.acp_enabled and (self.model or self.generation_config):
+        # Model configuration with thinking and generation parameters.
+        #
+        # ACP mode uses TWO mechanisms (runtime methods not implemented):
+        #   - customAliases: model routing (only when non-default model)
+        #   - customOverrides: generateContentConfig (applied AFTER alias
+        #     resolution — does NOT replace built-in alias chain)
+        #
+        # Oneshot mode: model.name (above) handles model selection;
+        #   customAliases provides generateContentConfig overrides.
+        if self.model or self.generation_config:
             gen_cfg = self._build_generation_config()
             if gen_cfg:
-                settings["modelConfigs"] = {
-                    "customAliases": {
-                        self.model: {
+                if self.acp_enabled:
+                    model_configs: Dict[str, Any] = {}
+                    actual_model = self.model or "gemini-3-pro-preview"
+
+                    # Model routing: customAliases to override default terminal
+                    # alias. Only needed for non-default models.
+                    if self.model and self.model != "gemini-3-pro-preview":
+                        extends_base = self._get_base_alias()
+                        alias_entry: Dict[str, Any] = {
+                            "modelConfig": {"model": actual_model}
+                        }
+                        if extends_base:
+                            alias_entry["extends"] = extends_base
+                        model_configs["customAliases"] = {
+                            "gemini-3-pro-preview": alias_entry
+                        }
+
+                    # Config overrides: customOverrides applied AFTER alias
+                    # resolution. This preserves the entire built-in alias chain
+                    # (base → chat-base → chat-base-3 → gemini-3-pro-preview)
+                    # and only overrides specific generateContentConfig fields.
+                    model_configs["customOverrides"] = [
+                        {
+                            "match": {"model": actual_model},
                             "modelConfig": {
-                                "generateContentConfig": gen_cfg
+                                "generateContentConfig": gen_cfg,
+                            },
+                        }
+                    ]
+
+                    settings["modelConfigs"] = model_configs
+                else:
+                    # Oneshot: existing behavior (model.name handles selection)
+                    settings["modelConfigs"] = {
+                        "customAliases": {
+                            self.model: {
+                                "modelConfig": {
+                                    "generateContentConfig": gen_cfg
+                                }
                             }
                         }
                     }
-                }
 
         # Only write settings file if there's something to write
         if settings:
@@ -895,6 +941,26 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             )
         else:
             self._system_prompt_path = None
+
+    def _get_base_alias(self) -> Optional[str]:
+        """Determine the correct built-in base alias for the extends chain.
+
+        Gemini CLI's built-in alias chain:
+            base → chat-base → chat-base-3  (Gemini 3: thinkingLevel)
+                              → chat-base-2.5 (Gemini 2.5: thinkingBudget)
+
+        Image models have no built-in alias — they need explicit config.
+        """
+        model = self.model.lower() if self.model else ""
+        if not model:
+            return "chat-base-3"  # default gemini-cli model is gemini-3
+        if "image" in model:
+            return None  # image models need their own config, no extends
+        if "gemini-3" in model or "gemini3" in model:
+            return "chat-base-3"
+        if "gemini-2.5" in model:
+            return "chat-base-2.5"
+        return "chat-base"  # generic fallback
 
     def _build_generation_config(self) -> Dict[str, Any]:
         """Build generateContentConfig dict from generation_config."""
@@ -912,18 +978,28 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         if "max_output_tokens" in self.generation_config:
             gen_cfg["maxOutputTokens"] = self.generation_config["max_output_tokens"]
 
-        # Build thinkingConfig for Gemini 3 models
-        thinking_cfg: Dict[str, Any] = {}
-        if "thinking_level" in self.generation_config:
-            level = self.generation_config["thinking_level"].upper()
-            thinking_cfg["thinkingLevel"] = level
-        if "include_thoughts" in self.generation_config:
-            thinking_cfg["includeThoughts"] = self.generation_config[
-                "include_thoughts"
-            ]
+        # Response modalities for image generation models
+        if "response_modalities" in self.generation_config:
+            val = self.generation_config["response_modalities"]
+            if isinstance(val, str):
+                val = [v.strip().upper() for v in val.split(",")]
+            gen_cfg["responseModalities"] = val
 
-        if thinking_cfg:
-            gen_cfg["thinkingConfig"] = thinking_cfg
+        # Build thinkingConfig for Gemini 3 models (skip for image models —
+        # they don't support thinking and the API returns "Internal error").
+        is_image_model = self.model and "image" in self.model.lower()
+        if not is_image_model:
+            thinking_cfg: Dict[str, Any] = {}
+            if "thinking_level" in self.generation_config:
+                level = self.generation_config["thinking_level"].upper()
+                thinking_cfg["thinkingLevel"] = level
+            if "include_thoughts" in self.generation_config:
+                thinking_cfg["includeThoughts"] = self.generation_config[
+                    "include_thoughts"
+                ]
+
+            if thinking_cfg:
+                gen_cfg["thinkingConfig"] = thinking_cfg
 
         return gen_cfg
 

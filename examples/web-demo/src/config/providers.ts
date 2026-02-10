@@ -16,8 +16,10 @@ export interface ProviderOption {
   key: string
   label: string
   type: 'select' | 'slider' | 'number'
-  /** For select type */
-  choices?: { value: string; label: string }[]
+  /** For select type. modelPattern (regex) restricts a choice to matching models. */
+  choices?: { value: string; label: string; modelPattern?: string }[]
+  /** Hide entire option when model matches this regex (e.g. image models). */
+  hideForModelPattern?: string
   /** For slider/number type */
   min?: number
   max?: number
@@ -54,6 +56,10 @@ export const PROVIDERS: ProviderConfig[] = [
       'gemini-3-flash-preview',
       'gemini-2.5-flash',
       'gemini-2.5-flash-lite',
+      // Image generation: default model (gemini-3-pro-preview) supports
+      // native image gen via Nano Banana — just ask it to draw/generate.
+      // Dedicated image models are NOT available on cloudcode-pa API
+      // (used by gemini-cli), so they are not listed here.
     ],
     gradient: 'from-blue-500/20 to-cyan-500/20 border-blue-400/40',
     dotColor: 'bg-blue-400',
@@ -62,10 +68,11 @@ export const PROVIDERS: ProviderConfig[] = [
         key: 'thinking_level',
         label: 'Thinking Level',
         type: 'select',
+        hideForModelPattern: 'image',
         choices: [
-          { value: 'minimal', label: 'Minimal' },
+          { value: 'minimal', label: 'Minimal', modelPattern: 'flash' },
           { value: 'low', label: 'Low' },
-          { value: 'medium', label: 'Medium' },
+          { value: 'medium', label: 'Medium', modelPattern: 'flash' },
           { value: 'high', label: 'High' },
         ],
         defaultValue: 'high',
@@ -151,6 +158,23 @@ export function getModelsForProvider(id: string): string[] {
 
 export function getOptionsForProvider(id: string): ProviderOption[] {
   return getProvider(id)?.options ?? []
+}
+
+export function isImageModel(model: string): boolean {
+  return /image/i.test(model)
+}
+
+/**
+ * Filter select choices by model. Choices with a modelPattern are only
+ * included when the model matches the pattern (case-insensitive regex).
+ */
+export function filterChoicesForModel(
+  choices: NonNullable<ProviderOption['choices']>,
+  model: string | null,
+): NonNullable<ProviderOption['choices']> {
+  return choices.filter(
+    (c) => !c.modelPattern || (model && new RegExp(c.modelPattern, 'i').test(model)),
+  )
 }
 
 /**

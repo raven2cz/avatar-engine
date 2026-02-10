@@ -175,8 +175,8 @@ class TestGeminiBridgeZeroFootprint:
         assert data["model"]["name"] == "gemini-3-pro-preview"
         bridge._sandbox.cleanup()
 
-    def test_sandbox_no_settings_acp(self, tmp_path):
-        """ACP mode should NOT write settings — uses gemini-cli defaults."""
+    def test_sandbox_has_settings_acp(self, tmp_path):
+        """ACP mode writes customOverrides for generation config."""
         bridge = GeminiBridge(
             model="gemini-3-pro-preview",
             acp_enabled=True,
@@ -185,7 +185,16 @@ class TestGeminiBridgeZeroFootprint:
         bridge._setup_config_files()
 
         assert bridge._sandbox is not None
-        assert bridge._gemini_settings_path is None
+        assert bridge._gemini_settings_path is not None
+        data = json.loads(bridge._gemini_settings_path.read_text())
+        # Must have customOverrides but NOT model.name
+        assert "model" not in data
+        assert "modelConfigs" in data
+        overrides = data["modelConfigs"]["customOverrides"]
+        assert len(overrides) == 1
+        assert overrides[0]["match"]["model"] == "gemini-3-pro-preview"
+        # Default model → no customAliases
+        assert "customAliases" not in data["modelConfigs"]
         bridge._sandbox.cleanup()
 
     def test_sandbox_has_system_prompt(self, tmp_path):
@@ -216,8 +225,8 @@ class TestGeminiBridgeZeroFootprint:
         assert Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).exists()
         bridge._sandbox.cleanup()
 
-    def test_env_no_system_settings_path_acp(self, tmp_path):
-        """ACP mode must NOT set GEMINI_CLI_SYSTEM_SETTINGS_PATH."""
+    def test_env_has_system_settings_path_acp(self, tmp_path):
+        """ACP mode sets GEMINI_CLI_SYSTEM_SETTINGS_PATH for customAliases."""
         bridge = GeminiBridge(
             model="gemini-3-pro-preview",
             acp_enabled=True,
@@ -226,7 +235,8 @@ class TestGeminiBridgeZeroFootprint:
         bridge._setup_config_files()
         env = bridge._build_subprocess_env()
 
-        assert "GEMINI_CLI_SYSTEM_SETTINGS_PATH" not in env
+        assert "GEMINI_CLI_SYSTEM_SETTINGS_PATH" in env
+        assert Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).exists()
         bridge._sandbox.cleanup()
 
     def test_env_has_system_md_when_prompt_set(self, tmp_path):
@@ -251,8 +261,8 @@ class TestGeminiBridgeZeroFootprint:
         assert "GEMINI_SYSTEM_MD" not in env
         bridge._sandbox.cleanup()
 
-    def test_acp_settings_no_file(self, tmp_path):
-        """ACP mode must not write settings file at all."""
+    def test_acp_settings_has_custom_overrides(self, tmp_path):
+        """ACP mode writes settings with customOverrides for generation config."""
         bridge = GeminiBridge(
             model="gemini-3-pro-preview",
             acp_enabled=True,
@@ -261,8 +271,14 @@ class TestGeminiBridgeZeroFootprint:
         )
         bridge._setup_config_files()
 
-        assert bridge._gemini_settings_path is None
-        assert not (bridge._sandbox.root / "gemini-settings.json").exists()
+        assert bridge._gemini_settings_path is not None
+        data = json.loads(bridge._gemini_settings_path.read_text())
+        overrides = data["modelConfigs"]["customOverrides"]
+        assert overrides[0]["modelConfig"]["generateContentConfig"]["temperature"] == 0.5
+        # Default model → no customAliases
+        assert "customAliases" not in data["modelConfigs"]
+        # model.name must NOT be in top-level
+        assert "model" not in data
         bridge._sandbox.cleanup()
 
     def test_oneshot_settings_have_custom_aliases(self, tmp_path):
@@ -284,7 +300,7 @@ class TestGeminiBridgeZeroFootprint:
         bridge._sandbox.cleanup()
 
     def test_acp_settings_no_mcp_servers(self, tmp_path):
-        """ACP mode must NOT write settings at all (MCP passed via protocol)."""
+        """ACP mode without model/gen_config writes no settings (MCP via protocol)."""
         bridge = GeminiBridge(
             acp_enabled=True,
             mcp_servers={"tools": {"command": "python", "args": ["t.py"]}},
