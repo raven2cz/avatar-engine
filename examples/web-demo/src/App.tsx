@@ -8,6 +8,7 @@
 import { StatusBar } from './components/StatusBar'
 import { ChatPanel } from './components/ChatPanel'
 import { CostTracker } from './components/CostTracker'
+import { AvatarWidget } from './components/AvatarWidget'
 import { useAvatarChat } from './hooks/useAvatarChat'
 import { useAvailableProviders } from './hooks/useAvailableProviders'
 
@@ -50,6 +51,20 @@ export default function App() {
   } = useAvatarChat(WS_URL)
 
   return (
+    <AvatarWidget
+      messages={messages}
+      sendMessage={sendMessage}
+      stopResponse={stopResponse}
+      isStreaming={isStreaming}
+      connected={connected}
+      provider={provider}
+      model={model}
+      engineState={engineState}
+      pendingFiles={pendingFiles}
+      uploading={uploading}
+      uploadFile={uploadFile}
+      removeFile={removeFile}
+    >
     <div className="min-h-screen bg-obsidian flex flex-col">
       <StatusBar
         connected={connected}
@@ -114,5 +129,6 @@ export default function App() {
         </footer>
       )}
     </div>
+    </AvatarWidget>
   )
 }

@@ -1,0 +1,117 @@
+/**
+ * Compact mode message list — smaller fonts, avatars, and padding.
+ * Simplified tool/thinking indicators.
+ */
+
+import { useEffect, useRef } from 'react'
+import type { ChatMessage } from '../api/types'
+import { MarkdownContent } from './MarkdownContent'
+
+interface CompactMessagesProps {
+  messages: ChatMessage[]
+}
+
+function CompactBubble({ message }: { message: ChatMessage }) {
+  const isUser = message.role === 'user'
+
+  return (
+    <div className={`flex gap-1.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+      {/* Compact avatar */}
+      <div
+        className={`flex-shrink-0 w-5 h-5 rounded-md flex items-center justify-center mt-0.5 text-[0.5rem] font-semibold ${
+          isUser
+            ? 'bg-gradient-to-br from-synapse to-pulse text-white'
+            : 'bg-slate-mid border border-slate-mid/50 text-synapse'
+        }`}
+      >
+        {isUser ? 'U' : 'A'}
+      </div>
+
+      {/* Message body */}
+      <div className={`max-w-[85%] min-w-0 ${isUser ? 'text-right' : 'text-left'}`}>
+        <div
+          className={`inline-block rounded-xl px-2.5 py-1.5 text-left ${
+            isUser
+              ? 'bg-gradient-to-r from-synapse/15 to-pulse/15 border border-synapse/15 rounded-tr-sm'
+              : 'bg-slate-mid/40 border border-slate-mid/20 rounded-tl-sm'
+          }`}
+        >
+          {/* Simplified thinking: just 3 dots */}
+          {message.thinking && !message.thinking.isComplete && (
+            <div className="flex items-center gap-1 py-0.5">
+              <span className="text-[0.65rem] text-synapse font-medium">Thinking</span>
+              <div className="flex gap-0.5">
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className="w-1 h-1 rounded-full bg-synapse animate-pulse"
+                    style={{ animationDelay: `${i * 0.15}s` }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Simplified tool display: count + icon */}
+          {message.tools.length > 0 && (
+            <div className="flex items-center gap-1 text-[0.6rem] text-neural mb-0.5">
+              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" d="M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l5.652-4.655M17.5 6.5l-1 1" />
+                <path d="M15.5 8.5l4.586-4.586a2 2 0 0 1 2.828 2.828L18.33 11.41" />
+              </svg>
+              <span>{message.tools.length} tool{message.tools.length > 1 ? 's' : ''}</span>
+              {message.tools.some((t) => t.status === 'started') && (
+                <span className="w-1.5 h-1.5 rounded-full bg-neural animate-pulse" />
+              )}
+            </div>
+          )}
+
+          {/* Text content */}
+          {message.content && (
+            <div className="text-[0.75rem] leading-relaxed text-text-primary break-words compact-markdown">
+              {isUser ? (
+                <div className="whitespace-pre-wrap">{message.content}</div>
+              ) : (
+                <MarkdownContent content={message.content} />
+              )}
+            </div>
+          )}
+
+          {/* Streaming cursor */}
+          {message.isStreaming && !message.content && !message.thinking && (
+            <div className="flex items-center gap-1 py-0.5">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="w-1 h-1 rounded-full bg-synapse animate-pulse"
+                  style={{ animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function CompactMessages({ messages }: CompactMessagesProps) {
+  const endRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  return (
+    <div className="compact-messages flex-1 min-h-0 overflow-y-auto px-3 py-2 flex flex-col gap-1.5 scroll-smooth">
+      {messages.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-[0.7rem] text-text-muted">Start a conversation...</p>
+        </div>
+      ) : (
+        messages.map((msg) => <CompactBubble key={msg.id} message={msg} />)
+      )}
+      <div ref={endRef} />
+    </div>
+  )
+}

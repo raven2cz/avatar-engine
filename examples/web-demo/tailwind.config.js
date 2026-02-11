@@ -39,6 +39,11 @@ export default {
         'twinkle': 'twinkle 2s ease-in-out infinite',
         'spin-galaxy': 'galaxy-spin 14s linear infinite',
         'spin-galaxy-fast': 'galaxy-spin 8s linear infinite',
+        // Bust animations (compact mode avatar)
+        'bust-breathe': 'bust-breathe 3.5s ease-in-out infinite',
+        'bust-thinking': 'bust-thinking 3s ease-in-out infinite',
+        'bust-speaking': 'bust-speaking 2s ease-in-out infinite',
+        'bust-shake': 'bust-shake 0.6s ease-in-out',
       },
       keyframes: {
         breathe: {
@@ -88,6 +93,29 @@ export default {
         'galaxy-spin': {
           '0%': { transform: 'rotate(0deg)' },
           '100%': { transform: 'rotate(360deg)' },
+        },
+        // Bust keyframes
+        'bust-breathe': {
+          '0%, 100%': { transform: 'translateY(2.8%) scale(1)' },
+          '50%': { transform: 'translateY(calc(2.8% - 4px)) scale(1.006)' },
+        },
+        'bust-thinking': {
+          '0%, 100%': { transform: 'translateY(2.8%) rotate(0deg)' },
+          '30%': { transform: 'translateY(calc(2.8% - 7px)) rotate(-1.2deg)' },
+          '70%': { transform: 'translateY(calc(2.8% - 3px)) rotate(0.8deg)' },
+        },
+        'bust-speaking': {
+          '0%, 100%': { transform: 'translateY(2.8%) scale(1)' },
+          '50%': { transform: 'translateY(2.8%) scale(1.015)' },
+        },
+        'bust-shake': {
+          '0%, 100%': { transform: 'translateY(2.8%) translateX(0)' },
+          '15%': { transform: 'translateY(2.8%) translateX(-8px)' },
+          '30%': { transform: 'translateY(2.8%) translateX(8px)' },
+          '45%': { transform: 'translateY(2.8%) translateX(-6px)' },
+          '60%': { transform: 'translateY(2.8%) translateX(6px)' },
+          '75%': { transform: 'translateY(2.8%) translateX(-3px)' },
+          '90%': { transform: 'translateY(2.8%) translateX(3px)' },
         },
       },
       backdropBlur: {

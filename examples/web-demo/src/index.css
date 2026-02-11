@@ -115,3 +115,88 @@
   color: #64748b;
   text-decoration: line-through;
 }
+
+/* ===========================
+   COMPACT MODE — scrollbar & markdown overrides
+   =========================== */
+
+/* Compact messages scrollbar — wider, inset thumb */
+.compact-messages {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(58, 58, 90, 0.5) transparent;
+}
+.compact-messages::-webkit-scrollbar { width: 8px; }
+.compact-messages::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px 0;
+}
+.compact-messages::-webkit-scrollbar-thumb {
+  background: rgba(58, 58, 90, 0.5);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.compact-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.45);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Compact markdown — smaller fonts, tighter spacing */
+.compact-markdown .markdown-body {
+  line-height: 1.5;
+}
+.compact-markdown .markdown-body pre {
+  padding: 0.6rem;
+  font-size: 0.7rem;
+  border-radius: 0.5rem;
+}
+.compact-markdown .markdown-body code {
+  font-size: 0.75em;
+}
+.compact-markdown .markdown-body p {
+  margin-bottom: 0.4em;
+}
+.compact-markdown .markdown-body h1,
+.compact-markdown .markdown-body h2,
+.compact-markdown .markdown-body h3 {
+  margin-top: 0.6em;
+  margin-bottom: 0.3em;
+}
+.compact-markdown .markdown-body ul,
+.compact-markdown .markdown-body ol {
+  padding-left: 1.2em;
+  margin-bottom: 0.4em;
+}
+
+/* ===========================
+   BUST ANIMATION STATES (CSS keyframes)
+   =========================== */
+
+@keyframes bust-breathe {
+  0%, 100% { transform: translateY(2.8%) scale(1); }
+  50% { transform: translateY(calc(2.8% - 4px)) scale(1.006); }
+}
+@keyframes bust-thinking {
+  0%, 100% { transform: translateY(2.8%) rotate(0deg); }
+  30% { transform: translateY(calc(2.8% - 7px)) rotate(-1.2deg); }
+  70% { transform: translateY(calc(2.8% - 3px)) rotate(0.8deg); }
+}
+@keyframes bust-speaking {
+  0%, 100% { transform: translateY(2.8%) scale(1); }
+  50% { transform: translateY(2.8%) scale(1.015); }
+}
+@keyframes bust-shake {
+  0%, 100% { transform: translateY(2.8%) translateX(0); }
+  15% { transform: translateY(2.8%) translateX(-8px); }
+  30% { transform: translateY(2.8%) translateX(8px); }
+  45% { transform: translateY(2.8%) translateX(-6px); }
+  60% { transform: translateY(2.8%) translateX(6px); }
+  75% { transform: translateY(2.8%) translateX(-3px); }
+  90% { transform: translateY(2.8%) translateX(3px); }
+}
+
+[data-state="idle"] { animation: bust-breathe 3.5s ease-in-out infinite; }
+[data-state="thinking"] { animation: bust-thinking 3s ease-in-out infinite; }
+[data-state="speaking"] { animation: bust-speaking 2s ease-in-out infinite; }
+[data-state="error"] { animation: bust-shake 0.6s ease-in-out; }
