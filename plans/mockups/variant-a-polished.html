@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avatar Engine — Companion Drawer (Polished Demo)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --obsidian: #0a0a0f;
+    --slate-darker: #0f0f17;
+    --slate-deep: #12121a;
+    --slate-base: #13131b;
+    --slate-dark: #16161f;
+    --slate-mid: #1a1a2e;
+    --slate-light: #2a2a42;
+    --slate-lighter: #3a3a5a;
+    --synapse: #6366f1;
+    --synapse-dim: rgba(99, 102, 241, 0.15);
+    --pulse: #8b5cf6;
+    --neural: #06b6d4;
+    --emerald: #10b981;
+    --rose: #f43f5e;
+    --amber: #f59e0b;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --glass-bg: rgba(12, 12, 20, 0.92);
+    --glass-bg-light: rgba(18, 18, 26, 0.85);
+    --glass-border: rgba(42, 42, 66, 0.5);
+    --glass-border-light: rgba(52, 52, 76, 0.4);
+
+    --compact-height: 420px;
+    --bust-width: 230px;
+    --transition-fast: 0.2s;
+    --transition-normal: 0.35s;
+    --transition-slow: 0.5s;
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--obsidian);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ===========================
+     HOST APPLICATION (simulated)
+     =========================== */
+  .host-app {
+    height: 100vh;
+    background:
+      radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(6, 182, 212, 0.06) 0%, transparent 50%),
+      linear-gradient(180deg, #0f1018 0%, #131320 50%, #0f1018 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: padding-bottom var(--transition-slow) var(--ease-out-expo);
+    position: relative;
+  }
+  .host-app.has-drawer { padding-bottom: var(--compact-height); }
+  .host-app.fullscreen-active { padding-bottom: 0; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+
+  .host-content { text-align: center; opacity: 0.5; user-select: none; }
+  .host-content h1 {
+    font-size: 2.8rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, var(--synapse) 0%, var(--neural) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.02em;
+  }
+  .host-content p { color: var(--text-muted); font-size: 1rem; line-height: 1.6; }
+  .host-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 180px);
+    gap: 14px;
+    margin-top: 2rem;
+  }
+  .host-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    padding: 24px 16px;
+    text-align: center;
+    transition: all var(--transition-fast) ease;
+  }
+  .host-card:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); transform: translateY(-2px); }
+  .host-card-icon { font-size: 2rem; margin-bottom: 0.5rem; filter: grayscale(0.3); }
+  .host-card-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+
+  /* ===========================
+     FAB BUTTON
+     =========================== */
+  .fab {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--slate-dark);
+    border: 1px solid var(--glass-border);
+    cursor: pointer;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    transition: all 0.3s var(--ease-out-back);
+    overflow: hidden;
+    opacity: 0.6;
+  }
+  .fab:hover {
+    opacity: 1;
+    transform: scale(1.06);
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow:
+      0 6px 24px rgba(0, 0, 0, 0.5),
+      0 0 0 2px rgba(99, 102, 241, 0.12);
+  }
+  .fab:active { transform: scale(0.95); opacity: 1; }
+  .fab.hidden {
+    transform: scale(0);
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.25s ease-in;
+  }
+  .fab-avatar-thumb {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center 10%;
+    border: 2px solid rgba(255,255,255,0.1);
+  }
+
+  /* ===========================
+     DRAWER (COMPACT MODE)
+     =========================== */
+  .drawer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: var(--compact-width, 1030px);
+    max-width: 100%;
+    height: var(--compact-height);
+    z-index: 999;
+    display: flex;
+    transform: translateY(100%);
+    transition: transform var(--transition-slow) var(--ease-out-expo);
+    /* Allow bust to overflow above */
+    overflow: visible;
+  }
+  .drawer.open {
+    transform: translateY(0);
+  }
+
+  /* ==============================
+     RESIZE HANDLE (vroubkování)
+     ============================== */
+  .resize-handle {
+    position: absolute;
+    top: -14px;
+    left: var(--bust-width);
+    right: 0;
+    height: 28px;
+    cursor: ns-resize;
+    z-index: 1002;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .resize-handle-visual {
+    width: 72px;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--slate-light);
+    position: relative;
+    transition: all var(--transition-fast) ease;
+    /* Vroubkování pattern */
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 3px,
+      rgba(255,255,255,0.08) 3px,
+      rgba(255,255,255,0.08) 5px
+    );
+    background-color: var(--slate-light);
+  }
+  .resize-handle:hover .resize-handle-visual,
+  .resize-handle.active .resize-handle-visual {
+    width: 96px;
+    background-color: var(--synapse);
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 3px,
+      rgba(255,255,255,0.2) 3px,
+      rgba(255,255,255,0.2) 5px
+    );
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+  }
+
+  /* ==============================
+     RESIZE HANDLE RIGHT (horizontal)
+     ============================== */
+  .resize-handle-right {
+    position: absolute;
+    top: 0;
+    right: -24px;
+    bottom: 0;
+    width: 24px;
+    cursor: ew-resize;
+    z-index: 1002;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .resize-handle-right-visual {
+    width: 8px;
+    height: 72px;
+    border-radius: 4px;
+    background: var(--slate-light);
+    position: relative;
+    transition: all var(--transition-fast) ease;
+    /* Vertikální vroubkování */
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(255,255,255,0.08) 3px,
+      rgba(255,255,255,0.08) 5px
+    );
+    background-color: var(--slate-light);
+  }
+  .resize-handle-right:hover .resize-handle-right-visual,
+  .resize-handle-right.active .resize-handle-right-visual {
+    height: 96px;
+    background-color: var(--synapse);
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(255,255,255,0.2) 3px,
+      rgba(255,255,255,0.2) 5px
+    );
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+  }
+
+  /* ===========================
+     AVATAR BUST AREA
+     =========================== */
+  .bust-area {
+    width: var(--bust-width);
+    position: relative;
+    flex-shrink: 0;
+    overflow: visible;
+    z-index: 1001;
+  }
+
+  .bust-container {
+    position: absolute;
+    bottom: 0;
+    left: 14px;
+    width: 200px;
+    height: auto;
+    /* Only clip ~2.8% at very bottom — waist-level, like kokoro */
+    transform: translateY(2.8%);
+    transition: transform var(--transition-slow) ease;
+  }
+
+  /* Canvas for sprite sheet rendering */
+  .bust-canvas {
+    width: 200px;
+    height: auto;
+    display: block;
+    transition: filter var(--transition-slow) ease;
+    filter: drop-shadow(3px 3px 12px rgba(0,0,0,0.6));
+  }
+
+  /* ===== BUST ANIMATION STATES ===== */
+  .bust-container[data-state="idle"] {
+    animation: bust-breathe 3.5s ease-in-out infinite;
+  }
+  .bust-container[data-state="thinking"] {
+    animation: bust-thinking 3s ease-in-out infinite;
+  }
+  .bust-container[data-state="thinking"] .bust-canvas {
+    filter: drop-shadow(0 0 18px rgba(99, 102, 241, 0.45))
+            drop-shadow(3px 3px 12px rgba(0,0,0,0.6));
+  }
+  .bust-container[data-state="speaking"] {
+    animation: bust-speaking 2s ease-in-out infinite;
+  }
+  .bust-container[data-state="speaking"] .bust-canvas {
+    filter: drop-shadow(0 0 22px rgba(139, 92, 246, 0.45))
+            drop-shadow(3px 3px 12px rgba(0,0,0,0.6));
+  }
+  .bust-container[data-state="error"] {
+    animation: bust-shake 0.6s ease-in-out;
+  }
+  .bust-container[data-state="error"] .bust-canvas {
+    filter: drop-shadow(0 0 16px rgba(244, 63, 94, 0.5))
+            drop-shadow(3px 3px 12px rgba(0,0,0,0.6));
+  }
+
+  @keyframes bust-breathe {
+    0%, 100% { transform: translateY(2.8%) scale(1); }
+    50% { transform: translateY(calc(2.8% - 4px)) scale(1.006); }
+  }
+  @keyframes bust-thinking {
+    0%, 100% { transform: translateY(2.8%) rotate(0deg); }
+    30% { transform: translateY(calc(2.8% - 7px)) rotate(-1.2deg); }
+    70% { transform: translateY(calc(2.8% - 3px)) rotate(0.8deg); }
+  }
+  @keyframes bust-speaking {
+    0%, 100% { transform: translateY(2.8%) scale(1); }
+    50% { transform: translateY(2.8%) scale(1.015); }
+  }
+  @keyframes bust-shake {
+    0%, 100% { transform: translateY(2.8%) translateX(0); }
+    15% { transform: translateY(2.8%) translateX(-8px); }
+    30% { transform: translateY(2.8%) translateX(8px); }
+    45% { transform: translateY(2.8%) translateX(-6px); }
+    60% { transform: translateY(2.8%) translateX(6px); }
+    75% { transform: translateY(2.8%) translateX(-3px); }
+    90% { transform: translateY(2.8%) translateX(3px); }
+  }
+
+  /* Glow pool under bust */
+  .bust-glow {
+    position: absolute;
+    bottom: 2%;
+    left: 50%;
+    transform: translateX(-40%);
+    width: 180px;
+    height: 50px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(99,102,241,0.25) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity var(--transition-slow) ease;
+    pointer-events: none;
+    filter: blur(10px);
+  }
+  .bust-container[data-state="thinking"] ~ .bust-glow,
+  .bust-container[data-state="speaking"] ~ .bust-glow {
+    opacity: 1;
+    animation: glow-breathe 2.5s ease-in-out infinite;
+  }
+  .bust-container[data-state="speaking"] ~ .bust-glow {
+    background: radial-gradient(ellipse, rgba(139,92,246,0.25) 0%, transparent 70%);
+  }
+  .bust-container[data-state="error"] ~ .bust-glow {
+    opacity: 1;
+    background: radial-gradient(ellipse, rgba(244,63,94,0.2) 0%, transparent 70%);
+  }
+  @keyframes glow-breathe {
+    0%, 100% { opacity: 0.6; transform: translateX(-40%) scaleX(1); }
+    50% { opacity: 1; transform: translateX(-40%) scaleX(1.25); }
+  }
+
+  /* ===========================
+     CHARACTER PICKER (overlay)
+     =========================== */
+  .char-picker-btn {
+    position: absolute;
+    bottom: 3.6%;
+    left: 13px;
+    transform: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all var(--transition-fast) ease;
+    z-index: 1002;
+  }
+  .bust-area:hover .char-picker-btn { opacity: 1; }
+  .char-picker-btn:hover {
+    background: rgba(99, 102, 241, 0.3);
+    border-color: var(--synapse);
+    color: white;
+    transform: scale(1.1);
+  }
+
+  .char-picker-popup {
+    position: absolute;
+    bottom: 11.6%;
+    left: 13px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 10px;
+    display: flex;
+    gap: 8px;
+    z-index: 1003;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    transform: scale(0.8) translateY(10px);
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.25s var(--ease-out-back);
+  }
+  .char-picker-popup.open {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+    pointer-events: all;
+  }
+  .char-thumb {
+    width: 48px;
+    height: 72px;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    overflow: hidden;
+    transition: all var(--transition-fast) ease;
+    position: relative;
+  }
+  .char-thumb:hover { border-color: var(--synapse); transform: scale(1.08); }
+  .char-thumb.active { border-color: var(--synapse); box-shadow: 0 0 12px rgba(99,102,241,0.3); }
+  .char-thumb canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+  }
+  .char-thumb-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    font-size: 0.5rem;
+    text-align: center;
+    background: rgba(0,0,0,0.6);
+    color: var(--text-secondary);
+    padding: 1px 0;
+    font-weight: 500;
+  }
+
+  /* ===========================
+     CHAT PANEL
+     =========================== */
+  .chat-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px) saturate(130%);
+    border-top: 1px solid var(--glass-border);
+    border-left: 1px solid var(--glass-border-light);
+    overflow: hidden;
+    /* Rounded top corners */
+    border-radius: 16px 16px 0 0;
+  }
+
+  /* Chat header */
+  .chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 14px;
+    border-bottom: 1px solid rgba(42, 42, 66, 0.3);
+    background: rgba(10, 10, 15, 0.3);
+    min-height: 38px;
+    flex-shrink: 0;
+    border-radius: 16px 16px 0 0;
+  }
+  .chat-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .provider-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    background: var(--synapse-dim);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--synapse);
+  }
+  .provider-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--emerald);
+    box-shadow: 0 0 4px var(--emerald);
+  }
+  .model-name {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .state-badge {
+    font-size: 0.65rem;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 8px;
+    display: none;
+    align-items: center;
+    gap: 4px;
+  }
+  .state-badge.visible { display: inline-flex; }
+  .state-badge.thinking {
+    background: rgba(99, 102, 241, 0.12);
+    color: var(--synapse);
+  }
+  .state-badge.speaking {
+    background: rgba(139, 92, 246, 0.12);
+    color: var(--pulse);
+  }
+  .state-badge.error {
+    background: rgba(244, 63, 94, 0.12);
+    color: var(--rose);
+  }
+  .state-badge-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    animation: state-dot-pulse 1.2s ease infinite;
+  }
+  .state-badge.thinking .state-badge-dot { background: var(--synapse); }
+  .state-badge.speaking .state-badge-dot { background: var(--pulse); }
+  .state-badge.error .state-badge-dot { background: var(--rose); animation: none; }
+  @keyframes state-dot-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .chat-header-controls { display: flex; gap: 3px; }
+  .hdr-btn {
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast) ease;
+  }
+  .hdr-btn:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+  .hdr-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
+
+  /* Messages area */
+  .chat-messages {
+    flex: 1;
+    min-height: 0; /* critical for flex scroll */
+    overflow-y: auto;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    scroll-behavior: smooth;
+    /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(58, 58, 90, 0.5) transparent;
+  }
+  /* Webkit — inset scrollbar using padding + negative track margin */
+  .chat-messages::-webkit-scrollbar { width: 8px; }
+  .chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 4px 0;
+  }
+  .chat-messages::-webkit-scrollbar-thumb {
+    background: rgba(58, 58, 90, 0.5);
+    border-radius: 8px;
+    /* Inset trick: transparent border pushes thumb inward, background-clip keeps fill inside */
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .chat-messages::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.45);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .chat-messages::-webkit-scrollbar-corner { background: transparent; }
+
+  .message {
+    display: flex;
+    gap: 8px;
+    max-width: 88%;
+    animation: msg-enter 0.35s var(--ease-out-expo);
+  }
+  .message.user { align-self: flex-end; flex-direction: row-reverse; }
+  .message.assistant { align-self: flex-start; }
+
+  .msg-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 600;
+  }
+  .msg-avatar.user-av {
+    background: linear-gradient(135deg, var(--synapse), var(--pulse));
+  }
+  .msg-avatar.ai-av {
+    background: var(--slate-mid);
+    border: 1px solid var(--glass-border);
+    color: var(--synapse);
+  }
+
+  .msg-bubble {
+    padding: 8px 12px;
+    border-radius: 14px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+  .message.user .msg-bubble {
+    background: linear-gradient(135deg, rgba(99,102,241,0.18), rgba(139,92,246,0.18));
+    border: 1px solid rgba(99,102,241,0.18);
+    border-radius: 14px 14px 4px 14px;
+  }
+  .message.assistant .msg-bubble {
+    background: rgba(26, 26, 46, 0.55);
+    border: 1px solid var(--glass-border-light);
+    border-radius: 14px 14px 14px 4px;
+  }
+
+  .msg-code {
+    display: block;
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--neural);
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .msg-time {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+    text-align: right;
+  }
+  .message.assistant .msg-time { text-align: left; }
+
+  .thinking-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    animation: msg-enter 0.35s var(--ease-out-expo);
+  }
+  .thinking-label {
+    font-size: 0.75rem;
+    color: var(--synapse);
+    font-weight: 500;
+  }
+  .thinking-dots { display: flex; gap: 3px; }
+  .thinking-dots span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--synapse);
+    animation: dot-bounce 1.4s ease-in-out infinite;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes dot-bounce {
+    0%, 80%, 100% { transform: scale(0.5); opacity: 0.25; }
+    40% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes msg-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Chat input */
+  .chat-input-area {
+    padding: 6px 12px 10px;
+    border-top: 1px solid rgba(42, 42, 66, 0.25);
+    flex-shrink: 0;
+  }
+  .chat-input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 6px 6px 6px 14px;
+    background: rgba(26, 26, 46, 0.45);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
+    border-radius: 22px;
+    transition: border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease;
+  }
+  .chat-input-row:focus-within {
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+  }
+  .chat-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    font-family: 'Inter', sans-serif;
+    line-height: 1.4;
+    resize: none;
+    max-height: 80px;
+    min-height: 22px;
+    padding: 2px 0;
+  }
+  .chat-input::placeholder { color: var(--text-muted); }
+  .input-actions { display: flex; gap: 3px; flex-shrink: 0; }
+  .action-btn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast) ease;
+  }
+  .action-btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .attach-btn { background: transparent; color: var(--text-muted); }
+  .attach-btn:hover { color: var(--text-primary); background: rgba(255,255,255,0.06); }
+  .send-btn {
+    background: linear-gradient(135deg, var(--synapse), var(--pulse));
+    color: white;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  }
+  .send-btn:hover { transform: scale(1.06); box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4); }
+  .send-btn:active { transform: scale(0.95); }
+
+  /* ===========================
+     FULLSCREEN MODE
+     =========================== */
+  .fullscreen-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: var(--obsidian);
+    display: flex;
+    flex-direction: column;
+    transform: scale(0.97);
+    opacity: 0;
+    transition: transform var(--transition-normal) var(--ease-out-expo),
+                opacity 0.2s ease;
+    pointer-events: none;
+  }
+  .fullscreen-overlay.active {
+    transform: scale(1);
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .fs-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 24px;
+    background: var(--glass-bg-light);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--glass-border);
+    height: 50px;
+  }
+  .fs-header-left { display: flex; align-items: center; gap: 12px; }
+  .fs-logo {
+    font-size: 1rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--synapse), var(--neural));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.01em;
+  }
+
+  .fs-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .fs-input-area {
+    padding: 12px 24px 18px;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* ===========================
+     CONTROLS PANEL (demo)
+     =========================== */
+  .controls {
+    position: fixed;
+    top: 80px;
+    right: 14px;
+    z-index: 3000;
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 280px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+  .ctrl-title {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  .ctrl-row { display: flex; align-items: center; gap: 8px; }
+  .ctrl-label { font-size: 0.75rem; color: var(--text-secondary); width: 54px; flex-shrink: 0; font-weight: 500; }
+  .ctrl-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+  .ctrl-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--glass-border);
+    background: rgba(26, 26, 46, 0.4);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    transition: all var(--transition-fast) ease;
+  }
+  .ctrl-btn:hover { background: var(--synapse-dim); border-color: rgba(99,102,241,0.3); color: var(--text-primary); }
+  .ctrl-btn.active { background: rgba(99,102,241,0.2); border-color: var(--synapse); color: var(--synapse); }
+
+  /* ===========================
+     BADGE
+     =========================== */
+  /* Position readout in controls */
+  .pos-readout {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--neural);
+    background: rgba(6, 182, 212, 0.08);
+    border: 1px solid rgba(6, 182, 212, 0.2);
+    border-radius: 6px;
+    padding: 4px 8px;
+    line-height: 1.5;
+    user-select: all;
+  }
+
+  /* Draggable bust indicator */
+  .bust-container.draggable {
+    cursor: grab;
+  }
+  .bust-container.draggable:active {
+    cursor: grabbing;
+  }
+  .bust-container.dragging {
+    opacity: 0.85;
+    animation: none !important;
+  }
+
+  /* ===========================
+     AVATAR TOGGLE — Synapse-style pill widget
+     =========================== */
+  .avatar-pill-toggle {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 40px;
+    border-radius: 9999px;
+    background: rgba(15, 15, 23, 0.9);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(52, 52, 76, 0.5);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.2s ease, background 0.2s ease, color 0.2s ease;
+    z-index: 1003;
+    padding: 0;
+  }
+  .chat-panel:hover .avatar-pill-toggle,
+  .avatar-pill-toggle:hover {
+    opacity: 1;
+  }
+  .avatar-pill-toggle:hover {
+    background: rgba(99, 102, 241, 0.2);
+    border-color: rgba(99, 102, 241, 0.4);
+    color: var(--text-primary);
+  }
+  .avatar-pill-toggle .pill-grip {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-items: center;
+  }
+  .avatar-pill-toggle .pill-grip span {
+    display: block;
+    width: 10px;
+    height: 1.5px;
+    background: currentColor;
+    border-radius: 1px;
+    opacity: 0.7;
+  }
+
+  /* Hidden avatar state */
+  .drawer.avatar-hidden .bust-area {
+    width: 0;
+    overflow: hidden;
+    transition: width var(--transition-normal) var(--ease-out-expo);
+  }
+  .drawer.avatar-hidden .bust-area > * {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .drawer.avatar-hidden .resize-handle {
+    left: 0;
+  }
+  .drawer.avatar-hidden .chat-panel {
+    border-radius: 16px 16px 0 0;
+  }
+
+  .variant-badge {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 3000;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, var(--synapse), var(--pulse));
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+  }
+  .variant-badge small {
+    display: block;
+    font-weight: 400;
+    opacity: 0.8;
+    font-size: 0.6rem;
+    margin-top: 3px;
+  }
+</style>
+</head>
+<body>
+
+<!-- VARIANT BADGE -->
+<div class="variant-badge">
+  Companion Drawer — Polished
+  <small>Real busts z kokoro-dubber + sprite sheet animace</small>
+</div>
+
+<!-- CONTROLS (demo) -->
+<div class="controls" id="controls">
+  <div class="ctrl-title">Demo ovládání</div>
+  <div class="ctrl-row">
+    <span class="ctrl-label">Režim:</span>
+    <div class="ctrl-btns" id="modeButtons">
+      <button class="ctrl-btn active" data-mode="fab">FAB</button>
+      <button class="ctrl-btn" data-mode="compact">Compact</button>
+      <button class="ctrl-btn" data-mode="fullscreen">Fullscreen</button>
+    </div>
+  </div>
+  <div class="ctrl-row">
+    <span class="ctrl-label">AI stav:</span>
+    <div class="ctrl-btns" id="stateButtons">
+      <button class="ctrl-btn active" data-state="idle">Idle</button>
+      <button class="ctrl-btn" data-state="thinking">Thinking</button>
+      <button class="ctrl-btn" data-state="speaking">Speaking</button>
+      <button class="ctrl-btn" data-state="error">Error</button>
+    </div>
+  </div>
+  <div class="ctrl-row">
+    <span class="ctrl-label">Avatar:</span>
+    <div class="ctrl-btns">
+      <button class="ctrl-btn" id="toggleAvatarBtn" onclick="toggleAvatarVisibility()">Skrýt avatar</button>
+    </div>
+  </div>
+  <div class="ctrl-row">
+    <span class="ctrl-label">Demo:</span>
+    <div class="ctrl-btns">
+      <button class="ctrl-btn" onclick="runAutoDemo()">▶ Auto ukázka</button>
+    </div>
+  </div>
+  <div class="ctrl-title" style="margin-top:4px">Pozice (táhni bustem / ikonou)</div>
+  <div class="pos-readout" id="posReadout">
+    bust: left=14px, translateY=2.8%<br>
+    picker: bottom=3.6%, left=13px
+  </div>
+</div>
+
+<!-- HOST APP -->
+<div class="host-app" id="hostApp">
+  <div class="host-content">
+    <h1>Host Application</h1>
+    <p>Vaše hlavní aplikace. Avatar Engine běží jako overlay.</p>
+    <div class="host-grid">
+      <div class="host-card"><div class="host-card-icon">📊</div><div class="host-card-label">Dashboard</div></div>
+      <div class="host-card"><div class="host-card-icon">📝</div><div class="host-card-label">Editor</div></div>
+      <div class="host-card"><div class="host-card-icon">⚙️</div><div class="host-card-label">Settings</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- FAB -->
+<button class="fab" id="fab" onclick="setMode('compact')">
+  <canvas id="fabCanvas" class="fab-avatar-thumb" width="72" height="72"></canvas>
+</button>
+
+<!-- DRAWER -->
+<div class="drawer" id="drawer">
+  <!-- Resize handle -->
+  <div class="resize-handle" id="resizeHandle">
+    <div class="resize-handle-visual"></div>
+  </div>
+
+  <!-- BUST AREA -->
+  <div class="bust-area" id="bustArea">
+    <div class="bust-container" id="bustContainer" data-state="idle">
+      <canvas class="bust-canvas draggable" id="bustCanvas" width="200" height="330" title="Táhni pro změnu pozice"></canvas>
+    </div>
+    <div class="bust-glow"></div>
+    <!-- Character picker button -->
+    <button class="char-picker-btn" id="charPickerBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+    </button>
+    <!-- Character picker popup -->
+    <div class="char-picker-popup" id="charPickerPopup"></div>
+  </div>
+
+  <!-- CHAT PANEL -->
+  <div class="chat-panel" style="position:relative;">
+    <!-- Synapse-style pill toggle for avatar visibility -->
+    <button class="avatar-pill-toggle" id="avatarToggleBtn" onclick="toggleAvatarVisibility()" title="Skrýt/Zobrazit avatar">
+      <div class="pill-grip"><span></span><span></span><span></span></div>
+    </button>
+    <div class="chat-header">
+      <div class="chat-header-left">
+        <div class="provider-badge">
+          <span class="provider-dot"></span>
+          Gemini
+        </div>
+        <span class="model-name">gemini-3-pro</span>
+        <span class="state-badge" id="stateBadge">
+          <span class="state-badge-dot"></span>
+          <span id="stateBadgeText"></span>
+        </span>
+      </div>
+      <div class="chat-header-controls">
+        <button class="hdr-btn" title="Fullscreen" onclick="setMode('fullscreen')">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+        </button>
+        <button class="hdr-btn" title="Zavřít" onclick="setMode('fab')">
+          <svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+      <!-- Messages will be populated by JS -->
+    </div>
+
+    <div class="chat-input-area">
+      <div class="chat-input-row">
+        <textarea class="chat-input" id="chatInput" placeholder="Napiš zprávu..." rows="1"
+                  onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();handleSend()}"></textarea>
+        <div class="input-actions">
+          <button class="action-btn attach-btn" title="Připojit soubor">
+            <svg viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <button class="action-btn send-btn" title="Odeslat" onclick="handleSend()">
+            <svg viewBox="0 0 24 24"><path d="m5 12 14-7-4 7 4 7Z"/><path d="M5 12h14"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right resize handle (horizontal) -->
+  <div class="resize-handle-right" id="resizeHandleRight">
+    <div class="resize-handle-right-visual"></div>
+  </div>
+</div>
+
+<!-- FULLSCREEN -->
+<div class="fullscreen-overlay" id="fullscreen">
+  <div class="fs-header">
+    <div class="fs-header-left">
+      <span class="fs-logo">✦ Avatar Engine</span>
+      <div class="provider-badge"><span class="provider-dot"></span>Gemini</div>
+      <span class="model-name">gemini-3-pro</span>
+    </div>
+    <div style="display:flex;gap:4px;align-items:center">
+      <button class="hdr-btn" onclick="setMode('compact')" title="Compact mode"
+              style="width:auto;padding:0 10px;font-size:0.7rem;gap:4px;border:1px solid var(--glass-border);border-radius:8px;">
+        <svg viewBox="0 0 24 24" style="width:12px;height:12px"><path d="M19 9l-7 7-7-7"/></svg>
+        Compact
+      </button>
+      <button class="hdr-btn" onclick="setMode('fab')" title="Zavřít">
+        <svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="fs-messages" id="fsMessages"></div>
+  <div class="fs-input-area">
+    <div class="chat-input-row">
+      <textarea class="chat-input" placeholder="Napiš zprávu..." rows="1"></textarea>
+      <div class="input-actions">
+        <button class="action-btn attach-btn">
+          <svg viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <button class="action-btn send-btn">
+          <svg viewBox="0 0 24 24"><path d="m5 12 14-7-4 7 4 7Z"/><path d="M5 12h14"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Load bust image data -->
+<script src="bust-data.js"></script>
+
+<script>
+// ========================================
+// AVATAR CHARACTERS
+// ========================================
+const CHARACTERS = {
+  bella: { name: 'Bella', gender: 'female', frames: 4 },
+  heart: { name: 'Heart', gender: 'female', frames: 4 },
+  adam:  { name: 'Adam',  gender: 'male',   frames: 4 },
+};
+
+let currentMode = 'fab';
+let currentState = 'idle';
+let currentChar = 'bella';
+let charPickerOpen = false;
+
+// Loaded character image data
+const loadedImages = {};
+const charFrames = {}; // { charId: [canvas0, canvas1, canvas2, canvas3] }
+
+// Animation state
+let speakingInterval = null;
+let frameIdx = 0;
+let frameDir = 1;
+
+// ========================================
+// IMAGE LOADING + FRAME EXTRACTION
+// ========================================
+function loadCharacter(charId) {
+  return new Promise((resolve) => {
+    if (loadedImages[charId]) { resolve(loadedImages[charId]); return; }
+    const img = new Image();
+    img.onload = () => {
+      loadedImages[charId] = img;
+
+      // Extract individual frames from horizontal sprite sheet
+      const frameCount = CHARACTERS[charId].frames;
+      const frameW = Math.floor(img.width / frameCount);
+      const frameH = img.height;
+      const frames = [];
+
+      for (let i = 0; i < frameCount; i++) {
+        const fc = document.createElement('canvas');
+        fc.width = frameW;
+        fc.height = frameH;
+        const fctx = fc.getContext('2d');
+        fctx.drawImage(img, i * frameW, 0, frameW, frameH, 0, 0, frameW, frameH);
+        frames.push(fc);
+      }
+      charFrames[charId] = frames;
+      resolve(img);
+    };
+    img.onerror = () => resolve(null);
+    img.src = BUST_IMAGES[charId];
+  });
+}
+
+async function loadAllCharacters() {
+  for (const id of Object.keys(CHARACTERS)) {
+    await loadCharacter(id);
+  }
+  renderBust();
+  renderFabThumb();
+  buildCharPicker();
+}
+
+// ========================================
+// BUST RENDERING
+// ========================================
+function renderBust(frameIndex = 0) {
+  const canvas = document.getElementById('bustCanvas');
+  const ctx = canvas.getContext('2d');
+  const frames = charFrames[currentChar];
+  if (!frames || !frames[frameIndex]) return;
+
+  const frame = frames[frameIndex];
+
+  // Size canvas to match desired display width while keeping full aspect ratio
+  const displayWidth = 200;
+  const aspectRatio = frame.height / frame.width;
+  const displayHeight = Math.round(displayWidth * aspectRatio);
+
+  canvas.width = displayWidth;
+  canvas.height = displayHeight;
+  canvas.style.width = displayWidth + 'px';
+  canvas.style.height = displayHeight + 'px';
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(frame, 0, 0, displayWidth, displayHeight);
+}
+
+function renderFabThumb() {
+  const canvas = document.getElementById('fabCanvas');
+  const ctx = canvas.getContext('2d');
+  const frames = charFrames[currentChar];
+  if (!frames || !frames[0]) return;
+
+  const frame = frames[0];
+  // Crop face area — take a square region from the top-center of the bust
+  // The face is at the top, centered horizontally
+  const cropSize = Math.min(frame.width, Math.round(frame.height * 0.45));
+  const srcX = Math.round((frame.width - cropSize) / 2); // center horizontally
+  const srcY = 0; // start from top (head)
+  const srcW = cropSize;
+  const srcH = cropSize;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Draw circular clip
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(36, 36, 35, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.drawImage(frame, srcX, srcY, srcW, srcH, 0, 0, 72, 72);
+  ctx.restore();
+}
+
+// ========================================
+// SPEAKING ANIMATION (Ping-Pong)
+// ========================================
+function startSpeakingAnimation() {
+  stopSpeakingAnimation();
+  frameIdx = 1;
+  frameDir = 1;
+  const talkingFrames = [1, 2, 3];
+
+  speakingInterval = setInterval(() => {
+    if (currentState !== 'speaking') { stopSpeakingAnimation(); return; }
+    renderBust(talkingFrames[frameIdx]);
+
+    frameIdx += frameDir;
+    if (frameIdx >= talkingFrames.length - 1) frameDir = -1;
+    if (frameIdx <= 0) frameDir = 1;
+  }, 120); // 120ms per frame = ~8fps
+}
+
+function stopSpeakingAnimation() {
+  if (speakingInterval) {
+    clearInterval(speakingInterval);
+    speakingInterval = null;
+  }
+  renderBust(0); // Back to idle frame
+}
+
+// ========================================
+// CHARACTER PICKER
+// ========================================
+function buildCharPicker() {
+  const popup = document.getElementById('charPickerPopup');
+  popup.innerHTML = '';
+  for (const [id, char] of Object.entries(CHARACTERS)) {
+    const thumb = document.createElement('div');
+    thumb.className = `char-thumb ${id === currentChar ? 'active' : ''}`;
+    thumb.onclick = () => switchCharacter(id);
+
+    const tc = document.createElement('canvas');
+    tc.width = 48;
+    tc.height = 72;
+    thumb.appendChild(tc);
+
+    const label = document.createElement('div');
+    label.className = 'char-thumb-label';
+    label.textContent = char.name;
+    thumb.appendChild(label);
+
+    popup.appendChild(thumb);
+
+    // Render thumbnail — portrait crop of upper body, preserving proportions
+    const frames = charFrames[id];
+    if (frames && frames[0]) {
+      const tctx = tc.getContext('2d');
+      const f = frames[0];
+      // Take top ~65% of height (head + upper body), centered horizontally
+      const srcH = Math.round(f.height * 0.65);
+      const srcW = Math.round(srcH * (48 / 72)); // match canvas aspect ratio
+      const srcX = Math.round((f.width - srcW) / 2); // center horizontally
+      tctx.drawImage(f, Math.max(0, srcX), 0, srcW, srcH, 0, 0, 48, 72);
+    }
+  }
+}
+
+function toggleCharPicker() {
+  charPickerOpen = !charPickerOpen;
+  document.getElementById('charPickerPopup').classList.toggle('open', charPickerOpen);
+}
+
+function switchCharacter(charId) {
+  currentChar = charId;
+  charPickerOpen = false;
+  document.getElementById('charPickerPopup').classList.remove('open');
+
+  // Re-render everything
+  if (currentState === 'speaking') {
+    stopSpeakingAnimation();
+    startSpeakingAnimation();
+  } else {
+    renderBust(0);
+  }
+  renderFabThumb();
+  buildCharPicker();
+}
+
+// Close picker on outside click
+document.addEventListener('click', (e) => {
+  if (charPickerOpen &&
+      !e.target.closest('.char-picker-popup') &&
+      !e.target.closest('.char-picker-btn')) {
+    charPickerOpen = false;
+    document.getElementById('charPickerPopup').classList.remove('open');
+  }
+});
+
+// ========================================
+// MODE SWITCHING
+// ========================================
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('#modeButtons .ctrl-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === mode)
+  );
+
+  document.getElementById('fab').classList.toggle('hidden', mode !== 'fab');
+  document.getElementById('drawer').classList.toggle('open', mode === 'compact');
+  document.getElementById('hostApp').classList.toggle('has-drawer', mode === 'compact');
+  document.getElementById('hostApp').classList.toggle('fullscreen-active', mode === 'fullscreen');
+  document.getElementById('fullscreen').classList.toggle('active', mode === 'fullscreen');
+
+  // Sync messages to fullscreen
+  if (mode === 'fullscreen') {
+    document.getElementById('fsMessages').innerHTML = document.getElementById('chatMessages').innerHTML;
+  }
+}
+
+// ========================================
+// STATE SWITCHING
+// ========================================
+function setState(state) {
+  currentState = state;
+  document.getElementById('bustContainer').dataset.state = state;
+
+  document.querySelectorAll('#stateButtons .ctrl-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.state === state)
+  );
+
+  // Update state badge
+  const badge = document.getElementById('stateBadge');
+  const text = document.getElementById('stateBadgeText');
+  badge.className = 'state-badge';
+
+  if (state === 'thinking') {
+    badge.classList.add('visible', 'thinking');
+    text.textContent = 'Přemýšlím...';
+    stopSpeakingAnimation();
+    renderBust(0);
+  } else if (state === 'speaking') {
+    badge.classList.add('visible', 'speaking');
+    text.textContent = 'Odpovídám...';
+    startSpeakingAnimation();
+  } else if (state === 'error') {
+    badge.classList.add('visible', 'error');
+    text.textContent = 'Chyba';
+    stopSpeakingAnimation();
+    renderBust(0);
+  } else {
+    stopSpeakingAnimation();
+    renderBust(0);
+  }
+}
+
+// ========================================
+// CHAT
+// ========================================
+const initialMessages = [
+  { role: 'assistant', text: 'Ahoj! Jsem tvůj AI asistent. Jak ti mohu dnes pomoci?' },
+  { role: 'user', text: 'Napiš mi funkci pro quicksort v Pythonu' },
+  { role: 'assistant', text: 'Tady je efektivní implementace quicksortu:', code: `def quicksort(arr):
+    if len(arr) <= 1:
+        return arr
+    pivot = arr[len(arr) // 2]
+    left = [x for x in arr if x < pivot]
+    mid = [x for x in arr if x == pivot]
+    right = [x for x in arr if x > pivot]
+    return quicksort(left) + mid + quicksort(right)` },
+];
+
+function renderMessages(containerId) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  for (const msg of initialMessages) {
+    container.appendChild(createMessageEl(msg));
+  }
+}
+
+function createMessageEl(msg) {
+  const div = document.createElement('div');
+  div.className = `message ${msg.role === 'user' ? 'user' : 'assistant'}`;
+
+  const avatar = document.createElement('div');
+  avatar.className = `msg-avatar ${msg.role === 'user' ? 'user-av' : 'ai-av'}`;
+  avatar.textContent = msg.role === 'user' ? 'T' : '✦';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = msg.text;
+
+  if (msg.code) {
+    const code = document.createElement('code');
+    code.className = 'msg-code';
+    code.textContent = msg.code;
+    bubble.appendChild(code);
+  }
+
+  div.appendChild(avatar);
+  div.appendChild(bubble);
+  return div;
+}
+
+function handleSend() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Add user message
+  const userMsg = { role: 'user', text };
+  initialMessages.push(userMsg);
+  const container = document.getElementById('chatMessages');
+  container.appendChild(createMessageEl(userMsg));
+
+  // Thinking
+  setState('thinking');
+  const thinkingEl = document.createElement('div');
+  thinkingEl.className = 'thinking-indicator';
+  thinkingEl.id = 'pendingThinking';
+  thinkingEl.innerHTML = `
+    <span class="thinking-label">Přemýšlím</span>
+    <span class="thinking-dots"><span></span><span></span><span></span></span>
+  `;
+  container.appendChild(thinkingEl);
+  container.scrollTop = container.scrollHeight;
+
+  // Simulate response
+  setTimeout(() => {
+    setState('speaking');
+    const pending = document.getElementById('pendingThinking');
+    const aiMsg = { role: 'assistant', text: 'To je zajímavá otázka! Rád ti s tím pomohu. Tady je moje odpověď...' };
+    initialMessages.push(aiMsg);
+    if (pending) pending.replaceWith(createMessageEl(aiMsg));
+    container.scrollTop = container.scrollHeight;
+
+    setTimeout(() => setState('idle'), 2500);
+  }, 1800);
+}
+
+// Auto-resize textarea
+document.getElementById('chatInput').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 80) + 'px';
+});
+
+// ========================================
+// RESIZE HANDLE
+// ========================================
+const resizeHandle = document.getElementById('resizeHandle');
+let isResizing = false;
+
+resizeHandle.addEventListener('mousedown', (e) => {
+  isResizing = true;
+  resizeHandle.classList.add('active');
+  document.body.style.cursor = 'ns-resize';
+  document.body.style.userSelect = 'none';
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) return;
+  const h = Math.max(180, Math.min(window.innerHeight - 20, window.innerHeight - e.clientY));
+  document.documentElement.style.setProperty('--compact-height', h + 'px');
+});
+
+document.addEventListener('mouseup', () => {
+  if (isResizing) {
+    isResizing = false;
+    resizeHandle.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+});
+
+// ========================================
+// RESIZE HANDLE RIGHT (horizontal)
+// ========================================
+const resizeHandleRight = document.getElementById('resizeHandleRight');
+let isResizingH = false;
+
+resizeHandleRight.addEventListener('mousedown', (e) => {
+  isResizingH = true;
+  resizeHandleRight.classList.add('active');
+  document.body.style.cursor = 'ew-resize';
+  document.body.style.userSelect = 'none';
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isResizingH) return;
+  // Min width: bust-width + 300px for chat; max: full window
+  const minW = 230 + 300;
+  const w = Math.max(minW, Math.min(window.innerWidth, e.clientX));
+  document.documentElement.style.setProperty('--compact-width', w + 'px');
+});
+
+document.addEventListener('mouseup', () => {
+  if (isResizingH) {
+    isResizingH = false;
+    resizeHandleRight.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+});
+
+// ========================================
+// CONTROL PANEL EVENT DELEGATION
+// ========================================
+document.getElementById('modeButtons').addEventListener('click', (e) => {
+  const btn = e.target.closest('.ctrl-btn');
+  if (btn) setMode(btn.dataset.mode);
+});
+
+document.getElementById('stateButtons').addEventListener('click', (e) => {
+  const btn = e.target.closest('.ctrl-btn');
+  if (btn) setState(btn.dataset.state);
+});
+
+// ========================================
+// AUTO DEMO
+// ========================================
+function runAutoDemo() {
+  const steps = [
+    [() => setMode('fab'), 600],
+    [() => setMode('compact'), 1200],
+    [() => setState('idle'), 1000],
+    [() => setState('thinking'), 1500],
+    [() => setState('speaking'), 2000],
+    [() => switchCharacter('heart'), 1500],
+    [() => setState('thinking'), 1500],
+    [() => setState('speaking'), 2000],
+    [() => switchCharacter('adam'), 1500],
+    [() => setState('idle'), 1000],
+    [() => setMode('fullscreen'), 1500],
+    [() => setMode('compact'), 1200],
+    [() => setState('error'), 1000],
+    [() => setState('idle'), 800],
+    [() => switchCharacter('bella'), 800],
+    [() => setMode('fab'), 500],
+  ];
+
+  let i = 0;
+  function next() {
+    if (i >= steps.length) return;
+    const [fn, delay] = steps[i++];
+    fn();
+    setTimeout(next, delay);
+  }
+  next();
+}
+
+// ========================================
+// AVATAR VISIBILITY TOGGLE
+// ========================================
+let avatarVisible = true;
+
+function toggleAvatarVisibility() {
+  avatarVisible = !avatarVisible;
+  const drawer = document.getElementById('drawer');
+  const toggleBtn = document.getElementById('avatarToggleBtn');
+  const ctrlBtn = document.getElementById('toggleAvatarBtn');
+
+  drawer.classList.toggle('avatar-hidden', !avatarVisible);
+  ctrlBtn.textContent = avatarVisible ? 'Skrýt avatar' : 'Zobrazit avatar';
+
+  // Persist to localStorage
+  localStorage.setItem('avatar-engine-bust-visible', avatarVisible ? '1' : '0');
+}
+
+// ========================================
+// DRAGGABLE BUST POSITIONING
+// ========================================
+let bustDragState = null;
+let pickerDragState = null;
+
+// Current adjustable values
+let bustLeft = 14;     // px
+let bustTranslateY = 2.8; // %
+let pickerBottom = 3.6;  // %
+let pickerLeft = 13;     // px
+
+function updatePosReadout() {
+  const el = document.getElementById('posReadout');
+  el.innerHTML =
+    `bust: <b>left=${bustLeft}px</b>, <b>translateY=${bustTranslateY}%</b><br>` +
+    `picker: <b>bottom=${pickerBottom}%</b>, <b>left=${pickerLeft}px</b>`;
+}
+
+function applyBustPosition() {
+  const bc = document.getElementById('bustContainer');
+  bc.style.left = bustLeft + 'px';
+  // Override the CSS animation transform base via custom property
+  bc.style.setProperty('--bust-ty', bustTranslateY + '%');
+  // For non-animated state, apply directly
+  bc.style.transform = `translateY(${bustTranslateY}%)`;
+  updatePosReadout();
+}
+
+function applyPickerPosition() {
+  const btn = document.getElementById('charPickerBtn');
+  btn.style.bottom = pickerBottom + '%';
+  btn.style.left = pickerLeft + 'px';
+  const popup = document.getElementById('charPickerPopup');
+  popup.style.bottom = (pickerBottom + 8) + '%';
+  popup.style.left = pickerLeft + 'px';
+  updatePosReadout();
+}
+
+// Make bust draggable
+document.getElementById('bustCanvas').addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  bustDragState = { startX: e.clientX, startY: e.clientY, origLeft: bustLeft, origTY: bustTranslateY };
+  document.getElementById('bustContainer').classList.add('draggable', 'dragging');
+  document.body.style.cursor = 'grabbing';
+  document.body.style.userSelect = 'none';
+});
+
+// Make picker button draggable (click-vs-drag: if moved >5px it's a drag, otherwise it's a click/toggle)
+let pickerClickCandidate = null;
+document.getElementById('charPickerBtn').addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  pickerClickCandidate = { startX: e.clientX, startY: e.clientY, origLeft: pickerLeft, origBottom: pickerBottom, dragging: false };
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (bustDragState) {
+    const dx = e.clientX - bustDragState.startX;
+    const dy = e.clientY - bustDragState.startY;
+    bustLeft = Math.round(bustDragState.origLeft + dx);
+    // Convert vertical pixel movement to % of bust height (~330px)
+    const bustH = document.getElementById('bustCanvas').offsetHeight || 330;
+    bustTranslateY = Math.round((bustDragState.origTY + (dy / bustH) * 100) * 10) / 10;
+    applyBustPosition();
+  }
+  if (pickerClickCandidate) {
+    const dx = e.clientX - pickerClickCandidate.startX;
+    const dy = e.clientY - pickerClickCandidate.startY;
+    if (!pickerClickCandidate.dragging && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+      // Threshold exceeded — switch to drag mode
+      pickerClickCandidate.dragging = true;
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+    }
+    if (pickerClickCandidate.dragging) {
+      pickerLeft = Math.round(pickerClickCandidate.origLeft + dx);
+      const drawerH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--compact-height')) || 420;
+      pickerBottom = Math.round((pickerClickCandidate.origBottom + (-dy / drawerH) * 100) * 10) / 10;
+      applyPickerPosition();
+    }
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (bustDragState) {
+    bustDragState = null;
+    document.getElementById('bustContainer').classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    // Re-apply current AI state animation (override the inline transform for animation)
+    setState(currentState);
+  }
+  if (pickerClickCandidate) {
+    if (!pickerClickCandidate.dragging) {
+      // Was a simple click — toggle picker popup
+      toggleCharPicker();
+    }
+    pickerClickCandidate = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+});
+
+// Override keyframe animations to use current bustTranslateY
+// We do this by dynamically inserting a <style> when bust position changes
+function updateBustAnimationKeyframes() {
+  let styleEl = document.getElementById('dynamic-bust-anim');
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = 'dynamic-bust-anim';
+    document.head.appendChild(styleEl);
+  }
+  const ty = bustTranslateY;
+  styleEl.textContent = `
+    @keyframes bust-breathe {
+      0%, 100% { transform: translateY(${ty}%) scale(1); }
+      50% { transform: translateY(calc(${ty}% - 4px)) scale(1.006); }
+    }
+    @keyframes bust-thinking {
+      0%, 100% { transform: translateY(${ty}%) rotate(0deg); }
+      30% { transform: translateY(calc(${ty}% - 7px)) rotate(-1.2deg); }
+      70% { transform: translateY(calc(${ty}% - 3px)) rotate(0.8deg); }
+    }
+    @keyframes bust-speaking {
+      0%, 100% { transform: translateY(${ty}%) scale(1); }
+      50% { transform: translateY(${ty}%) scale(1.015); }
+    }
+    @keyframes bust-shake {
+      0%, 100% { transform: translateY(${ty}%) translateX(0); }
+      15% { transform: translateY(${ty}%) translateX(-8px); }
+      30% { transform: translateY(${ty}%) translateX(8px); }
+      45% { transform: translateY(${ty}%) translateX(-6px); }
+      60% { transform: translateY(${ty}%) translateX(6px); }
+      75% { transform: translateY(${ty}%) translateX(-3px); }
+      90% { transform: translateY(${ty}%) translateX(3px); }
+    }
+  `;
+}
+
+// Patch applyBustPosition to also update keyframes
+const _origApplyBust = applyBustPosition;
+applyBustPosition = function() {
+  _origApplyBust();
+  updateBustAnimationKeyframes();
+};
+
+// ========================================
+// INIT
+// ========================================
+async function init() {
+  await loadAllCharacters();
+  renderMessages('chatMessages');
+  renderMessages('fsMessages');
+  applyBustPosition();
+  applyPickerPosition();
+  updateBustAnimationKeyframes();
+
+  // Align compact-height with the top of the bust for visual harmony
+  alignCompactHeightToBust();
+
+  // Restore avatar visibility from localStorage
+  const saved = localStorage.getItem('avatar-engine-bust-visible');
+  if (saved === '0') {
+    toggleAvatarVisibility(); // will set avatarVisible = false
+  }
+}
+
+function alignCompactHeightToBust() {
+  const frames = charFrames[currentChar];
+  if (!frames || !frames[0]) return;
+  const frame = frames[0];
+  const displayWidth = 200;
+  const displayHeight = Math.round(displayWidth * (frame.height / frame.width));
+  // Visible bust height = displayHeight minus the translateY clipping at bottom
+  const visibleHeight = Math.round(displayHeight * (1 - bustTranslateY / 100));
+  // Add a small margin (8px) for breathing room above the head
+  const targetHeight = visibleHeight + 8;
+  document.documentElement.style.setProperty('--compact-height', targetHeight + 'px');
+}
+
+init();
+</script>
+</body>
+</html>

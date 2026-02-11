@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avatar GUI — Varianta A: Companion Drawer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --obsidian: #0a0a0f;
+    --slate-darker: #0f0f17;
+    --slate-deep: #12121a;
+    --slate-base: #13131b;
+    --slate-dark: #16161f;
+    --slate-mid: #1a1a2e;
+    --slate-light: #2a2a42;
+    --synapse: #6366f1;
+    --pulse: #8b5cf6;
+    --neural: #06b6d4;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --glass-bg: rgba(18, 18, 26, 0.85);
+    --glass-border: rgba(42, 42, 66, 0.5);
+
+    --compact-height: 380px;
+    --bust-width: 200px;
+    --transition-speed: 0.4s;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--obsidian);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  /* ===== HOST APPLICATION (simulated) ===== */
+  .host-app {
+    height: 100vh;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: padding-bottom var(--transition-speed) ease;
+    position: relative;
+  }
+  .host-app.has-drawer {
+    padding-bottom: var(--compact-height);
+  }
+  .host-app.fullscreen-active {
+    padding-bottom: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .host-content {
+    text-align: center;
+    opacity: 0.6;
+  }
+  .host-content h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, var(--synapse), var(--neural));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .host-content p { color: var(--text-secondary); font-size: 1.1rem; }
+  .host-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 200px);
+    gap: 16px;
+    margin-top: 2rem;
+  }
+  .host-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+  }
+  .host-card-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+  .host-card-label { font-size: 0.85rem; color: var(--text-secondary); }
+
+  /* ===== FAB BUTTON ===== */
+  .fab {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--synapse), var(--pulse));
+    border: 2px solid rgba(255,255,255,0.15);
+    cursor: pointer;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 24px rgba(99, 102, 241, 0.4);
+    transition: all 0.3s ease;
+    overflow: hidden;
+  }
+  .fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 32px rgba(99, 102, 241, 0.6);
+  }
+  .fab.hidden { transform: scale(0); opacity: 0; pointer-events: none; }
+  .fab-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center 15%;
+  }
+  .fab-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 18px;
+    height: 18px;
+    background: #ef4444;
+    border-radius: 50%;
+    border: 2px solid var(--obsidian);
+    display: none;
+  }
+  .fab-badge.active { display: block; }
+
+  /* ===== DRAWER (COMPACT MODE) ===== */
+  .drawer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--compact-height);
+    z-index: 999;
+    display: flex;
+    transform: translateY(100%);
+    transition: transform var(--transition-speed) cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .drawer.open {
+    transform: translateY(0);
+  }
+
+  /* Resize handle */
+  .drawer-resize {
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 48px;
+    height: 6px;
+    background: var(--slate-light);
+    border-radius: 3px;
+    cursor: ns-resize;
+    z-index: 1001;
+    transition: background 0.2s;
+  }
+  .drawer-resize:hover { background: var(--synapse); }
+
+  /* ===== AVATAR BUST AREA ===== */
+  .bust-area {
+    width: var(--bust-width);
+    position: relative;
+    flex-shrink: 0;
+    overflow: visible;
+    z-index: 1001;
+  }
+  .bust-container {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: var(--bust-width);
+    transition: all 0.5s ease;
+  }
+  .bust-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    filter: drop-shadow(0 0 0px transparent);
+    transition: filter 0.5s ease, transform 0.5s ease;
+  }
+
+  /* Bust clipping — spodních 30% skryto pod okrajem */
+  .bust-container {
+    transform: translateY(30%);
+  }
+
+  /* ===== BUST ANIMATION STATES ===== */
+  .bust-container[data-state="idle"] .bust-image {
+    animation: bust-breathe 3s ease-in-out infinite;
+  }
+  .bust-container[data-state="thinking"] .bust-image {
+    animation: bust-thinking 2.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 15px rgba(99, 102, 241, 0.5));
+  }
+  .bust-container[data-state="speaking"] .bust-image {
+    animation: bust-speaking 1.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.5));
+  }
+  .bust-container[data-state="error"] .bust-image {
+    animation: bust-shake 0.5s ease-in-out;
+    filter: drop-shadow(0 0 15px rgba(239, 68, 68, 0.5));
+  }
+
+  @keyframes bust-breathe {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-3px) scale(1.008); }
+  }
+  @keyframes bust-thinking {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    25% { transform: translateY(-6px) rotate(-1deg); }
+    75% { transform: translateY(-3px) rotate(1deg); }
+  }
+  @keyframes bust-speaking {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.015); }
+  }
+  @keyframes bust-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-8px); }
+    40% { transform: translateX(8px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+
+  /* Glow ring behind bust */
+  .bust-glow {
+    position: absolute;
+    bottom: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+  }
+  .bust-container[data-state="thinking"] ~ .bust-glow,
+  .bust-container[data-state="speaking"] ~ .bust-glow {
+    opacity: 1;
+    animation: glow-pulse 2s ease-in-out infinite;
+  }
+  @keyframes glow-pulse {
+    0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.6; }
+    50% { transform: translateX(-50%) scale(1.3); opacity: 1; }
+  }
+
+  /* ===== CHAT PANEL ===== */
+  .chat-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(150%);
+    border-top: 1px solid var(--glass-border);
+    border-left: 1px solid rgba(42, 42, 66, 0.3);
+    overflow: hidden;
+  }
+
+  /* Chat header */
+  .chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--glass-border);
+    background: rgba(10, 10, 15, 0.4);
+    min-height: 40px;
+  }
+  .chat-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .provider-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 12px;
+    font-size: 0.75rem;
+    color: var(--synapse);
+  }
+  .provider-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #22c55e;
+  }
+  .model-name {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .state-indicator {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--synapse);
+    display: none;
+  }
+  .state-indicator.active { display: inline-block; }
+  .chat-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .header-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+  }
+  .header-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-primary);
+  }
+
+  /* Messages */
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .chat-messages::-webkit-scrollbar { width: 4px; }
+  .chat-messages::-webkit-scrollbar-thumb {
+    background: var(--slate-light);
+    border-radius: 2px;
+  }
+
+  .message {
+    display: flex;
+    gap: 8px;
+    max-width: 85%;
+    animation: slide-up 0.3s ease;
+  }
+  .message.user { align-self: flex-end; flex-direction: row-reverse; }
+  .message.assistant { align-self: flex-start; }
+
+  .msg-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .msg-avatar.user-avatar {
+    background: linear-gradient(135deg, var(--synapse), var(--pulse));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+  }
+  .msg-avatar.ai-avatar {
+    background: var(--slate-mid);
+    border: 1px solid var(--glass-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+  }
+
+  .msg-bubble {
+    padding: 8px 12px;
+    border-radius: 14px;
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+  .message.user .msg-bubble {
+    background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2));
+    border: 1px solid rgba(99,102,241,0.2);
+  }
+  .message.assistant .msg-bubble {
+    background: rgba(26, 26, 46, 0.6);
+    border: 1px solid var(--glass-border);
+  }
+
+  .thinking-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--synapse);
+    font-size: 0.8rem;
+    padding: 6px 12px;
+  }
+  .thinking-dots span {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--synapse);
+    animation: dot-bounce 1.4s ease-in-out infinite;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dot-bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Chat input */
+  .chat-input-area {
+    padding: 8px 12px;
+    border-top: 1px solid var(--glass-border);
+  }
+  .chat-input-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(26, 26, 46, 0.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    transition: border-color 0.2s;
+  }
+  .chat-input-container:focus-within {
+    border-color: rgba(99, 102, 241, 0.5);
+  }
+  .chat-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-family: inherit;
+  }
+  .chat-input::placeholder { color: var(--text-muted); }
+  .attach-btn, .send-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+  }
+  .attach-btn {
+    background: transparent;
+    color: var(--text-muted);
+  }
+  .attach-btn:hover { color: var(--text-primary); }
+  .send-btn {
+    background: linear-gradient(135deg, var(--synapse), var(--pulse));
+    color: white;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  }
+  .send-btn:hover { transform: scale(1.05); }
+
+  /* ===== FULLSCREEN MODE ===== */
+  .fullscreen-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: var(--obsidian);
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    opacity: 0;
+    transition: transform var(--transition-speed) cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.2s ease;
+    pointer-events: none;
+  }
+  .fullscreen-overlay.active {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .fs-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 24px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--glass-border);
+    height: 52px;
+  }
+  .fs-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .fs-logo {
+    font-size: 1.1rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--synapse), var(--neural));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .fs-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .fs-input-area {
+    padding: 12px 24px 16px;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .fs-input-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: rgba(26, 26, 46, 0.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    transition: border-color 0.2s;
+  }
+  .fs-input-container:focus-within {
+    border-color: rgba(99, 102, 241, 0.5);
+  }
+  .fs-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-family: inherit;
+  }
+  .fs-input::placeholder { color: var(--text-muted); }
+
+  /* ===== CONTROLS PANEL ===== */
+  .controls-panel {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 3000;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 240px;
+  }
+  .controls-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .control-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .control-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    width: 60px;
+    flex-shrink: 0;
+  }
+  .control-buttons {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .ctrl-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--glass-border);
+    background: rgba(26, 26, 46, 0.5);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .ctrl-btn:hover {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.3);
+    color: var(--text-primary);
+  }
+  .ctrl-btn.active {
+    background: rgba(99, 102, 241, 0.25);
+    border-color: var(--synapse);
+    color: var(--synapse);
+  }
+
+  /* ===== VARIANT LABEL ===== */
+  .variant-label {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 3000;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, var(--synapse), var(--pulse));
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+  .variant-label small {
+    display: block;
+    font-weight: 400;
+    opacity: 0.8;
+    font-size: 0.65rem;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+
+<!-- VARIANT LABEL -->
+<div class="variant-label">
+  VARIANTA A: Companion Drawer
+  <small>Avatar bust vlevo + chat drawer zdola</small>
+</div>
+
+<!-- CONTROLS PANEL (for demo) -->
+<div class="controls-panel">
+  <div class="controls-title">Demo Controls</div>
+
+  <div class="control-row">
+    <span class="control-label">Mode:</span>
+    <div class="control-buttons">
+      <button class="ctrl-btn active" onclick="setMode('fab')">FAB</button>
+      <button class="ctrl-btn" onclick="setMode('compact')">Compact</button>
+      <button class="ctrl-btn" onclick="setMode('fullscreen')">Fullscreen</button>
+    </div>
+  </div>
+
+  <div class="control-row">
+    <span class="control-label">AI State:</span>
+    <div class="control-buttons">
+      <button class="ctrl-btn active" onclick="setState('idle')">Idle</button>
+      <button class="ctrl-btn" onclick="setState('thinking')">Thinking</button>
+      <button class="ctrl-btn" onclick="setState('speaking')">Speaking</button>
+      <button class="ctrl-btn" onclick="setState('error')">Error</button>
+    </div>
+  </div>
+
+  <div class="control-row">
+    <span class="control-label">Demo:</span>
+    <div class="control-buttons">
+      <button class="ctrl-btn" onclick="runDemo()">Auto Demo</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOST APPLICATION (simulated) -->
+<div class="host-app" id="hostApp">
+  <div class="host-content">
+    <h1>Host Application</h1>
+    <p>Vaše hlavní aplikace zabírá celou obrazovku.</p>
+    <p>Avatar Engine běží jako overlay nad ní.</p>
+    <div class="host-grid">
+      <div class="host-card">
+        <div class="host-card-icon">📊</div>
+        <div class="host-card-label">Dashboard</div>
+      </div>
+      <div class="host-card">
+        <div class="host-card-icon">📝</div>
+        <div class="host-card-label">Editor</div>
+      </div>
+      <div class="host-card">
+        <div class="host-card-icon">⚙️</div>
+        <div class="host-card-label">Settings</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FAB BUTTON -->
+<div class="fab" id="fab" onclick="setMode('compact')">
+  <svg class="fab-avatar" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="32" cy="24" r="14" fill="#94a3b8"/>
+    <ellipse cx="32" cy="52" rx="18" ry="12" fill="#94a3b8"/>
+    <circle cx="26" cy="22" r="2" fill="#1a1a2e"/>
+    <circle cx="38" cy="22" r="2" fill="#1a1a2e"/>
+    <path d="M28 29 Q32 33 36 29" stroke="#1a1a2e" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  </svg>
+  <div class="fab-badge" id="fabBadge"></div>
+</div>
+
+<!-- DRAWER (COMPACT MODE) -->
+<div class="drawer" id="drawer">
+  <div class="drawer-resize" id="drawerResize"></div>
+
+  <!-- AVATAR BUST -->
+  <div class="bust-area">
+    <div class="bust-container" id="bustContainer" data-state="idle">
+      <svg class="bust-image" id="bustImage" viewBox="0 0 200 340" xmlns="http://www.w3.org/2000/svg">
+        <!-- Stylized avatar bust (placeholder — real app uses WebP images) -->
+        <defs>
+          <linearGradient id="suitGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#c0c8d8"/>
+            <stop offset="100%" stop-color="#8090a8"/>
+          </linearGradient>
+          <linearGradient id="accentGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#e07830"/>
+            <stop offset="100%" stop-color="#c06020"/>
+          </linearGradient>
+          <linearGradient id="hairGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#2a2a3a"/>
+            <stop offset="100%" stop-color="#1a1a28"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Body / Suit -->
+        <ellipse cx="100" cy="300" rx="70" ry="50" fill="url(#suitGrad)" stroke="#6080a0" stroke-width="1"/>
+        <!-- Suit accents -->
+        <rect x="40" y="260" width="20" height="30" rx="4" fill="url(#accentGrad)" opacity="0.8"/>
+        <rect x="140" y="260" width="20" height="30" rx="4" fill="url(#accentGrad)" opacity="0.8"/>
+        <!-- Collar -->
+        <ellipse cx="100" cy="220" rx="35" ry="12" fill="#7088a0" stroke="#5070a0" stroke-width="1"/>
+        <!-- Neck -->
+        <rect x="88" y="195" width="24" height="30" rx="6" fill="#e8c8a0"/>
+
+        <!-- Head -->
+        <ellipse cx="100" cy="150" rx="50" ry="60" fill="#f0d0a8"/>
+        <!-- Hair -->
+        <ellipse cx="100" cy="120" rx="52" ry="45" fill="url(#hairGrad)"/>
+        <!-- Hair top detail — ponytail -->
+        <path d="M100 78 Q120 70 130 90 Q135 110 125 130" stroke="#2a2a3a" stroke-width="12" fill="none" stroke-linecap="round"/>
+        <!-- Hair bangs -->
+        <path d="M55 130 Q60 100 80 95 Q100 90 120 95 Q140 100 145 130" fill="url(#hairGrad)"/>
+
+        <!-- Eyes -->
+        <g id="eyes">
+          <ellipse cx="80" cy="150" rx="8" ry="9" fill="white"/>
+          <ellipse cx="120" cy="150" rx="8" ry="9" fill="white"/>
+          <circle cx="80" cy="150" r="5" fill="#4060a0"/>
+          <circle cx="120" cy="150" r="5" fill="#4060a0"/>
+          <circle cx="78" cy="148" r="2" fill="white"/>
+          <circle cx="118" cy="148" r="2" fill="white"/>
+        </g>
+        <!-- Eyebrows -->
+        <path d="M68 138 Q80 132 90 136" stroke="#2a2a3a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <path d="M110 136 Q120 132 132 138" stroke="#2a2a3a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+        <!-- Nose -->
+        <path d="M97 160 Q100 168 103 160" stroke="#c0a080" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+        <!-- Mouth (changes per state) -->
+        <g id="mouth">
+          <path d="M88 178 Q100 184 112 178" stroke="#c07060" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
+
+        <!-- Badge -->
+        <circle cx="125" cy="265" r="8" fill="#3060c0" opacity="0.8"/>
+      </svg>
+    </div>
+    <div class="bust-glow"></div>
+  </div>
+
+  <!-- CHAT PANEL -->
+  <div class="chat-panel">
+    <div class="chat-header">
+      <div class="chat-header-left">
+        <div class="provider-badge">
+          <span class="provider-dot"></span>
+          Gemini
+        </div>
+        <span class="model-name">gemini-3-pro-preview</span>
+        <span class="state-indicator" id="stateIndicator">Thinking...</span>
+      </div>
+      <div class="chat-header-controls">
+        <button class="header-btn" title="Minimize" onclick="setMode('fab')">─</button>
+        <button class="header-btn" title="Fullscreen" onclick="setMode('fullscreen')">□</button>
+      </div>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+      <div class="message assistant">
+        <div class="msg-avatar ai-avatar">✦</div>
+        <div class="msg-bubble">Ahoj! Jsem tvůj AI asistent. Jak ti mohu dnes pomoci?</div>
+      </div>
+      <div class="message user">
+        <div class="msg-avatar user-avatar">T</div>
+        <div class="msg-bubble">Napiš mi funkci pro quicksort v Pythonu</div>
+      </div>
+      <div class="message assistant">
+        <div class="msg-avatar ai-avatar">✦</div>
+        <div class="msg-bubble">
+          Tady je implementace quicksortu:<br><br>
+          <code style="color: var(--neural); font-size: 0.8rem;">
+            def quicksort(arr):<br>
+            &nbsp;&nbsp;if len(arr) &lt;= 1: return arr<br>
+            &nbsp;&nbsp;pivot = arr[len(arr)//2]<br>
+            &nbsp;&nbsp;...
+          </code>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-input-area">
+      <div class="chat-input-container">
+        <button class="attach-btn">📎</button>
+        <input class="chat-input" placeholder="Napiš zprávu..." onkeydown="if(event.key==='Enter')simulateSend(this)">
+        <button class="send-btn" onclick="simulateSend(document.querySelector('.chat-input'))">➤</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FULLSCREEN MODE -->
+<div class="fullscreen-overlay" id="fullscreenOverlay">
+  <div class="fs-header">
+    <div class="fs-header-left">
+      <span class="fs-logo">✦ Avatar Engine</span>
+      <div class="provider-badge">
+        <span class="provider-dot"></span>
+        Gemini
+      </div>
+      <span class="model-name">gemini-3-pro-preview</span>
+    </div>
+    <div style="display:flex;gap:4px;">
+      <button class="header-btn" title="Compact" onclick="setMode('compact')" style="font-size:0.7rem;">↙</button>
+      <button class="header-btn" title="Close" onclick="setMode('fab')">×</button>
+    </div>
+  </div>
+
+  <div class="fs-messages" id="fsMessages">
+    <div class="message assistant">
+      <div class="msg-avatar ai-avatar">✦</div>
+      <div class="msg-bubble">Ahoj! Jsem tvůj AI asistent. Jak ti mohu dnes pomoci?</div>
+    </div>
+    <div class="message user">
+      <div class="msg-avatar user-avatar">T</div>
+      <div class="msg-bubble">Napiš mi funkci pro quicksort v Pythonu</div>
+    </div>
+    <div class="message assistant">
+      <div class="msg-avatar ai-avatar">✦</div>
+      <div class="msg-bubble">
+        Tady je implementace quicksortu:<br><br>
+        <code style="color: var(--neural); font-size: 0.8rem;">
+          def quicksort(arr):<br>
+          &nbsp;&nbsp;if len(arr) &lt;= 1: return arr<br>
+          &nbsp;&nbsp;pivot = arr[len(arr)//2]<br>
+          &nbsp;&nbsp;left = [x for x in arr if x &lt; pivot]<br>
+          &nbsp;&nbsp;middle = [x for x in arr if x == pivot]<br>
+          &nbsp;&nbsp;right = [x for x in arr if x &gt; pivot]<br>
+          &nbsp;&nbsp;return quicksort(left) + middle + quicksort(right)
+        </code>
+      </div>
+    </div>
+  </div>
+
+  <div class="fs-input-area">
+    <div class="fs-input-container">
+      <button class="attach-btn">📎</button>
+      <input class="fs-input" placeholder="Napiš zprávu...">
+      <button class="send-btn">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentMode = 'fab';
+  let currentState = 'idle';
+
+  const fab = document.getElementById('fab');
+  const drawer = document.getElementById('drawer');
+  const hostApp = document.getElementById('hostApp');
+  const fullscreen = document.getElementById('fullscreenOverlay');
+  const bustContainer = document.getElementById('bustContainer');
+  const stateIndicator = document.getElementById('stateIndicator');
+  const mouth = document.getElementById('mouth');
+
+  function setMode(mode) {
+    currentMode = mode;
+
+    // Update control buttons
+    document.querySelectorAll('.control-row:first-of-type .ctrl-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.control-row:first-of-type .ctrl-btn[onclick="setMode('${mode}')"]`)?.classList.add('active');
+
+    fab.classList.toggle('hidden', mode !== 'fab');
+    drawer.classList.toggle('open', mode === 'compact');
+    hostApp.classList.toggle('has-drawer', mode === 'compact');
+    hostApp.classList.toggle('fullscreen-active', mode === 'fullscreen');
+    fullscreen.classList.toggle('active', mode === 'fullscreen');
+  }
+
+  function setState(state) {
+    currentState = state;
+    bustContainer.dataset.state = state;
+
+    // Update control buttons
+    document.querySelectorAll('.control-row:nth-of-type(2) .ctrl-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.control-row:nth-of-type(2) .ctrl-btn[onclick="setState('${state}')"]`)?.classList.add('active');
+
+    // Update state indicator
+    const indicator = stateIndicator;
+    if (state === 'thinking') {
+      indicator.textContent = '✨ Thinking...';
+      indicator.classList.add('active');
+    } else if (state === 'speaking') {
+      indicator.textContent = '💬 Responding...';
+      indicator.classList.add('active');
+    } else {
+      indicator.classList.remove('active');
+    }
+
+    // Update mouth shape
+    updateMouth(state);
+  }
+
+  function updateMouth(state) {
+    const mouthEl = mouth;
+    if (state === 'thinking') {
+      mouthEl.innerHTML = '<path d="M90 180 L110 180" stroke="#c07060" stroke-width="2" stroke-linecap="round"/>';
+    } else if (state === 'speaking') {
+      animateSpeaking();
+    } else if (state === 'error') {
+      mouthEl.innerHTML = '<path d="M88 184 Q100 176 112 184" stroke="#c07060" stroke-width="2" fill="none" stroke-linecap="round"/>';
+    } else {
+      mouthEl.innerHTML = '<path d="M88 178 Q100 184 112 178" stroke="#c07060" stroke-width="2" fill="none" stroke-linecap="round"/>';
+    }
+  }
+
+  let speakingInterval;
+  const mouthFrames = [
+    '<ellipse cx="100" cy="180" rx="6" ry="3" fill="#c07060"/>',
+    '<ellipse cx="100" cy="180" rx="8" ry="6" fill="#c07060"/><ellipse cx="100" cy="181" rx="5" ry="3" fill="#901020"/>',
+    '<ellipse cx="100" cy="180" rx="10" ry="8" fill="#c07060"/><ellipse cx="100" cy="182" rx="6" ry="4" fill="#901020"/>',
+    '<ellipse cx="100" cy="180" rx="8" ry="6" fill="#c07060"/><ellipse cx="100" cy="181" rx="5" ry="3" fill="#901020"/>',
+  ];
+  let frameIndex = 0;
+  let frameDirection = 1;
+
+  function animateSpeaking() {
+    clearInterval(speakingInterval);
+    speakingInterval = setInterval(() => {
+      if (currentState !== 'speaking') {
+        clearInterval(speakingInterval);
+        return;
+      }
+      mouth.innerHTML = mouthFrames[frameIndex];
+      frameIndex += frameDirection;
+      if (frameIndex >= mouthFrames.length - 1) frameDirection = -1;
+      if (frameIndex <= 0) frameDirection = 1;
+    }, 120);
+  }
+
+  function simulateSend(input) {
+    if (!input.value.trim()) return;
+    const text = input.value;
+    input.value = '';
+
+    // Add user message
+    const messages = document.getElementById('chatMessages');
+    messages.innerHTML += `
+      <div class="message user" style="animation:slide-up 0.3s ease">
+        <div class="msg-avatar user-avatar">T</div>
+        <div class="msg-bubble">${text}</div>
+      </div>
+    `;
+
+    // Simulate thinking
+    setState('thinking');
+    messages.innerHTML += `
+      <div class="message assistant" id="pendingMsg" style="animation:slide-up 0.3s ease">
+        <div class="msg-avatar ai-avatar">✦</div>
+        <div class="thinking-indicator">
+          <span>Přemýšlím</span>
+          <span class="thinking-dots"><span></span><span></span><span></span></span>
+        </div>
+      </div>
+    `;
+    messages.scrollTop = messages.scrollHeight;
+
+    // Simulate response
+    setTimeout(() => {
+      setState('speaking');
+      const pending = document.getElementById('pendingMsg');
+      if (pending) {
+        pending.innerHTML = `
+          <div class="msg-avatar ai-avatar">✦</div>
+          <div class="msg-bubble">To je zajímavá otázka! Rád ti s tím pomohu...</div>
+        `;
+      }
+      messages.scrollTop = messages.scrollHeight;
+
+      setTimeout(() => setState('idle'), 2000);
+    }, 1500);
+  }
+
+  // Auto demo
+  function runDemo() {
+    const steps = [
+      () => setMode('fab'),
+      () => setMode('compact'),
+      () => setState('idle'),
+      () => setState('thinking'),
+      () => setState('speaking'),
+      () => setState('idle'),
+      () => setMode('fullscreen'),
+      () => setMode('compact'),
+      () => setState('error'),
+      () => setState('idle'),
+      () => setMode('fab'),
+    ];
+    let i = 0;
+    const interval = setInterval(() => {
+      if (i >= steps.length) { clearInterval(interval); return; }
+      steps[i++]();
+    }, 1200);
+  }
+
+  // Drawer resize
+  const drawerResize = document.getElementById('drawerResize');
+  let resizing = false;
+  drawerResize.addEventListener('mousedown', (e) => {
+    resizing = true;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!resizing) return;
+    const h = Math.max(200, Math.min(600, window.innerHeight - e.clientY));
+    document.documentElement.style.setProperty('--compact-height', h + 'px');
+  });
+  document.addEventListener('mouseup', () => { resizing = false; });
+</script>
+</body>
+</html>

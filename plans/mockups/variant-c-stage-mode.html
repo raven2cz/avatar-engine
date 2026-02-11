@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avatar GUI — Varianta C: Stage Mode</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --obsidian: #0a0a0f;
+    --slate-darker: #0f0f17;
+    --slate-deep: #12121a;
+    --slate-base: #13131b;
+    --slate-dark: #16161f;
+    --slate-mid: #1a1a2e;
+    --slate-light: #2a2a42;
+    --synapse: #6366f1;
+    --pulse: #8b5cf6;
+    --neural: #06b6d4;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --glass-bg: rgba(18, 18, 26, 0.88);
+    --glass-border: rgba(42, 42, 66, 0.5);
+    --transition-speed: 0.45s;
+    --stage-height: 320px;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--obsidian);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  /* ===== HOST APPLICATION ===== */
+  .host-app {
+    height: 100vh;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: padding-bottom var(--transition-speed) ease, opacity var(--transition-speed) ease;
+  }
+  .host-app.has-stage { padding-bottom: var(--stage-height); }
+  .host-app.fullscreen { opacity: 0; pointer-events: none; padding-bottom: 0; }
+  .host-content { text-align: center; opacity: 0.6; }
+  .host-content h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, var(--synapse), var(--neural));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .host-content p { color: var(--text-secondary); font-size: 1.1rem; }
+  .host-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 200px);
+    gap: 16px;
+    margin-top: 2rem;
+  }
+  .host-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+  }
+  .host-card-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+  .host-card-label { font-size: 0.85rem; color: var(--text-secondary); }
+
+  /* ===== FAB ===== */
+  .fab {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--synapse), var(--pulse));
+    border: 2px solid rgba(255,255,255,0.15);
+    cursor: pointer;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 24px rgba(99, 102, 241, 0.4);
+    transition: all 0.3s ease;
+    font-size: 1.5rem;
+  }
+  .fab:hover { transform: scale(1.1); box-shadow: 0 6px 32px rgba(99, 102, 241, 0.6); }
+  .fab.hidden { transform: scale(0); opacity: 0; pointer-events: none; }
+
+  /* ===== STAGE (BOTTOM STRIP) ===== */
+  .stage {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--stage-height);
+    z-index: 999;
+    display: flex;
+    background: var(--glass-bg);
+    backdrop-filter: blur(32px) saturate(120%);
+    border-top: 1px solid var(--glass-border);
+    transform: translateY(100%);
+    transition: transform var(--transition-speed) cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: visible;
+  }
+  .stage.open { transform: translateY(0); }
+
+  /* Top edge glow */
+  .stage::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      var(--synapse) 20%,
+      var(--pulse) 50%,
+      var(--synapse) 80%,
+      transparent 100%
+    );
+    opacity: 0.6;
+  }
+
+  /* ===== BUST AREA — overflows above stage ===== */
+  .bust-area {
+    width: 220px;
+    position: relative;
+    flex-shrink: 0;
+    z-index: 1001;
+  }
+
+  .bust-wrapper {
+    position: absolute;
+    bottom: 0;
+    left: 10px;
+    width: 200px;
+    /* Bust overflows ABOVE the stage panel */
+    transform: translateY(-20%);
+    transition: transform 0.5s ease;
+  }
+
+  .bust-img {
+    width: 100%;
+    height: auto;
+    display: block;
+    filter: drop-shadow(4px 4px 16px rgba(0,0,0,0.5));
+    transition: filter 0.5s ease, transform 0.5s ease;
+  }
+
+  /* ===== BUST STATE ANIMATIONS ===== */
+  .bust-wrapper[data-state="idle"] .bust-img {
+    animation: breathe 3s ease-in-out infinite;
+  }
+  .bust-wrapper[data-state="thinking"] .bust-img {
+    animation: think-sway 2.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.5))
+            drop-shadow(4px 4px 16px rgba(0,0,0,0.5));
+  }
+  .bust-wrapper[data-state="speaking"] .bust-img {
+    animation: speak-pulse 1.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 24px rgba(139, 92, 246, 0.5))
+            drop-shadow(4px 4px 16px rgba(0,0,0,0.5));
+  }
+  .bust-wrapper[data-state="error"] .bust-img {
+    animation: error-shake 0.5s ease;
+    filter: drop-shadow(0 0 18px rgba(239, 68, 68, 0.5))
+            drop-shadow(4px 4px 16px rgba(0,0,0,0.5));
+  }
+
+  @keyframes breathe {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-4px) scale(1.006); }
+  }
+  @keyframes think-sway {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    25% { transform: translateY(-8px) rotate(-1.5deg); }
+    75% { transform: translateY(-4px) rotate(1deg); }
+  }
+  @keyframes speak-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.018); }
+  }
+  @keyframes error-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-10px); }
+    40% { transform: translateX(10px); }
+    60% { transform: translateX(-5px); }
+    80% { transform: translateX(5px); }
+  }
+
+  /* Glow pool at bust base */
+  .bust-glow-pool {
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 160px;
+    height: 40px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(99,102,241,0.3) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.5s;
+    pointer-events: none;
+    filter: blur(8px);
+  }
+  .bust-wrapper[data-state="thinking"] ~ .bust-glow-pool,
+  .bust-wrapper[data-state="speaking"] ~ .bust-glow-pool {
+    opacity: 1;
+    animation: pool-glow 2s ease-in-out infinite;
+  }
+  @keyframes pool-glow {
+    0%, 100% { opacity: 0.5; transform: translateX(-50%) scaleX(1); }
+    50% { opacity: 1; transform: translateX(-50%) scaleX(1.3); }
+  }
+
+  /* ===== CHAT AREA (right of bust) ===== */
+  .stage-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  /* Header strip */
+  .stage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px;
+    border-bottom: 1px solid rgba(42, 42, 66, 0.3);
+    min-height: 36px;
+    flex-shrink: 0;
+  }
+  .stage-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .stage-logo {
+    font-weight: 700;
+    font-size: 0.85rem;
+    background: linear-gradient(135deg, var(--synapse), var(--neural));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .stage-provider {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    background: rgba(99, 102, 241, 0.12);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: 10px;
+    font-size: 0.7rem;
+    color: var(--synapse);
+  }
+  .stage-provider-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: #22c55e;
+  }
+  .stage-model {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+  .stage-state {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--synapse);
+    display: none;
+  }
+  .stage-state.visible { display: inline; }
+
+  .stage-controls {
+    display: flex;
+    gap: 4px;
+  }
+  .s-btn {
+    width: 26px; height: 26px;
+    border: none;
+    background: rgba(255,255,255,0.05);
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    transition: all 0.2s;
+  }
+  .s-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+  /* Messages — horizontal scroll feel */
+  .stage-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .stage-messages::-webkit-scrollbar { width: 3px; }
+  .stage-messages::-webkit-scrollbar-thumb { background: var(--slate-light); border-radius: 2px; }
+
+  .msg {
+    display: flex;
+    gap: 8px;
+    max-width: 90%;
+    animation: msg-slide 0.3s ease;
+  }
+  .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+  .msg.ai { align-self: flex-start; }
+  .msg-av {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+  }
+  .msg-av.u { background: linear-gradient(135deg, var(--synapse), var(--pulse)); }
+  .msg-av.a { background: var(--slate-mid); border: 1px solid var(--glass-border); }
+  .msg-b {
+    padding: 6px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+  .msg.user .msg-b {
+    background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2));
+    border: 1px solid rgba(99,102,241,0.2);
+  }
+  .msg.ai .msg-b {
+    background: rgba(26, 26, 46, 0.6);
+    border: 1px solid var(--glass-border);
+  }
+
+  .typing { display: flex; gap: 3px; padding: 8px 12px; align-self: flex-start; }
+  .typing span {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--synapse);
+    animation: t-bounce 1.4s ease-in-out infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes t-bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
+    40% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes msg-slide {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Input */
+  .stage-input {
+    padding: 6px 12px 10px;
+    border-top: 1px solid rgba(42, 42, 66, 0.3);
+    flex-shrink: 0;
+  }
+  .stage-input-box {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    background: rgba(26, 26, 46, 0.5);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    transition: border-color 0.2s;
+  }
+  .stage-input-box:focus-within { border-color: rgba(99, 102, 241, 0.5); }
+  .stage-input-box input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-family: inherit;
+  }
+  .stage-input-box input::placeholder { color: var(--text-muted); }
+  .i-btn {
+    width: 28px; height: 28px;
+    border: none; border-radius: 50%;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+  }
+  .i-btn.att { background: transparent; color: var(--text-muted); }
+  .i-btn.att:hover { color: var(--text-primary); }
+  .i-btn.snd {
+    background: linear-gradient(135deg, var(--synapse), var(--pulse));
+    color: white;
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.3);
+  }
+  .i-btn.snd:hover { transform: scale(1.05); }
+
+  /* ===== FULLSCREEN OVERLAY ===== */
+  .fs-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: var(--obsidian);
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.3s ease, transform var(--transition-speed) cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+  }
+  .fs-overlay.active { opacity: 1; transform: translateY(0); pointer-events: all; }
+
+  .fs-hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 24px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--glass-border);
+    height: 50px;
+  }
+  .fs-hdr-left { display: flex; align-items: center; gap: 12px; }
+  .fs-logo {
+    font-weight: 700;
+    font-size: 1rem;
+    background: linear-gradient(135deg, var(--synapse), var(--neural));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .fs-msgs {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .fs-inp {
+    padding: 12px 24px 16px;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .fs-inp-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: rgba(26, 26, 46, 0.5);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+  }
+  .fs-inp-box:focus-within { border-color: rgba(99, 102, 241, 0.5); }
+  .fs-inp-box input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-family: inherit;
+  }
+  .fs-inp-box input::placeholder { color: var(--text-muted); }
+
+  /* ===== CONTROLS ===== */
+  .controls {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 3000;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 240px;
+  }
+  .c-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+  }
+  .c-row { display: flex; align-items: center; gap: 8px; }
+  .c-lbl { font-size: 0.8rem; color: var(--text-secondary); width: 60px; flex-shrink: 0; }
+  .c-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+  .c-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--glass-border);
+    background: rgba(26, 26, 46, 0.5);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .c-btn:hover { background: rgba(99,102,241,0.15); border-color: rgba(99,102,241,0.3); color: var(--text-primary); }
+  .c-btn.active { background: rgba(99,102,241,0.25); border-color: var(--synapse); color: var(--synapse); }
+
+  .variant-label {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 3000;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, var(--pulse), #a855f7);
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .variant-label small {
+    display: block;
+    font-weight: 400;
+    opacity: 0.8;
+    font-size: 0.65rem;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="variant-label">
+  VARIANTA C: Stage Mode
+  <small>Full-width spodní strip + bust přesahující nahoru</small>
+</div>
+
+<div class="controls">
+  <div class="c-title">Demo Controls</div>
+  <div class="c-row">
+    <span class="c-lbl">Mode:</span>
+    <div class="c-btns">
+      <button class="c-btn active" onclick="setMode('fab')">FAB</button>
+      <button class="c-btn" onclick="setMode('stage')">Stage</button>
+      <button class="c-btn" onclick="setMode('fullscreen')">Fullscreen</button>
+    </div>
+  </div>
+  <div class="c-row">
+    <span class="c-lbl">AI State:</span>
+    <div class="c-btns">
+      <button class="c-btn active" onclick="setState('idle')">Idle</button>
+      <button class="c-btn" onclick="setState('thinking')">Thinking</button>
+      <button class="c-btn" onclick="setState('speaking')">Speaking</button>
+      <button class="c-btn" onclick="setState('error')">Error</button>
+    </div>
+  </div>
+  <div class="c-row">
+    <span class="c-lbl">Demo:</span>
+    <div class="c-btns">
+      <button class="c-btn" onclick="runDemo()">Auto Demo</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOST APP -->
+<div class="host-app" id="hostApp">
+  <div class="host-content">
+    <h1>Host Application</h1>
+    <p>Vaše hlavní aplikace zabírá celou obrazovku.</p>
+    <p>Avatar Engine "stage" vyjíždí zdola, bust přesahuje přes okraj.</p>
+    <div class="host-grid">
+      <div class="host-card"><div class="host-card-icon">📊</div><div class="host-card-label">Dashboard</div></div>
+      <div class="host-card"><div class="host-card-icon">📝</div><div class="host-card-label">Editor</div></div>
+      <div class="host-card"><div class="host-card-icon">⚙️</div><div class="host-card-label">Settings</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- FAB -->
+<div class="fab" id="fab" onclick="setMode('stage')">✦</div>
+
+<!-- STAGE -->
+<div class="stage" id="stage">
+  <!-- Bust area — overflows above -->
+  <div class="bust-area">
+    <div class="bust-wrapper" id="bustWrapper" data-state="idle">
+      <svg class="bust-img" id="bustSvg" viewBox="0 0 200 380" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="sG" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#c0c8d8"/>
+            <stop offset="100%" stop-color="#8090a8"/>
+          </linearGradient>
+          <linearGradient id="aG" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#e07830"/>
+            <stop offset="100%" stop-color="#c06020"/>
+          </linearGradient>
+          <linearGradient id="hG" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#2a2a3a"/>
+            <stop offset="100%" stop-color="#1a1a28"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Full body -->
+        <ellipse cx="100" cy="340" rx="75" ry="55" fill="url(#sG)" stroke="#6080a0" stroke-width="1"/>
+        <!-- Arms / accents -->
+        <path d="M30 310 Q40 280 55 290" fill="url(#aG)" opacity="0.8"/>
+        <path d="M170 310 Q160 280 145 290" fill="url(#aG)" opacity="0.8"/>
+        <!-- Shoulder pads -->
+        <rect x="35" y="280" width="22" height="32" rx="6" fill="url(#aG)" opacity="0.9"/>
+        <rect x="143" y="280" width="22" height="32" rx="6" fill="url(#aG)" opacity="0.9"/>
+        <!-- Collar -->
+        <ellipse cx="100" cy="240" rx="38" ry="14" fill="#7088a0" stroke="#5070a0" stroke-width="1"/>
+        <!-- Gold collar accent -->
+        <path d="M70 236 Q100 248 130 236" stroke="#c0a040" stroke-width="2.5" fill="none"/>
+        <!-- Neck -->
+        <rect x="86" y="210" width="28" height="35" rx="8" fill="#f0d0a8"/>
+
+        <!-- Head -->
+        <ellipse cx="100" cy="160" rx="52" ry="62" fill="#f0d0a8"/>
+        <!-- Hair back -->
+        <ellipse cx="100" cy="128" rx="55" ry="48" fill="url(#hG)"/>
+        <!-- Ponytail -->
+        <path d="M100 84 Q125 72 135 95 Q140 120 128 145" stroke="#2a2a3a" stroke-width="14" fill="none" stroke-linecap="round"/>
+        <!-- Hair band -->
+        <circle cx="108" cy="86" r="5" fill="#e07830"/>
+        <!-- Hair front / bangs -->
+        <path d="M52 140 Q58 105 80 98 Q100 92 120 98 Q142 105 148 140" fill="url(#hG)"/>
+
+        <!-- Eyes -->
+        <g id="eyes">
+          <ellipse cx="78" cy="160" rx="9" ry="10" fill="white"/>
+          <ellipse cx="122" cy="160" rx="9" ry="10" fill="white"/>
+          <circle cx="78" cy="160" r="5.5" fill="#4060a0"/>
+          <circle cx="122" cy="160" r="5.5" fill="#4060a0"/>
+          <circle cx="76" cy="158" r="2" fill="white"/>
+          <circle cx="120" cy="158" r="2" fill="white"/>
+          <!-- Pupils -->
+          <circle cx="78" cy="161" r="2.5" fill="#1a2040"/>
+          <circle cx="122" cy="161" r="2.5" fill="#1a2040"/>
+        </g>
+        <!-- Eyebrows -->
+        <path d="M65 147 Q78 140 90 145" stroke="#2a2a3a" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+        <path d="M110 145 Q122 140 135 147" stroke="#2a2a3a" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+
+        <!-- Nose -->
+        <path d="M96 172 Q100 180 104 172" stroke="#c0a080" stroke-width="1.5" fill="none"/>
+
+        <!-- Mouth -->
+        <g id="mouth">
+          <path d="M86 192 Q100 199 114 192" stroke="#c07060" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
+
+        <!-- Badges -->
+        <circle cx="72" cy="280" r="8" fill="#e06020" opacity="0.9"/>
+        <circle cx="128" cy="280" r="8" fill="#3060c0" opacity="0.9"/>
+        <!-- Planet icon on badge -->
+        <ellipse cx="128" cy="280" rx="4" ry="2.5" fill="none" stroke="white" stroke-width="0.8" transform="rotate(-20 128 280)"/>
+      </svg>
+    </div>
+    <div class="bust-glow-pool"></div>
+  </div>
+
+  <!-- Chat -->
+  <div class="stage-chat">
+    <div class="stage-header">
+      <div class="stage-header-left">
+        <span class="stage-logo">✦ Avatar Engine</span>
+        <div class="stage-provider">
+          <span class="stage-provider-dot"></span>
+          Gemini
+        </div>
+        <span class="stage-model">gemini-3-pro-preview</span>
+        <span class="stage-state" id="stageState">Thinking...</span>
+      </div>
+      <div class="stage-controls">
+        <button class="s-btn" onclick="setMode('fab')" title="Minimize">─</button>
+        <button class="s-btn" onclick="setMode('fullscreen')" title="Fullscreen">□</button>
+      </div>
+    </div>
+
+    <div class="stage-messages" id="stageMessages">
+      <div class="msg ai"><div class="msg-av a">✦</div><div class="msg-b">Ahoj! Jsem tvůj AI asistent. Jak ti mohu dnes pomoci?</div></div>
+      <div class="msg user"><div class="msg-av u">T</div><div class="msg-b">Napiš mi funkci pro binární vyhledávání</div></div>
+      <div class="msg ai">
+        <div class="msg-av a">✦</div>
+        <div class="msg-b">
+          Tady je efektivní implementace:<br><br>
+          <code style="color: var(--neural); font-size: 0.75rem;">
+            def binary_search(arr, target):<br>
+            &nbsp;&nbsp;lo, hi = 0, len(arr) - 1<br>
+            &nbsp;&nbsp;while lo &lt;= hi:<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;mid = (lo + hi) // 2<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;if arr[mid] == target: return mid<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;elif arr[mid] &lt; target: lo = mid + 1<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;else: hi = mid - 1<br>
+            &nbsp;&nbsp;return -1
+          </code>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage-input">
+      <div class="stage-input-box">
+        <button class="i-btn att">📎</button>
+        <input placeholder="Napiš zprávu..." onkeydown="if(event.key==='Enter')sendMsg(this)">
+        <button class="i-btn snd" onclick="sendMsg(document.querySelector('.stage-input-box input'))">➤</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FULLSCREEN -->
+<div class="fs-overlay" id="fsOverlay">
+  <div class="fs-hdr">
+    <div class="fs-hdr-left">
+      <span class="fs-logo">✦ Avatar Engine</span>
+      <div class="stage-provider"><span class="stage-provider-dot"></span>Gemini</div>
+      <span class="stage-model">gemini-3-pro-preview</span>
+    </div>
+    <div style="display:flex;gap:4px;">
+      <button class="s-btn" onclick="setMode('stage')" title="Stage">↙</button>
+      <button class="s-btn" onclick="setMode('fab')">×</button>
+    </div>
+  </div>
+  <div class="fs-msgs" id="fsMsgs">
+    <div class="msg ai"><div class="msg-av a">✦</div><div class="msg-b">Ahoj! Jsem tvůj AI asistent.</div></div>
+    <div class="msg user"><div class="msg-av u">T</div><div class="msg-b">Napiš mi funkci pro binární vyhledávání</div></div>
+    <div class="msg ai"><div class="msg-av a">✦</div><div class="msg-b">Tady je efektivní implementace binary search v Pythonu s časovou složitostí O(log n)...</div></div>
+  </div>
+  <div class="fs-inp">
+    <div class="fs-inp-box">
+      <button class="i-btn att">📎</button>
+      <input placeholder="Napiš zprávu...">
+      <button class="i-btn snd">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let mode = 'fab', state = 'idle';
+  const $ = id => document.getElementById(id);
+
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll('.c-row:first-of-type .c-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.c-row:first-of-type .c-btn[onclick="setMode('${m}')"]`)?.classList.add('active');
+
+    $('fab').classList.toggle('hidden', m !== 'fab');
+    $('stage').classList.toggle('open', m === 'stage');
+    $('hostApp').classList.toggle('has-stage', m === 'stage');
+    $('hostApp').classList.toggle('fullscreen', m === 'fullscreen');
+    $('fsOverlay').classList.toggle('active', m === 'fullscreen');
+  }
+
+  function setState(s) {
+    state = s;
+    $('bustWrapper').dataset.state = s;
+    document.querySelectorAll('.c-row:nth-of-type(2) .c-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.c-row:nth-of-type(2) .c-btn[onclick="setState('${s}')"]`)?.classList.add('active');
+
+    const si = $('stageState');
+    if (s === 'thinking') { si.textContent = '✨ Přemýšlím...'; si.classList.add('visible'); }
+    else if (s === 'speaking') { si.textContent = '💬 Odpovídám...'; si.classList.add('visible'); animateMouth(); }
+    else { si.classList.remove('visible'); }
+    if (s !== 'speaking') updateMouth(s);
+  }
+
+  function updateMouth(s) {
+    const m = $('mouth');
+    if (s === 'thinking') m.innerHTML = '<path d="M90 194 L110 194" stroke="#c07060" stroke-width="2" stroke-linecap="round"/>';
+    else if (s === 'error') m.innerHTML = '<path d="M88 198 Q100 190 112 198" stroke="#c07060" stroke-width="2" fill="none" stroke-linecap="round"/>';
+    else m.innerHTML = '<path d="M86 192 Q100 199 114 192" stroke="#c07060" stroke-width="2" fill="none" stroke-linecap="round"/>';
+  }
+
+  let spkInt, fi=0, fd=1;
+  const mf = [
+    '<ellipse cx="100" cy="194" rx="6" ry="3" fill="#c07060"/>',
+    '<ellipse cx="100" cy="194" rx="8" ry="6" fill="#c07060"/><ellipse cx="100" cy="195" rx="5" ry="3" fill="#901020"/>',
+    '<ellipse cx="100" cy="194" rx="10" ry="8" fill="#c07060"/><ellipse cx="100" cy="196" rx="6" ry="4" fill="#901020"/>',
+    '<ellipse cx="100" cy="194" rx="8" ry="6" fill="#c07060"/><ellipse cx="100" cy="195" rx="5" ry="3" fill="#901020"/>',
+  ];
+  function animateMouth() {
+    clearInterval(spkInt);
+    spkInt = setInterval(() => {
+      if (state !== 'speaking') { clearInterval(spkInt); return; }
+      $('mouth').innerHTML = mf[fi];
+      fi += fd;
+      if (fi >= mf.length-1) fd = -1;
+      if (fi <= 0) fd = 1;
+    }, 120);
+  }
+
+  function sendMsg(inp) {
+    if (!inp.value.trim()) return;
+    const t = inp.value; inp.value = '';
+    const a = $('stageMessages');
+    a.innerHTML += `<div class="msg user"><div class="msg-av u">T</div><div class="msg-b">${t}</div></div>`;
+    setState('thinking');
+    a.innerHTML += `<div class="typing" id="typ"><span></span><span></span><span></span></div>`;
+    a.scrollTop = a.scrollHeight;
+    setTimeout(() => {
+      setState('speaking');
+      const ty = $('typ');
+      if (ty) ty.outerHTML = `<div class="msg ai"><div class="msg-av a">✦</div><div class="msg-b">To je skvělá otázka! Rád ti pomohu...</div></div>`;
+      a.scrollTop = a.scrollHeight;
+      setTimeout(() => setState('idle'), 2000);
+    }, 1500);
+  }
+
+  function runDemo() {
+    const steps = [
+      () => setMode('fab'),
+      () => setMode('stage'),
+      () => setState('idle'),
+      () => setState('thinking'),
+      () => setState('speaking'),
+      () => setState('idle'),
+      () => setMode('fullscreen'),
+      () => setMode('stage'),
+      () => setState('error'),
+      () => setState('idle'),
+      () => setMode('fab'),
+    ];
+    let i = 0;
+    const iv = setInterval(() => { if (i >= steps.length) { clearInterval(iv); return; } steps[i++](); }, 1200);
+  }
+</script>
+</body>
+</html>
