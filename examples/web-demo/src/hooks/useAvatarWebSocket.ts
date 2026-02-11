@@ -316,6 +316,10 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'stop', data: {} }))
     }
+    // Immediately reset engine state on client side — the server may not
+    // send engine_state:idle before the connection closes or times out.
+    dispatch({ type: 'ENGINE_STATE', state: 'idle' })
+    dispatch({ type: 'THINKING_END' })
   }, [])
 
   const clearHistory = useCallback(() => {

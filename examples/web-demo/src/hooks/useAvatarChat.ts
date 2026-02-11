@@ -71,21 +71,11 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
   const [isStreaming, setIsStreaming] = useState(false)
   const [activeOptions, setActiveOptions] = useState<Record<string, string | number>>({})
   const currentAssistantIdRef = useRef<string | null>(null)
-  const chatTimeoutRef = useRef<number>()
-
-  // Clear chat timeout when we receive any response-related event
-  const resetChatTimeout = useCallback(() => {
-    if (chatTimeoutRef.current) {
-      clearTimeout(chatTimeoutRef.current)
-      chatTimeoutRef.current = undefined
-    }
-  }, [])
 
   useEffect(() => {
     const cleanup = onServerMessage((msg: ServerMessage) => {
       switch (msg.type) {
         case 'text': {
-          resetChatTimeout()
           // Accumulate text into current assistant message
           // Capture ref outside updater to avoid React 18 batching race
           const textId = currentAssistantIdRef.current
@@ -105,7 +95,6 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
         }
 
         case 'thinking': {
-          resetChatTimeout()
           if (msg.data.is_complete) break
           const thinkId = currentAssistantIdRef.current
           if (!thinkId) break
@@ -128,7 +117,6 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
         }
 
         case 'tool': {
-          resetChatTimeout()
           const toolId = currentAssistantIdRef.current
           if (!toolId) break
           setMessages((prev) =>
@@ -163,7 +151,6 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
         }
 
         case 'chat_response': {
-          resetChatTimeout()
           // Capture ref BEFORE clearing — React 18 batching defers updaters
           const responseId = currentAssistantIdRef.current
           currentAssistantIdRef.current = null
@@ -188,7 +175,6 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
         }
 
         case 'error': {
-          resetChatTimeout()
           const errorId = currentAssistantIdRef.current
           if (errorId) {
             currentAssistantIdRef.current = null
@@ -258,31 +244,8 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
       }))
       wsSend(text, wsAttachments)
       clearFiles()
-
-      // Timeout: if no response event arrives, show error.
-      // Dynamic: base 30s + 3s per MB of attachments (large files need more time)
-      resetChatTimeout()
-      let clientTimeout = 30_000
-      if (allFiles?.length) {
-        const totalMb = allFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024)
-        clientTimeout += Math.round(totalMb * 3_000) // +3s per MB
-      }
-      chatTimeoutRef.current = window.setTimeout(() => {
-        const id = currentAssistantIdRef.current
-        if (id) {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === id
-                ? { ...m, content: m.content || 'No response from engine — request may have timed out.', isStreaming: false }
-                : m
-            )
-          )
-          currentAssistantIdRef.current = null
-          setIsStreaming(false)
-        }
-      }, clientTimeout)
     },
-    [wsSend, isStreaming, resetChatTimeout, pendingFiles, clearFiles]
+    [wsSend, isStreaming, pendingFiles, clearFiles]
   )
 
   const clearHistory = useCallback(() => {
@@ -356,8 +319,7 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
 
   const stopResponse = useCallback(() => {
     wsStop()
-    resetChatTimeout()
-    // Immediately mark streaming as done in UI
+        // Immediately mark streaming as done in UI
     if (currentAssistantIdRef.current) {
       setMessages((prev) =>
         prev.map((m) =>
@@ -369,7 +331,7 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
       currentAssistantIdRef.current = null
       setIsStreaming(false)
     }
-  }, [wsStop, resetChatTimeout])
+  }, [wsStop])
 
   return {
     messages,
