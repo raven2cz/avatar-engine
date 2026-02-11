@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ChatMessage, UploadedFile } from '../api/types'
 import { useWidgetMode } from '../hooks/useWidgetMode'
+import { useAvatarThumb } from '../hooks/useAvatarThumb'
 import { LS_SELECTED_AVATAR } from '../types/avatar'
 import { AVATARS, DEFAULT_AVATAR_ID, getAvatarById } from '../config/avatars'
 import { AvatarFab } from './AvatarFab'
@@ -70,6 +71,7 @@ export function AvatarWidget({
   )
   const selectedAvatar = getAvatarById(selectedAvatarId) || AVATARS[0]
   const [pickerOpen, setPickerOpen] = useState(false)
+  const fabThumbUrl = useAvatarThumb(selectedAvatar)
 
   const handleAvatarSelect = useCallback((id: string) => {
     setSelectedAvatarId(id)
@@ -133,23 +135,69 @@ export function AvatarWidget({
     }
   }, [resizingV, resizingH])
 
-  const bustAreaWidth = bustVisible ? 230 : 0
+  // Clamp dimensions on window resize
+  useEffect(() => {
+    function handleResize() {
+      if (compactHeight > window.innerHeight - 50) {
+        setCompactHeight(window.innerHeight - 50)
+      }
+      if (compactWidth > window.innerWidth) {
+        setCompactWidth(window.innerWidth)
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [compactHeight, compactWidth, setCompactHeight, setCompactWidth])
+
+  // Responsive: hide bust on narrow screens
+  const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 768)
+  useEffect(() => {
+    function check() { setIsNarrow(window.innerWidth < 768) }
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  const showBust = bustVisible && !isNarrow
+  const bustAreaWidth = showBust ? 230 : 0
 
   return (
     <>
-      {/* FULLSCREEN: existing app content, shown when mode is fullscreen */}
+      {/* FULLSCREEN: existing app content — always rendered */}
       <div
-        className={`transition-opacity duration-300 ${
-          mode === 'fullscreen' ? 'opacity-100' : mode === 'compact' ? 'opacity-100' : 'opacity-100'
-        }`}
-        style={mode === 'fullscreen' ? {} : mode === 'compact' ? { paddingBottom: compactHeight } : {}}
+        className="transition-[padding] duration-500"
+        style={{
+          paddingBottom: mode === 'compact' ? compactHeight : 0,
+          transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
       >
         {children}
       </div>
 
-      {/* FAB */}
+      {/* FAB — visible in fab mode */}
       {mode === 'fab' && (
-        <AvatarFab onClick={openCompact} />
+        <AvatarFab
+          onClick={openCompact}
+          avatarThumbUrl={fabThumbUrl}
+        />
+      )}
+
+      {/* Fullscreen → compact return button */}
+      {mode === 'fullscreen' && (
+        <button
+          onClick={openCompact}
+          className="fixed bottom-4 right-4 z-[2001] w-10 h-10 rounded-xl
+            bg-slate-dark/80 backdrop-blur-sm border border-white/10
+            flex items-center justify-center
+            text-text-muted hover:text-synapse hover:border-synapse/40
+            opacity-40 hover:opacity-100
+            transition-all duration-200 hover:scale-105"
+          title="Compact mode (Esc)"
+          aria-label="Switch to compact mode"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+          </svg>
+        </button>
       )}
 
       {/* COMPACT DRAWER */}
@@ -159,17 +207,23 @@ export function AvatarWidget({
           mode === 'compact' ? 'translate-y-0' : 'translate-y-full pointer-events-none'
         }`}
         style={{
-          width: compactWidth,
+          width: isNarrow ? '100%' : compactWidth,
           maxWidth: '100%',
           height: compactHeight,
           transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+          willChange: mode === 'compact' ? 'auto' : 'transform',
         }}
+        role="dialog"
+        aria-label="Chat panel"
       >
         {/* Vertical resize handle (top) */}
         <div
           className={`absolute top-[-14px] right-0 h-[28px] cursor-ns-resize z-[1002] flex items-center justify-center group ${resizingV ? 'active' : ''}`}
           style={{ left: bustAreaWidth }}
           onMouseDown={onResizeVStart}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize chat height"
         >
           <div className={`h-2 rounded transition-all ${resizingV ? 'w-24 bg-synapse shadow-[0_0_12px_rgba(99,102,241,0.4)]' : 'w-[72px] bg-slate-light group-hover:w-24 group-hover:bg-synapse group-hover:shadow-[0_0_12px_rgba(99,102,241,0.4)]'}`}
             style={{
@@ -178,25 +232,30 @@ export function AvatarWidget({
           />
         </div>
 
-        {/* Horizontal resize handle (right) */}
-        <div
-          className={`absolute top-0 bottom-0 w-6 cursor-ew-resize z-[1002] flex items-center justify-center group ${resizingH ? 'active' : ''}`}
-          style={{ right: -24 }}
-          onMouseDown={onResizeHStart}
-        >
-          <div className={`w-2 rounded transition-all ${resizingH ? 'h-24 bg-synapse shadow-[0_0_12px_rgba(99,102,241,0.4)]' : 'h-[72px] bg-slate-light group-hover:h-24 group-hover:bg-synapse group-hover:shadow-[0_0_12px_rgba(99,102,241,0.4)]'}`}
-            style={{
-              backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(255,255,255,${resizingH ? '0.2' : '0.08'}) 3px, rgba(255,255,255,${resizingH ? '0.2' : '0.08'}) 5px)`,
-            }}
-          />
-        </div>
+        {/* Horizontal resize handle (right) — hidden on narrow */}
+        {!isNarrow && (
+          <div
+            className={`absolute top-0 bottom-0 w-6 cursor-ew-resize z-[1002] flex items-center justify-center group ${resizingH ? 'active' : ''}`}
+            style={{ right: -24 }}
+            onMouseDown={onResizeHStart}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize chat width"
+          >
+            <div className={`w-2 rounded transition-all ${resizingH ? 'h-24 bg-synapse shadow-[0_0_12px_rgba(99,102,241,0.4)]' : 'h-[72px] bg-slate-light group-hover:h-24 group-hover:bg-synapse group-hover:shadow-[0_0_12px_rgba(99,102,241,0.4)]'}`}
+              style={{
+                backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(255,255,255,${resizingH ? '0.2' : '0.08'}) 3px, rgba(255,255,255,${resizingH ? '0.2' : '0.08'}) 5px)`,
+              }}
+            />
+          </div>
+        )}
 
         {/* Bust area */}
         <div
           className="relative flex-shrink-0 overflow-visible z-[1001] transition-[width] duration-300 group/bust"
           style={{ width: bustAreaWidth, transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
         >
-          {bustVisible && (
+          {showBust && (
             <>
               {/* Avatar bust with sprite sheet animation */}
               <AvatarBust
@@ -215,6 +274,7 @@ export function AvatarWidget({
                   hover:bg-synapse/30 hover:border-synapse hover:text-white hover:scale-110
                   transition-all duration-200"
                 title="Change avatar"
+                aria-label="Choose avatar character"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -248,22 +308,25 @@ export function AvatarWidget({
 
         {/* Pill toggle — on left edge of chat panel */}
         <div className="relative flex-1 min-w-0 flex flex-col group/panel">
-          <button
-            onClick={toggleBust}
-            className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-10 rounded-full z-[1003]
-              flex items-center justify-center cursor-pointer
-              bg-[rgba(15,15,23,0.9)] backdrop-blur-sm border border-white/[0.06]
-              text-text-muted opacity-0 group-hover/panel:opacity-100 hover:opacity-100
-              hover:bg-synapse/20 hover:border-synapse/40 hover:text-text-primary
-              transition-all duration-200"
-            title={bustVisible ? 'Hide bust (Ctrl+Shift+H)' : 'Show bust (Ctrl+Shift+H)'}
-          >
-            <div className="flex flex-col gap-[3px] items-center">
-              <span className="block w-[10px] h-[1.5px] bg-current rounded-sm opacity-70" />
-              <span className="block w-[10px] h-[1.5px] bg-current rounded-sm opacity-70" />
-              <span className="block w-[10px] h-[1.5px] bg-current rounded-sm opacity-70" />
-            </div>
-          </button>
+          {!isNarrow && (
+            <button
+              onClick={toggleBust}
+              className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-10 rounded-full z-[1003]
+                flex items-center justify-center cursor-pointer
+                bg-[rgba(15,15,23,0.9)] backdrop-blur-sm border border-white/[0.06]
+                text-text-muted opacity-0 group-hover/panel:opacity-100 hover:opacity-100
+                hover:bg-synapse/20 hover:border-synapse/40 hover:text-text-primary
+                transition-all duration-200"
+              title={bustVisible ? 'Hide bust (Ctrl+Shift+H)' : 'Show bust (Ctrl+Shift+H)'}
+              aria-label={bustVisible ? 'Hide avatar bust' : 'Show avatar bust'}
+            >
+              <div className="flex flex-col gap-[3px] items-center">
+                <span className="block w-[10px] h-[1.5px] bg-current rounded-sm opacity-70" />
+                <span className="block w-[10px] h-[1.5px] bg-current rounded-sm opacity-70" />
+                <span className="block w-[10px] h-[1.5px] bg-current rounded-sm opacity-70" />
+              </div>
+            </button>
+          )}
 
           <CompactChat
             messages={messages}

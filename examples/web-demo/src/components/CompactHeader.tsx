@@ -52,6 +52,7 @@ export function CompactHeader({ provider, model, connected, engineState, onFulls
           onClick={onFullscreen}
           className="w-6 h-6 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-white/8 transition-colors"
           title="Fullscreen (Ctrl+Shift+F)"
+          aria-label="Expand to fullscreen"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
             <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
@@ -62,6 +63,7 @@ export function CompactHeader({ provider, model, connected, engineState, onFulls
           onClick={onClose}
           className="w-6 h-6 rounded-md flex items-center justify-center text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
           title="Close (Esc)"
+          aria-label="Close chat panel"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
             <path d="M18 6L6 18M6 6l12 12" />

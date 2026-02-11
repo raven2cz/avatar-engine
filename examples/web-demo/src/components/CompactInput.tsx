@@ -3,7 +3,7 @@
  * Supports Enter-to-send, Shift+Enter for newline, paste + drag-drop.
  */
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef, useState, type DragEvent } from 'react'
 import { ArrowUp, Paperclip, Square } from 'lucide-react'
 import type { UploadedFile } from '../api/types'
 
@@ -19,8 +19,16 @@ interface CompactInputProps {
 
 export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFiles = [], onUpload, onRemoveFile }: CompactInputProps) {
   const [input, setInput] = useState('')
+  const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleDrop = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    if (!onUpload) return
+    Array.from(e.dataTransfer.files).forEach((f) => onUpload(f))
+  }, [onUpload])
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim()
@@ -56,7 +64,12 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
   }, [onUpload])
 
   return (
-    <div className="px-3 pb-2 pt-1 border-t border-slate-mid/25 flex-shrink-0">
+    <div
+      className={`px-3 pb-2 pt-1 border-t flex-shrink-0 transition-colors ${dragOver ? 'border-synapse/50 bg-synapse/5' : 'border-slate-mid/25'}`}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+    >
       {/* Pending files (compact) */}
       {pendingFiles.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-1">

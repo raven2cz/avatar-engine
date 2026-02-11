@@ -2,6 +2,7 @@
  * Floating Action Button — dark, subdued, shows avatar face in circle.
  *
  * Positioned bottom-right. Opacity 0.6 → 1 on hover.
+ * Responsive: smaller on narrow screens (<768px).
  * Click opens compact mode.
  */
 
@@ -16,23 +17,28 @@ export function AvatarFab({ onClick, avatarThumbUrl }: AvatarFabProps) {
       onClick={onClick}
       className="
         fixed bottom-6 right-6 z-50
-        w-20 h-20 rounded-full
+        w-20 h-20 sm:w-20 sm:h-20
+        rounded-full
         bg-slate-dark border border-white/10
         opacity-60 hover:opacity-100
         transition-all duration-300 ease-out
-        hover:scale-105
+        hover:scale-105 hover:border-synapse/40
+        hover:shadow-[0_6px_24px_rgba(0,0,0,0.5),0_0_0_2px_rgba(99,102,241,0.12)]
+        active:scale-95
         shadow-lg shadow-black/40
         flex items-center justify-center
-        cursor-pointer
+        cursor-pointer overflow-hidden
         group
       "
       title="Open chat (Ctrl+Shift+A)"
+      aria-label="Open chat panel"
     >
       {avatarThumbUrl ? (
         <img
           src={avatarThumbUrl}
           alt="Avatar"
-          className="w-[72px] h-[72px] rounded-full object-cover object-top"
+          className="w-[72px] h-[72px] rounded-full object-cover object-top border-2 border-white/10"
+          draggable={false}
         />
       ) : (
         <svg
