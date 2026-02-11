@@ -12,7 +12,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ChatMessage, UploadedFile } from '../api/types'
 import { useWidgetMode } from '../hooks/useWidgetMode'
+import { LS_SELECTED_AVATAR } from '../types/avatar'
+import { AVATARS, DEFAULT_AVATAR_ID, getAvatarById } from '../config/avatars'
 import { AvatarFab } from './AvatarFab'
+import { AvatarBust } from './AvatarBust'
 import { CompactChat } from './CompactChat'
 
 interface AvatarWidgetProps {
@@ -59,6 +62,12 @@ export function AvatarWidget({
     bustVisible,
     toggleBust,
   } = useWidgetMode()
+
+  // Selected avatar
+  const [selectedAvatarId, setSelectedAvatarId] = useState(() =>
+    localStorage.getItem(LS_SELECTED_AVATAR) || DEFAULT_AVATAR_ID
+  )
+  const selectedAvatar = getAvatarById(selectedAvatarId) || AVATARS[0]
 
   // Resize state
   const [resizingV, setResizingV] = useState(false)
@@ -182,25 +191,19 @@ export function AvatarWidget({
         >
           {bustVisible && (
             <>
-              {/* Bust placeholder — Phase 2 will add AvatarBust here */}
-              <div
+              {/* Avatar bust with sprite sheet animation */}
+              <AvatarBust
+                avatar={selectedAvatar}
+                engineState={engineState}
                 className="absolute bottom-0 left-[14px] w-[200px]"
-                style={{ transform: 'translateY(2.8%)' }}
-                data-state={
-                  engineState === 'thinking' || engineState === 'tool_executing' ? 'thinking' :
-                  engineState === 'responding' ? 'speaking' :
-                  engineState === 'error' ? 'error' : 'idle'
-                }
-              >
-                <div className="w-[200px] h-[300px] rounded-2xl bg-slate-dark/30 border border-white/5 flex items-center justify-center">
-                  <span className="text-text-muted text-[0.6rem]">Bust Phase 2</span>
-                </div>
-              </div>
-              {/* Glow pool */}
-              <div className="absolute bottom-[2%] left-1/2 -translate-x-[40%] w-[180px] h-[50px] rounded-full opacity-0 pointer-events-none blur-[10px]"
+              />
+              {/* Glow pool under bust */}
+              <div className="absolute bottom-[2%] left-1/2 -translate-x-[40%] w-[180px] h-[50px] rounded-full pointer-events-none blur-[10px]"
                 style={{
                   background: engineState === 'error'
                     ? 'radial-gradient(ellipse, rgba(244,63,94,0.2) 0%, transparent 70%)'
+                    : engineState === 'responding'
+                    ? 'radial-gradient(ellipse, rgba(139,92,246,0.25) 0%, transparent 70%)'
                     : 'radial-gradient(ellipse, rgba(99,102,241,0.25) 0%, transparent 70%)',
                   opacity: engineState !== 'idle' ? 0.8 : 0,
                   transition: 'opacity 0.5s ease',
