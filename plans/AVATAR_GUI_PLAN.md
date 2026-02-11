@@ -127,6 +127,94 @@ Compact mode je ODLIŠNÝ od fullscreenu. Menší, skromnější, nebere pozorno
 
 ## Avatar Bust System
 
+### Struktura souborů avatara
+
+```
+public/avatars/{id}/
+  ├── idle.webp              ← POVINNÝ: klidný výraz (statický obrázek)
+  ├── thinking.webp          ← volitelný: specifická thinking póza
+  ├── error.webp             ← volitelný: zamračený / angry výraz
+  ├── speaking.webp          ← volitelný: 4-frame horizontální sprite sheet
+  └── thumbnail.webp         ← volitelný: předgenerovaný 72×72 crop obličeje
+```
+
+#### Tři úrovně avatarů
+
+**Minimální** (1 soubor) — jen idle obrázek, žádná speaking animace:
+```
+avatars/custom-avatar/
+  └── idle.webp
+```
+
+**Sprite sheet** (kokoro styl) — 1 sprite sheet, idle se extrahuje z frame[0]:
+```
+avatars/bella/
+  └── speaking.webp          ← frame[0] = idle (auto-extrahováno)
+```
+
+**Plný** (escape-game styl) — individuální pózy + volitelný sprite sheet:
+```
+avatars/astronaut/
+  ├── idle.webp              ← specifický klidný výraz
+  ├── thinking.webp          ← ruka na bradě
+  ├── error.webp             ← zamračení
+  └── speaking.webp          ← volitelný sprite sheet (pokud chybí, speaking = idle staticky)
+```
+
+#### Fallback chain pro každý stav
+
+```
+bustState        Priorita načítání
+──────────────────────────────────────────────────────────────────
+idle          →  idle.webp  →  speaking.webp[frame0]
+thinking      →  thinking.webp  →  idle.webp  →  speaking.webp[frame0]
+speaking      →  speaking.webp (ping-pong frames 1-3)  →  idle.webp (staticky)
+error         →  error.webp  →  idle.webp  →  speaking.webp[frame0]
+```
+
+#### Konfigurace avatara (TypeScript)
+
+```typescript
+interface AvatarConfig {
+  id: string;
+  name: string;
+  poses: {
+    idle: string | 'auto';     // 'idle.webp' nebo 'auto' (= speaking frame[0])
+    thinking?: string;          // 'thinking.webp' — pokud chybí, fallback na idle
+    error?: string;             // 'error.webp' — pokud chybí, fallback na idle
+    speaking?: string;          // 'speaking.webp' — sprite sheet pro mouth animaci
+  };
+  speakingFrames: number;       // kolik framů v sprite sheetu (default 4)
+  speakingFps: number;          // fps speaking animace (default 8)
+}
+```
+
+#### Logika načítání v `useAvatarBust`
+
+```
+1. Načti poses.speaking (sprite sheet) pokud existuje
+   → Extrahuj framy do canvas[]
+   → Pokud poses.idle === 'auto', ulož frame[0] jako idlePose
+
+2. Načti poses.idle pokud není 'auto'
+   → Statický obrázek pro idle stav
+
+3. Načti poses.thinking pokud existuje
+   → Specifický obrázek pro thinking stav
+
+4. Načti poses.error pokud existuje
+   → Specifický obrázek pro error stav
+
+5. Při změně bustState:
+   idle       → renderuj idlePose + CSS breathe animace
+   thinking   → renderuj thinkingPose (nebo idlePose) + CSS thinking animace + glow
+   speaking   → ping-pong na speaking framech (nebo staticky idlePose) + pulse glow
+   error      → renderuj errorPose (nebo idlePose) + CSS shake + rose glow
+```
+
+CSS animace (breathe, thinking sway, shake) běží vždy nezávisle na obrázku —
+mění jen `transform`. Obrázek se mění jen pokud existuje specifická póza.
+
 ### Stavový automat
 
 ```
@@ -165,16 +253,74 @@ bust-shake      0.6s ease-in-out once       translateX(±8px)
 bust-glow       pod bustem, radial-gradient, blur(10px)
 ```
 
-### Předdefinovaní avataři (z kokoro-dubber)
+### Předdefinovaní avataři
 
-| ID | Jméno | Sprite sheet | Rozměry framu |
-|----|-------|-------------|---------------|
-| `bella` | Bella | `af_bella.webp` | 200×359 |
-| `heart` | Heart | `af_heart.webp` | 200×331 |
-| `adam`  | Adam  | `am_adam.webp`  | 200×311 |
+#### Kokoro-dubber (sprite sheet only — idle z frame[0])
 
-Soubory v `plans/mockups/busts/` (800px wide resized), base64 data v `bust-data.js`.
-Pro produkci: přesunout do `public/avatars/` jako WebP soubory.
+| ID | Jméno | Pohlaví | Zdroj | Orig. rozměry |
+|----|-------|---------|-------|---------------|
+| `af_bella` | Bella | F | kokoro-dubber | 2972×1333 |
+| `af_heart` | Heart | F | kokoro-dubber | 2696×1115 |
+| `af_nicole` | Nicole | F | kokoro-dubber | 2744×1410 |
+| `af_sky` | Sky | F | kokoro-dubber | 2652×1351 |
+| `am_adam` | Adam | M | kokoro-dubber | 2452×954 |
+| `am_michael` | Michael | M | kokoro-dubber | 2912×1263 |
+| `bm_george` | George | M | kokoro-dubber | 2656×1276 |
+
+Konfigurace (všichni stejná):
+```typescript
+{ poses: { idle: 'auto', speaking: 'speaking.webp' }, speakingFrames: 4, speakingFps: 8 }
+```
+
+#### Escape-game-engine (individuální pózy — bez speaking)
+
+| ID | Jméno | Pózy | Zdroj | Orig. rozměry |
+|----|-------|------|-------|---------------|
+| `astronaut` | Astronautka | idle, thinking, happy→idle, angry→error | warp-engine | ~877×1444 |
+
+Konfigurace:
+```typescript
+{
+  poses: { idle: 'idle.webp', thinking: 'thinking.webp', error: 'angry.webp' },
+  speakingFrames: 0, speakingFps: 0   // žádná speaking animace
+}
+```
+
+Astronautka nemá speaking sprite sheet — při speaking stavu se zobrazí idle
+staticky s CSS pulse animací. Otestuje fallback chain.
+
+#### Soubory k přenesení
+
+Zdrojové sprite sheety se resizují na 800px šířku (WebP, zachovat alpha):
+```
+kokoro-dubber/web/images/busts/af_bella.webp    → public/avatars/af_bella/speaking.webp
+kokoro-dubber/web/images/busts/af_heart.webp    → public/avatars/af_heart/speaking.webp
+kokoro-dubber/web/images/busts/af_nicole.webp   → public/avatars/af_nicole/speaking.webp
+kokoro-dubber/web/images/busts/af_sky.webp      → public/avatars/af_sky/speaking.webp
+kokoro-dubber/web/images/busts/am_adam.webp      → public/avatars/am_adam/speaking.webp
+kokoro-dubber/web/images/busts/am_michael.webp   → public/avatars/am_michael/speaking.webp
+kokoro-dubber/web/images/busts/bm_george.webp    → public/avatars/bm_george/speaking.webp
+
+escape-game-engine/.../astronaut/idle.webp       → public/avatars/astronaut/idle.webp
+escape-game-engine/.../astronaut/thinking.webp   → public/avatars/astronaut/thinking.webp
+escape-game-engine/.../astronaut/angry.webp      → public/avatars/astronaut/error.webp
+```
+
+### Avatar Picker (grid layout)
+
+Picker popup podporuje víceřádkový grid pro větší počet avatarů:
+
+```
+┌─────────────────────────────┐
+│  [Bella] [Heart] [Nicole]   │
+│  [Sky]   [Adam]  [Michael]  │
+│  [George][Astro]            │
+└─────────────────────────────┘
+```
+
+CSS: `display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 8px;`
+Thumbnaily: 48×72px portrait, canvas render horních 65% postavy.
+Max-width popupu: ~220px (3 sloupce pohodlně, 4+ se přidá scroll).
 
 ---
 
