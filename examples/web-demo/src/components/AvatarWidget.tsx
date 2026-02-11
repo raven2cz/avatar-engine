@@ -16,6 +16,7 @@ import { LS_SELECTED_AVATAR } from '../types/avatar'
 import { AVATARS, DEFAULT_AVATAR_ID, getAvatarById } from '../config/avatars'
 import { AvatarFab } from './AvatarFab'
 import { AvatarBust } from './AvatarBust'
+import { AvatarPicker } from './AvatarPicker'
 import { CompactChat } from './CompactChat'
 
 interface AvatarWidgetProps {
@@ -68,6 +69,12 @@ export function AvatarWidget({
     localStorage.getItem(LS_SELECTED_AVATAR) || DEFAULT_AVATAR_ID
   )
   const selectedAvatar = getAvatarById(selectedAvatarId) || AVATARS[0]
+  const [pickerOpen, setPickerOpen] = useState(false)
+
+  const handleAvatarSelect = useCallback((id: string) => {
+    setSelectedAvatarId(id)
+    localStorage.setItem(LS_SELECTED_AVATAR, id)
+  }, [])
 
   // Resize state
   const [resizingV, setResizingV] = useState(false)
@@ -186,7 +193,7 @@ export function AvatarWidget({
 
         {/* Bust area */}
         <div
-          className="relative flex-shrink-0 overflow-visible z-[1001] transition-[width] duration-300"
+          className="relative flex-shrink-0 overflow-visible z-[1001] transition-[width] duration-300 group/bust"
           style={{ width: bustAreaWidth, transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
         >
           {bustVisible && (
@@ -197,6 +204,32 @@ export function AvatarWidget({
                 engineState={engineState}
                 className="absolute bottom-0 left-[14px] w-[200px]"
               />
+              {/* Character picker button — appears on hover */}
+              <button
+                onClick={() => setPickerOpen((v) => !v)}
+                className="absolute bottom-[3.6%] left-[13px] w-8 h-8 rounded-full z-[1002]
+                  flex items-center justify-center cursor-pointer
+                  bg-black/55 backdrop-blur-sm border border-white/[0.06]
+                  text-text-secondary text-[0.7rem]
+                  opacity-0 hover:opacity-100 group-hover/bust:opacity-100
+                  hover:bg-synapse/30 hover:border-synapse hover:text-white hover:scale-110
+                  transition-all duration-200"
+                title="Change avatar"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              </button>
+              {/* Character picker popup */}
+              {pickerOpen && (
+                <AvatarPicker
+                  selectedId={selectedAvatarId}
+                  onSelect={handleAvatarSelect}
+                  onClose={() => setPickerOpen(false)}
+                />
+              )}
               {/* Glow pool under bust */}
               <div className="absolute bottom-[2%] left-1/2 -translate-x-[40%] w-[180px] h-[50px] rounded-full pointer-events-none blur-[10px]"
                 style={{
