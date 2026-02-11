@@ -456,12 +456,132 @@ tailwind.config.js
 4. Avatar volba persist do localStorage
 5. Přesunout sprite sheet assety do `public/avatars/`
 
-### Fáze 6: Polish
+### Fáze 6: Polish ✅ DONE
 1. Responsive breakpoints (< 768px: bust hidden, FAB menší)
 2. Accessibility (aria labels, focus trap v compact)
 3. Performance (lazy load sprite sheets, will-change hints)
 4. Testování na 4K (max-width constraint)
 5. Edge cases (příliš malé okno, přechod compact↔fullscreen se ztrátou stavu)
+
+### Fáze 7: Restructure — Landing Page + Fullscreen Overlay + State Safety
+
+**Problém:** Fullscreen mode je špatně propojený s compact modem.
+Aktuálně je fullscreen = stávající App obsah zobrazený vespod, compact je
+drawer nad ním. Správně: fullscreen musí být OVERLAY přes landing page.
+
+#### Nová architektura
+
+```
+App.tsx
+  └── useAvatarChat(WS_URL)  ← JEDNA instance, sdílená všemi režimy
+  └── AvatarWidget
+        ├── LandingPage          (background, vždy viditelná)
+        ├── FAB                  (mode=fab, bottom-LEFT ← fix!)
+        ├── Compact drawer       (mode=compact, nad landing)
+        │   └── CompactHeader s ⋯ dropdown (provider/model switch)
+        └── Fullscreen overlay   (mode=fullscreen, opacity transition)
+              └── StatusBar + ChatPanel + CostTracker + BreathingOrb
+```
+
+#### Klíčové pravidlo: ŽÁDNÁ DVOJITÁ INICIALIZACE
+
+```
+useAvatarChat se volá JEDNOU v App.tsx
+  └── useAvatarWebSocket — WS connection žije NEZÁVISLE na mode
+  └── messages[], sendMessage, engineState, cost... = SDÍLENÝ stav
+  └── Mode switch = jen změna VIDITELNOSTI, NIKDY reinicializace
+
+Compact a fullscreen čtou STEJNÁ data ze STEJNÝCH props.
+WS se NIKDY nereconnectuje při přepnutí režimu.
+Provider/session se NIKDY neresetuje při přepnutí.
+```
+
+#### LandingPage (demo podklad)
+
+```
+┌────────────────────────────────────────────────────┐
+│                                                    │
+│        ✦ Avatar Engine                             │
+│        AI-powered conversational assistant          │
+│                                                    │
+│   ┌──────────┐ ┌──────────┐ ┌──────────┐          │
+│   │ Multi-   │ │ Animated │ │ Live     │          │
+│   │ Provider │ │ Bust     │ │ Streaming│          │
+│   └──────────┘ └──────────┘ └──────────┘          │
+│                                                    │
+│   Keyboard Shortcuts                               │
+│   ───────────────                                  │
+│   Ctrl+Shift+A  Toggle compact chat                │
+│   Ctrl+Shift+F  Toggle fullscreen                  │
+│   Ctrl+Shift+H  Toggle bust visibility             │
+│   Escape        Close / minimize                   │
+│                                                    │
+│          ↓ blikající šipka na FAB                   │
+│   [FAB]                                            │
+└────────────────────────────────────────────────────┘
+```
+
+DŮLEŽITÝ KOMENTÁŘ V KÓDU (anglicky):
+```
+// === DEMO LANDING PAGE ===
+// This LandingPage component is specific to the web demo.
+// When integrating Avatar Engine into your own application,
+// replace this with your app's content. The AvatarWidget
+// wraps your existing UI — just pass chat props and it handles
+// FAB, compact drawer, and fullscreen overlay automatically.
+```
+
+#### CompactHeader dropdown (⋯ menu)
+
+Malé `⋯` tlačítko v compact headeru, kliknutí otevře dropdown:
+- Provider/model selector (reuse ProviderModelSelector)
+- New session
+- Session title (read-only v compact, editovatelný ve fullscreen)
+
+Dropdown se otevře NAHORU pokud je málo místa pod ním.
+
+#### First-time hints
+
+localStorage key: `avatar-engine-hints-shown`
+- Pokud `!== '1'`: blikající šipka na FAB, po kliknutí: šipka na expand button
+- Po prvním fullscreen: `localStorage.set('avatar-engine-hints-shown', '1')`
+
+#### Fullscreen overlay transition
+
+```css
+.fullscreen-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: var(--obsidian);
+  opacity: 0; transform: scale(0.97);
+  transition: opacity 0.3s, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+.fullscreen-overlay.active {
+  opacity: 1; transform: scale(1);
+  pointer-events: all;
+}
+```
+
+#### Soubory (fáze 7)
+
+```
+Nové:
+  src/components/LandingPage.tsx   ← demo podklad s intro + shortcuts
+
+Modifikované:
+  src/App.tsx                      ← předá fullscreen props do AvatarWidget
+  src/components/AvatarWidget.tsx  ← landing + fullscreen overlay
+  src/components/AvatarFab.tsx     ← FAB position: bottom-LEFT
+  src/components/CompactHeader.tsx ← ⋯ dropdown menu
+```
+
+#### Testy (fáze 7)
+
+1. Mode switch compact→fullscreen→compact: messages persist, WS stays connected
+2. Send message in compact, verify in fullscreen (same messages[])
+3. Switch provider in compact dropdown, verify fullscreen reflects it
+4. Resize compact, switch to fullscreen, switch back — dimensions preserved
+5. Fullscreen Escape → compact: no re-init, no WS reconnect
 
 ---
 

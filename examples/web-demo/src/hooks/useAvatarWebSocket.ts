@@ -245,6 +245,8 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
             break
           case 'error':
             dispatch({ type: 'ERROR', error: msg.data.error })
+            // Defensive: reset to idle on error (same as chat_response)
+            dispatch({ type: 'ENGINE_STATE', state: 'idle' })
             break
           case 'session_title_updated':
             dispatch({
@@ -259,6 +261,11 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
             if (msg.data.session_id) {
               dispatch({ type: 'SESSION_ID_DISCOVERED', sessionId: msg.data.session_id })
             }
+            // Defensive: ensure engine state returns to idle when response completes.
+            // The server should send engine_state:idle via StateEvent, but timing
+            // issues in the bridge→emitter→ws broadcast chain can cause it to be
+            // lost or arrive after chat_response. This guarantees the UI resets.
+            dispatch({ type: 'ENGINE_STATE', state: 'idle' })
             break
         }
         // Notify registered handler

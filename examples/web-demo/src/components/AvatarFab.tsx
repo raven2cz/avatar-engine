@@ -16,7 +16,7 @@ export function AvatarFab({ onClick, avatarThumbUrl }: AvatarFabProps) {
     <button
       onClick={onClick}
       className="
-        fixed bottom-6 right-6 z-50
+        fixed bottom-6 left-6 z-50
         w-20 h-20 sm:w-20 sm:h-20
         rounded-full
         bg-slate-dark border border-white/10

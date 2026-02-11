@@ -15,13 +15,13 @@ function CompactBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
 
   return (
-    <div className={`flex gap-1.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-      {/* Compact avatar */}
+    <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+      {/* Avatar icon — sized to match a single line of text */}
       <div
-        className={`flex-shrink-0 w-5 h-5 rounded-md flex items-center justify-center mt-0.5 text-[0.5rem] font-semibold ${
+        className={`flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center mt-[1px] text-[0.6rem] font-bold ${
           isUser
             ? 'bg-gradient-to-br from-synapse to-pulse text-white'
-            : 'bg-slate-mid border border-slate-mid/50 text-synapse'
+            : 'bg-synapse/15 border border-synapse/25 text-synapse'
         }`}
       >
         {isUser ? 'U' : 'A'}

@@ -84,11 +84,11 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
         </div>
       )}
 
-      {/* Input row */}
+      {/* Input row — slightly elevated background for contrast against drawer */}
       <div className={`flex items-end gap-1.5 rounded-2xl border px-3 py-1.5 transition-colors ${
-        !connected ? 'border-red-500/20 opacity-50' : 'border-slate-mid/40 focus-within:border-synapse/40'
+        !connected ? 'border-red-500/20 opacity-50' : 'border-white/[0.1] focus-within:border-synapse/50 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.15)]'
       }`}
-        style={{ background: 'rgba(26,26,46,0.35)', backdropFilter: 'blur(8px)' }}
+        style={{ background: 'rgba(12,12,26,0.6)', backdropFilter: 'blur(8px)' }}
       >
         <input
           ref={fileInputRef}

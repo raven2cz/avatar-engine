@@ -1,28 +1,44 @@
 /**
- * AvatarWidget — master container managing three display modes:
+ * === AVATAR WIDGET — Master Layout Container ===
  *
- *   FAB       → floating action button (bottom-right)
- *   COMPACT   → bottom drawer with bust area + compact chat
- *   FULLSCREEN→ existing App content, unchanged
+ * Manages three display modes with a single shared chat instance:
  *
- * Wraps the fullscreen content as children.
- * Compact mode uses its own CompactChat components.
+ *   FAB        → floating action button (bottom-LEFT)
+ *   COMPACT    → bottom drawer with avatar bust + compact chat
+ *   FULLSCREEN → overlay covering landing page (existing StatusBar + ChatPanel)
+ *
+ * Architecture:
+ *   - LandingPage is always rendered as the persistent background
+ *   - Fullscreen content (children) is rendered as a fixed overlay
+ *   - Compact drawer slides up from bottom-left
+ *   - FAB shows when neither compact nor fullscreen is active
+ *
+ * CRITICAL: useAvatarChat is called ONCE in App.tsx. All props are shared
+ * between compact and fullscreen modes. Mode transitions NEVER cause
+ * WebSocket reconnection or state reinitialization.
+ *
+ * Integration guide:
+ *   Replace <LandingPage> with your own app content. The widget wraps
+ *   everything — just pass chat props and it handles FAB, compact drawer,
+ *   and fullscreen overlay automatically.
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ChatMessage, UploadedFile } from '../api/types'
 import { useWidgetMode } from '../hooks/useWidgetMode'
 import { useAvatarThumb } from '../hooks/useAvatarThumb'
-import { LS_SELECTED_AVATAR } from '../types/avatar'
+import { LS_SELECTED_AVATAR, LS_HINTS_SHOWN } from '../types/avatar'
 import { AVATARS, DEFAULT_AVATAR_ID, getAvatarById } from '../config/avatars'
+import { LandingPage } from './LandingPage'
 import { AvatarFab } from './AvatarFab'
 import { AvatarBust } from './AvatarBust'
 import { AvatarPicker } from './AvatarPicker'
 import { CompactChat } from './CompactChat'
 
 interface AvatarWidgetProps {
+  /** Fullscreen content (StatusBar + ChatPanel + CostTracker) — rendered as overlay */
   children: ReactNode
-  // Chat data (from useAvatarChat)
+  // Chat data (shared between compact and fullscreen, from single useAvatarChat)
   messages: ChatMessage[]
   sendMessage: (text: string) => void
   stopResponse: () => void
@@ -35,6 +51,11 @@ interface AvatarWidgetProps {
   uploading?: boolean
   uploadFile?: (file: File) => Promise<unknown>
   removeFile?: (fileId: string) => void
+  // Provider switching (for compact header ⋯ dropdown)
+  switching?: boolean
+  activeOptions?: Record<string, string | number>
+  availableProviders?: Set<string> | null
+  switchProvider?: (provider: string, model?: string, options?: Record<string, string | number>) => void
 }
 
 export function AvatarWidget({
@@ -51,6 +72,10 @@ export function AvatarWidget({
   uploading,
   uploadFile,
   removeFile,
+  switching,
+  activeOptions,
+  availableProviders,
+  switchProvider,
 }: AvatarWidgetProps) {
   const {
     mode,
@@ -65,7 +90,7 @@ export function AvatarWidget({
     toggleBust,
   } = useWidgetMode()
 
-  // Selected avatar
+  // --- Avatar selection (persisted to localStorage) ---
   const [selectedAvatarId, setSelectedAvatarId] = useState(() =>
     localStorage.getItem(LS_SELECTED_AVATAR) || DEFAULT_AVATAR_ID
   )
@@ -78,13 +103,37 @@ export function AvatarWidget({
     localStorage.setItem(LS_SELECTED_AVATAR, id)
   }, [])
 
-  // Resize state
+  // --- First-time hints (fab arrow, expand pulsing dot) ---
+  const [hintsShown, setHintsShown] = useState<Set<string>>(() => {
+    const v = localStorage.getItem(LS_HINTS_SHOWN)
+    return new Set(v ? v.split(',').filter(Boolean) : [])
+  })
+
+  const markHint = useCallback((key: string) => {
+    setHintsShown((prev) => {
+      if (prev.has(key)) return prev
+      const next = new Set(prev).add(key)
+      localStorage.setItem(LS_HINTS_SHOWN, [...next].join(','))
+      return next
+    })
+  }, [])
+
+  // Dismiss hints on mode transitions
+  useEffect(() => {
+    if (mode === 'compact') markHint('fab')
+    if (mode === 'fullscreen') markHint('expand')
+  }, [mode, markHint])
+
+  const showFabHint = mode === 'fab' && !hintsShown.has('fab')
+  const showExpandHint = mode === 'compact' && !hintsShown.has('expand')
+
+  // --- Compact drawer resize ---
   const [resizingV, setResizingV] = useState(false)
   const [resizingH, setResizingH] = useState(false)
   const drawerRef = useRef<HTMLDivElement>(null)
   const resizeStartRef = useRef({ y: 0, h: 0, x: 0, w: 0 })
 
-  // --- Vertical resize (top handle) ---
+  // Vertical resize (top handle)
   const onResizeVStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     resizeStartRef.current = { y: e.clientY, h: compactHeight, x: 0, w: 0 }
@@ -104,7 +153,7 @@ export function AvatarWidget({
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [resizingV, setCompactHeight])
 
-  // --- Horizontal resize (right handle) ---
+  // Horizontal resize (right handle)
   const onResizeHStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     resizeStartRef.current = { y: 0, h: 0, x: e.clientX, w: compactWidth }
@@ -138,18 +187,14 @@ export function AvatarWidget({
   // Clamp dimensions on window resize
   useEffect(() => {
     function handleResize() {
-      if (compactHeight > window.innerHeight - 50) {
-        setCompactHeight(window.innerHeight - 50)
-      }
-      if (compactWidth > window.innerWidth) {
-        setCompactWidth(window.innerWidth)
-      }
+      if (compactHeight > window.innerHeight - 50) setCompactHeight(window.innerHeight - 50)
+      if (compactWidth > window.innerWidth) setCompactWidth(window.innerWidth)
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [compactHeight, compactWidth, setCompactHeight, setCompactWidth])
 
-  // Responsive: hide bust on narrow screens
+  // Responsive: hide bust on narrow screens (<768px)
   const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 768)
   useEffect(() => {
     function check() { setIsNarrow(window.innerWidth < 768) }
@@ -162,24 +207,28 @@ export function AvatarWidget({
 
   return (
     <>
-      {/* FULLSCREEN: existing app content — always rendered */}
+      {/* ============================================================ */}
+      {/* BACKGROUND: Demo landing page — always visible behind modes  */}
+      {/* Replace LandingPage with your own app content when           */}
+      {/* integrating Avatar Engine into an existing application.      */}
+      {/* ============================================================ */}
+      <LandingPage showFabHint={showFabHint} />
+
+      {/* ============================================================ */}
+      {/* FULLSCREEN OVERLAY — existing app content (StatusBar, Chat)  */}
+      {/* Always in the DOM to preserve React state; hidden via CSS    */}
+      {/* when not in fullscreen mode. No unmount → no reinit.         */}
+      {/* ============================================================ */}
       <div
-        className="transition-[padding] duration-500"
-        style={{
-          paddingBottom: mode === 'compact' ? compactHeight : 0,
-          transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
-        }}
+        className={`fixed inset-0 z-[2000] transition-opacity duration-300 ${
+          mode === 'fullscreen'
+            ? 'opacity-100'
+            : 'opacity-0 pointer-events-none'
+        }`}
+        aria-hidden={mode !== 'fullscreen'}
       >
         {children}
       </div>
-
-      {/* FAB — visible in fab mode */}
-      {mode === 'fab' && (
-        <AvatarFab
-          onClick={openCompact}
-          avatarThumbUrl={fabThumbUrl}
-        />
-      )}
 
       {/* Fullscreen → compact return button */}
       {mode === 'fullscreen' && (
@@ -200,7 +249,19 @@ export function AvatarWidget({
         </button>
       )}
 
-      {/* COMPACT DRAWER */}
+      {/* ============================================================ */}
+      {/* FAB — floating action button, bottom-left                    */}
+      {/* ============================================================ */}
+      {mode === 'fab' && (
+        <AvatarFab
+          onClick={openCompact}
+          avatarThumbUrl={fabThumbUrl}
+        />
+      )}
+
+      {/* ============================================================ */}
+      {/* COMPACT DRAWER — bottom-left, resizable, with avatar bust    */}
+      {/* ============================================================ */}
       <div
         ref={drawerRef}
         className={`fixed bottom-0 left-0 z-[999] flex overflow-visible transition-transform duration-500 ${
@@ -257,7 +318,6 @@ export function AvatarWidget({
         >
           {showBust && (
             <>
-              {/* Avatar bust with sprite sheet animation */}
               <AvatarBust
                 avatar={selectedAvatar}
                 engineState={engineState}
@@ -282,7 +342,6 @@ export function AvatarWidget({
                   <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
                 </svg>
               </button>
-              {/* Character picker popup */}
               {pickerOpen && (
                 <AvatarPicker
                   selectedId={selectedAvatarId}
@@ -343,6 +402,11 @@ export function AvatarWidget({
             onRemoveFile={removeFile}
             onFullscreen={openFullscreen}
             onClose={closeTofab}
+            switching={switching}
+            activeOptions={activeOptions}
+            availableProviders={availableProviders}
+            onSwitchProvider={switchProvider}
+            showExpandHint={showExpandHint}
           />
         </div>
       </div>
