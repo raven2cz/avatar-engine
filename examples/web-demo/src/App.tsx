@@ -66,6 +66,9 @@ export default function App() {
       stopResponse={stopResponse}
       isStreaming={isStreaming}
       connected={connected}
+      wasConnected={wasConnected}
+      initDetail={initDetail}
+      error={error}
       provider={provider}
       model={model}
       engineState={engineState}

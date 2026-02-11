@@ -173,6 +173,9 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
   const handlerRef = useRef<((msg: ServerMessage) => void) | null>(null)
   const reconnectTimeoutRef = useRef<number>()
   const unmountedRef = useRef(false)
+  // Error fence: when true, ignore engine_state/thinking/text/tool events
+  // from a stale (timed-out) request. Cleared on next sendMessage.
+  const errorFenceRef = useRef(false)
 
   const connect = useCallback(() => {
     // Don't connect after unmount (prevents StrictMode zombie reconnects)
@@ -202,9 +205,32 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
       if (ws !== wsRef.current) return
       try {
         const msg = JSON.parse(event.data) as ServerMessage
+
+        // Error fence: after an error/timeout, ignore stale events from
+        // the old request that the engine is still processing. The fence
+        // is cleared when the user sends a new message.
+        const fenced = errorFenceRef.current
+        if (fenced) {
+          // Let through: connected, initializing, state, session_title_updated,
+          // error (could be a new error), cost (harmless). Block everything
+          // that would change engine state or bust animation.
+          if (['engine_state', 'thinking', 'text', 'tool', 'chat_response'].includes(msg.type)) {
+            // Still reset to idle if this is chat_response (cleanup)
+            if (msg.type === 'chat_response') {
+              errorFenceRef.current = false
+              dispatch({ type: 'ENGINE_STATE', state: 'idle' })
+              dispatch({ type: 'THINKING_END' })
+            }
+            // Pass to handler so useAvatarChat can ignore gracefully
+            handlerRef.current?.(msg)
+            return
+          }
+        }
+
         // Dispatch state updates based on message type
         switch (msg.type) {
           case 'connected':
+            errorFenceRef.current = false
             dispatch({ type: 'CONNECTED', payload: msg })
             break
           case 'initializing':
@@ -247,6 +273,10 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
             dispatch({ type: 'ERROR', error: msg.data.error })
             // Defensive: reset to idle on error (same as chat_response)
             dispatch({ type: 'ENGINE_STATE', state: 'idle' })
+            dispatch({ type: 'THINKING_END' })
+            // Activate error fence: ignore stale events from the old
+            // request until the user sends a new message or reconnects.
+            errorFenceRef.current = true
             break
           case 'session_title_updated':
             dispatch({
@@ -262,10 +292,8 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
               dispatch({ type: 'SESSION_ID_DISCOVERED', sessionId: msg.data.session_id })
             }
             // Defensive: ensure engine state returns to idle when response completes.
-            // The server should send engine_state:idle via StateEvent, but timing
-            // issues in the bridge→emitter→ws broadcast chain can cause it to be
-            // lost or arrive after chat_response. This guarantees the UI resets.
             dispatch({ type: 'ENGINE_STATE', state: 'idle' })
+            dispatch({ type: 'THINKING_END' })
             break
         }
         // Notify registered handler
@@ -306,6 +334,9 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
 
   const sendMessage = useCallback((message: string, attachments?: import('../api/types').ChatAttachment[]) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
+      // Clear error fence — user is starting a new request
+      errorFenceRef.current = false
+      dispatch({ type: 'CLEAR_ERROR' })
       const data: Record<string, unknown> = { message }
       if (attachments?.length) data.attachments = attachments
       wsRef.current.send(JSON.stringify({ type: 'chat', data }))

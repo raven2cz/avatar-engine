@@ -1,5 +1,5 @@
 /**
- * Compact mode input — smaller textarea with send/attach buttons.
+ * Compact mode input — textarea with send/attach buttons.
  * Supports Enter-to-send, Shift+Enter for newline, paste + drag-drop.
  */
 
@@ -49,7 +49,7 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
     setInput(e.target.value)
     const el = e.target
     el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 80) + 'px'
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
   }
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
@@ -65,14 +65,14 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
 
   return (
     <div
-      className={`px-3 pb-2 pt-1 border-t flex-shrink-0 transition-colors ${dragOver ? 'border-synapse/50 bg-synapse/5' : 'border-slate-mid/25'}`}
+      className={`px-3 pb-3 pt-1.5 border-t flex-shrink-0 transition-colors ${dragOver ? 'border-synapse/50 bg-synapse/5' : 'border-white/[0.05]'}`}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
     >
       {/* Pending files (compact) */}
       {pendingFiles.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-1">
+        <div className="flex flex-wrap gap-1 mb-1.5">
           {pendingFiles.map((f) => (
             <span key={f.fileId} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-mid/30 text-[0.6rem] text-text-secondary">
               {f.filename.length > 20 ? f.filename.slice(0, 17) + '...' : f.filename}
@@ -84,11 +84,13 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
         </div>
       )}
 
-      {/* Input row — slightly elevated background for contrast against drawer */}
-      <div className={`flex items-end gap-1.5 rounded-2xl border px-3 py-1.5 transition-colors ${
-        !connected ? 'border-red-500/20 opacity-50' : 'border-white/[0.1] focus-within:border-synapse/50 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.15)]'
+      {/* Input container */}
+      <div className={`flex items-end gap-2 rounded-2xl border px-3.5 py-2 transition-all duration-200 ${
+        !connected
+          ? 'border-red-500/20 opacity-40'
+          : 'border-white/[0.12] hover:border-white/[0.18] focus-within:border-synapse/50 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.2),0_2px_8px_rgba(99,102,241,0.08)]'
       }`}
-        style={{ background: 'rgba(12,12,26,0.6)', backdropFilter: 'blur(8px)' }}
+        style={{ background: 'rgba(8,8,20,0.7)', backdropFilter: 'blur(8px)' }}
       >
         <input
           ref={fileInputRef}
@@ -109,27 +111,27 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={!connected ? 'Connecting...' : isStreaming ? 'Waiting...' : 'Type a message...'}
+          placeholder={!connected ? 'Waiting for connection...' : isStreaming ? 'Waiting for response...' : 'Type a message...'}
           disabled={!connected || isStreaming}
           rows={1}
-          className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted text-[0.78rem] resize-none outline-none min-h-[22px] max-h-[80px] py-0.5 disabled:cursor-not-allowed"
+          className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted/70 text-sm resize-none outline-none min-h-[28px] max-h-[120px] py-0.5 leading-relaxed disabled:cursor-not-allowed"
         />
 
-        <div className="flex items-center gap-0.5 flex-shrink-0">
+        <div className="flex items-center gap-1 flex-shrink-0 pb-0.5">
           {!isStreaming && onUpload && (
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={!connected}
-              className="w-6 h-6 rounded-lg flex items-center justify-center text-text-muted hover:text-text-secondary transition-colors disabled:opacity-30"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-text-secondary hover:bg-white/[0.05] transition-colors disabled:opacity-30"
               title="Attach file"
             >
-              <Paperclip className="w-3.5 h-3.5" />
+              <Paperclip className="w-4 h-4" />
             </button>
           )}
           {isStreaming ? (
             <button
               onClick={onStop}
-              className="w-7 h-7 rounded-full flex items-center justify-center bg-red-500/80 text-white hover:bg-red-500 transition-colors"
+              className="w-8 h-8 rounded-full flex items-center justify-center bg-red-500/80 text-white hover:bg-red-500 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-red-500/20"
               title="Stop"
             >
               <Square className="w-3 h-3" fill="currentColor" />
@@ -138,10 +140,10 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
             <button
               onClick={handleSend}
               disabled={!input.trim() || !connected}
-              className="w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-r from-synapse to-pulse text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed hover:scale-105 active:scale-95 transition-transform"
+              className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-r from-synapse to-pulse text-white shadow-lg shadow-synapse/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none hover:scale-105 active:scale-95 transition-all"
               title="Send (Enter)"
             >
-              <ArrowUp className="w-3.5 h-3.5" />
+              <ArrowUp className="w-4 h-4" />
             </button>
           )}
         </div>

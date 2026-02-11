@@ -3,6 +3,9 @@
  *
  * Glassmorphism panel with rounded top corners.
  * Receives all chat data from parent (AvatarWidget).
+ *
+ * Shows a prominent connection status overlay when disconnected,
+ * so the user always knows what's happening and when they can type.
  */
 
 import type { ChatMessage, EngineState, UploadedFile } from '../api/types'
@@ -15,6 +18,9 @@ interface CompactChatProps {
   provider: string
   model: string | null
   connected: boolean
+  wasConnected?: boolean
+  initDetail?: string
+  error?: string | null
   engineState: EngineState | string
   isStreaming: boolean
   pendingFiles?: UploadedFile[]
@@ -39,6 +45,9 @@ export function CompactChat({
   provider,
   model,
   connected,
+  wasConnected,
+  initDetail,
+  error,
   engineState,
   isStreaming,
   pendingFiles,
@@ -72,7 +81,44 @@ export function CompactChat({
         onSwitchProvider={onSwitchProvider}
         showExpandHint={showExpandHint}
       />
-      <CompactMessages messages={messages} />
+
+      {/* Connection status overlay — shown when not connected */}
+      {!connected && (
+        <div className="flex-1 flex flex-col items-center justify-center px-4 py-6 gap-3 animate-fade-in">
+          <div className="w-8 h-8 border-2 border-synapse/40 border-t-synapse rounded-full animate-spin" />
+          <div className="text-center">
+            <p className="text-sm font-medium text-text-primary mb-1">
+              {wasConnected ? 'Reconnecting...' : 'Connecting to provider...'}
+            </p>
+            {initDetail && (
+              <p className="text-[0.7rem] text-synapse animate-pulse max-w-[250px]">
+                {initDetail}
+              </p>
+            )}
+            {!initDetail && !wasConnected && (
+              <p className="text-[0.7rem] text-text-muted max-w-[250px]">
+                Initializing {provider || 'engine'}. This may take a moment.
+              </p>
+            )}
+            {wasConnected && (
+              <p className="text-[0.7rem] text-text-muted">
+                Connection lost. Attempting to reconnect...
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Error banner — shown above messages when error exists */}
+      {connected && error && (
+        <div className="mx-3 mt-1 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/25 text-red-400 text-[0.7rem] flex-shrink-0 animate-fade-in">
+          {error}
+        </div>
+      )}
+
+      {/* Messages area — only shown when connected */}
+      {connected && <CompactMessages messages={messages} />}
+
       <CompactInput
         onSend={onSend}
         onStop={onStop}

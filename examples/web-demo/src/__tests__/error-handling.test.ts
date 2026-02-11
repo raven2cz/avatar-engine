@@ -277,4 +277,33 @@ describe('no client-side auto-timeout', () => {
     const errorBlock = source.slice(errorIdx, source.indexOf('break', errorIdx) + 5)
     expect(errorBlock).toContain("dispatch({ type: 'ENGINE_STATE', state: 'idle' })")
   })
+
+  it('useAvatarWebSocket has error fence to block ghost events after timeout', () => {
+    const fs = require('fs')
+    const source = fs.readFileSync(`${basePath}/useAvatarWebSocket.ts`, 'utf-8')
+    // Error fence ref must exist
+    expect(source).toContain('errorFenceRef')
+    // Error sets the fence
+    expect(source).toContain('errorFenceRef.current = true')
+    // sendMessage clears the fence
+    const sendBlock = source.slice(
+      source.indexOf('const sendMessage'),
+      source.indexOf('}, [])', source.indexOf('const sendMessage')) + 6
+    )
+    expect(sendBlock).toContain('errorFenceRef.current = false')
+    // Fence blocks engine_state, thinking, text, tool, chat_response
+    expect(source).toContain("['engine_state', 'thinking', 'text', 'tool', 'chat_response']")
+  })
+
+  it('server timeout is at least 600 seconds', () => {
+    const fs = require('fs')
+    const source = fs.readFileSync(
+      '/home/box/git/github/avatar-engine/avatar_engine/web/server.py',
+      'utf-8'
+    )
+    // The chat_timeout base value should be 600 or higher
+    const match = source.match(/chat_timeout\s*=\s*(\d+)/)
+    expect(match).toBeTruthy()
+    expect(Number(match![1])).toBeGreaterThanOrEqual(600)
+  })
 })

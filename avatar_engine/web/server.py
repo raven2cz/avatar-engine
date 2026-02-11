@@ -539,8 +539,10 @@ def create_app(
                                     pass
                                 return
 
-                            # Dynamic timeout: extend for large attachments
-                            chat_timeout = 120
+                            # Dynamic timeout: extend for large attachments.
+                            # Base is 600s — ACP requests (tool chains, large
+                            # analyses) routinely take 5–10 minutes.
+                            chat_timeout = 600
                             total_att_mb = 0.0
                             if atts:
                                 total_att_mb = sum(a.size for a in atts) / (1024 * 1024)

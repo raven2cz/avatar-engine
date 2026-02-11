@@ -44,6 +44,9 @@ interface AvatarWidgetProps {
   stopResponse: () => void
   isStreaming: boolean
   connected: boolean
+  wasConnected?: boolean
+  initDetail?: string
+  error?: string | null
   provider: string
   model: string | null
   engineState: string
@@ -65,6 +68,9 @@ export function AvatarWidget({
   stopResponse,
   isStreaming,
   connected,
+  wasConnected,
+  initDetail,
+  error,
   provider,
   model,
   engineState,
@@ -392,6 +398,9 @@ export function AvatarWidget({
             provider={provider}
             model={model}
             connected={connected}
+            wasConnected={wasConnected}
+            initDetail={initDetail}
+            error={error}
             engineState={engineState}
             isStreaming={isStreaming}
             pendingFiles={pendingFiles}
