@@ -23,6 +23,8 @@ interface CompactChatProps {
   error?: string | null
   diagnostic?: string | null
   engineState: EngineState | string
+  thinkingSubject?: string
+  toolName?: string
   isStreaming: boolean
   pendingFiles?: UploadedFile[]
   uploading?: boolean
@@ -51,6 +53,8 @@ export function CompactChat({
   error,
   diagnostic,
   engineState,
+  thinkingSubject,
+  toolName,
   isStreaming,
   pendingFiles,
   uploading,
@@ -75,6 +79,8 @@ export function CompactChat({
         model={model}
         connected={connected}
         engineState={engineState}
+        thinkingSubject={thinkingSubject}
+        toolName={toolName}
         onFullscreen={onFullscreen}
         onClose={onClose}
         switching={switching}

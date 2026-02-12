@@ -53,6 +53,8 @@ export default function App() {
     version,
     cwd,
     engineState,
+    thinking,
+    toolName,
     cost,
     capabilities,
     error,
@@ -74,6 +76,8 @@ export default function App() {
       provider={provider}
       model={model}
       engineState={engineState}
+      thinkingSubject={thinking.active ? thinking.subject : ''}
+      toolName={toolName}
       pendingFiles={pendingFiles}
       uploading={uploading}
       uploadFile={uploadFile}

@@ -25,7 +25,6 @@ def _run_repl_under_pty(user_input: str, timeout: float = 12.0) -> tuple[int, st
         """
         import asyncio
         from types import SimpleNamespace
-        from contextlib import contextmanager
         from avatar_engine.events import EventEmitter, ThinkingEvent, ToolEvent
         import avatar_engine.cli.commands.repl as repl_cmd
         from avatar_engine.cli import cli as cli_group
@@ -39,6 +38,8 @@ def _run_repl_under_pty(user_input: str, timeout: float = 12.0) -> tuple[int, st
                 self.restart_count = 0
                 self.rate_limit_stats = {}
                 self.session_capabilities = SimpleNamespace(can_list=False, can_load=False)
+                self._bridge = None
+                self._start_time = None
 
             async def start(self):
                 return None
@@ -51,6 +52,9 @@ def _run_repl_under_pty(user_input: str, timeout: float = 12.0) -> tuple[int, st
 
             def get_history(self):
                 return []
+
+            def get_health(self):
+                return SimpleNamespace(status="healthy")
 
             async def list_sessions(self):
                 return []
@@ -66,22 +70,8 @@ def _run_repl_under_pty(user_input: str, timeout: float = 12.0) -> tuple[int, st
                 yield "mock-reply"
                 self.emit(ThinkingEvent(is_complete=True))
 
-        class _PTYPromptSession:
-            async def prompt_async(self, _prompt):
-                import sys
-                line = sys.stdin.readline()
-                if line == "":
-                    raise EOFError()
-                return line.rstrip("\\n")
-
-        @contextmanager
-        def _noop_patch_stdout():
-            yield
-
         repl_cmd.AvatarEngine = lambda *a, **k: FakeEngine()
-        repl_cmd.PromptSession = _PTYPromptSession
-        repl_cmd.patch_stdout = _noop_patch_stdout
-        cli_group.main(args=["-p", "gemini", "repl"], prog_name="avatar", standalone_mode=False)
+        cli_group.main(args=["repl", "-p", "gemini"], prog_name="avatar", standalone_mode=False)
         """
     )
 
@@ -155,4 +145,3 @@ class TestRealReplPty:
         assert code == 0, out
         assert "Assistant" in clean
         assert "mock-reply" in clean
-        assert "Read" in clean

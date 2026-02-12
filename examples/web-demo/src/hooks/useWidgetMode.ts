@@ -3,9 +3,12 @@
  *
  * Persists mode and compact dimensions to localStorage.
  * Registers global keyboard shortcuts (Escape, Ctrl+Shift+A/F/H).
+ *
+ * Optional `onTransition` callback intercepts compact↔fullscreen switches
+ * so the caller can run a morph animation before the mode actually changes.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WidgetMode } from '../types/avatar'
 import {
   LS_WIDGET_MODE,
@@ -34,6 +37,16 @@ function loadNumber(key: string, fallback: number): number {
   return fallback
 }
 
+/**
+ * Called before a compact↔fullscreen transition.
+ * `complete()` must be called to actually apply the mode change.
+ */
+export type TransitionHandler = (
+  from: WidgetMode,
+  to: WidgetMode,
+  complete: () => void,
+) => void
+
 export interface UseWidgetModeReturn {
   mode: WidgetMode
   setMode: (mode: WidgetMode) => void
@@ -49,8 +62,16 @@ export interface UseWidgetModeReturn {
   toggleBust: () => void
 }
 
-export function useWidgetMode(): UseWidgetModeReturn {
+export function useWidgetMode(
+  onTransition?: TransitionHandler,
+): UseWidgetModeReturn {
   const [mode, setModeState] = useState<WidgetMode>(loadMode)
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+
+  const onTransitionRef = useRef(onTransition)
+  onTransitionRef.current = onTransition
+
   const [compactWidth, setCompactWidthState] = useState(() =>
     loadNumber(LS_COMPACT_WIDTH, DEFAULT_COMPACT_WIDTH)
   )
@@ -62,22 +83,41 @@ export function useWidgetMode(): UseWidgetModeReturn {
     return v !== '0'
   })
 
-  const setMode = useCallback((m: WidgetMode) => {
+  /** Commit a mode change (no animation). */
+  const commitMode = useCallback((m: WidgetMode) => {
     setModeState(m)
+    modeRef.current = m
     localStorage.setItem(LS_WIDGET_MODE, m)
   }, [])
+
+  /**
+   * Request a mode change. If an onTransition handler is registered and
+   * the transition is compact↔fullscreen, the handler runs first and
+   * calls complete() to finalize.
+   */
+  const setMode = useCallback((m: WidgetMode) => {
+    const current = modeRef.current
+    if (current === m) return
+
+    const handler = onTransitionRef.current
+    if (handler &&
+      ((current === 'compact' && m === 'fullscreen') ||
+       (current === 'fullscreen' && m === 'compact'))) {
+      handler(current, m, () => commitMode(m))
+      return
+    }
+
+    commitMode(m)
+  }, [commitMode])
 
   const openCompact = useCallback(() => setMode('compact'), [setMode])
   const openFullscreen = useCallback(() => setMode('fullscreen'), [setMode])
   const closeTofab = useCallback(() => setMode('fab'), [setMode])
 
   const toggleCompact = useCallback(() => {
-    setModeState((prev) => {
-      const next = prev === 'compact' ? 'fab' : 'compact'
-      localStorage.setItem(LS_WIDGET_MODE, next)
-      return next
-    })
-  }, [])
+    const next = modeRef.current === 'compact' ? 'fab' : 'compact'
+    setMode(next)
+  }, [setMode])
 
   const setCompactWidth = useCallback((w: number) => {
     const clamped = Math.max(MIN_COMPACT_WIDTH, w)
@@ -99,7 +139,7 @@ export function useWidgetMode(): UseWidgetModeReturn {
     })
   }, [])
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts — all go through setMode for transition support
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       // Don't capture when typing in inputs
@@ -111,17 +151,9 @@ export function useWidgetMode(): UseWidgetModeReturn {
 
       if (e.key === 'Escape') {
         e.preventDefault()
-        setModeState((prev) => {
-          if (prev === 'fullscreen') {
-            localStorage.setItem(LS_WIDGET_MODE, 'compact')
-            return 'compact'
-          }
-          if (prev === 'compact') {
-            localStorage.setItem(LS_WIDGET_MODE, 'fab')
-            return 'fab'
-          }
-          return prev
-        })
+        const current = modeRef.current
+        if (current === 'fullscreen') setMode('compact')
+        else if (current === 'compact') setMode('fab')
         return
       }
 
@@ -129,19 +161,11 @@ export function useWidgetMode(): UseWidgetModeReturn {
         switch (e.key.toUpperCase()) {
           case 'A': // Toggle compact
             e.preventDefault()
-            setModeState((prev) => {
-              const next = prev === 'compact' ? 'fab' : 'compact'
-              localStorage.setItem(LS_WIDGET_MODE, next)
-              return next
-            })
+            setMode(modeRef.current === 'compact' ? 'fab' : 'compact')
             break
           case 'F': // Toggle fullscreen
             e.preventDefault()
-            setModeState((prev) => {
-              const next = prev === 'fullscreen' ? 'compact' : 'fullscreen'
-              localStorage.setItem(LS_WIDGET_MODE, next)
-              return next
-            })
+            setMode(modeRef.current === 'fullscreen' ? 'compact' : 'fullscreen')
             break
           case 'H': // Toggle bust visibility
             e.preventDefault()
@@ -157,7 +181,7 @@ export function useWidgetMode(): UseWidgetModeReturn {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [setMode])
 
   return {
     mode,

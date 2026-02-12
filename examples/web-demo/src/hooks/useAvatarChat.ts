@@ -362,6 +362,7 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
     cwd: state.cwd,
     engineState: state.engineState,
     thinking: state.thinking,
+    toolName: state.toolName,
     cost: state.cost,
     capabilities: state.capabilities,
     error: state.error,

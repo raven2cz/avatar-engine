@@ -65,8 +65,8 @@ class TestGeminiCLI:
     def test_chat_command_basic(self, skip_if_no_gemini):
         """avatar chat should work with Gemini."""
         result = _run_cli(
-            "-p", "gemini",
-            "chat", "--no-stream",
+            "chat",
+            "-p", "gemini", "--no-stream",
             "What is 2+2? Reply with just the number.",
             timeout=120,
         )
@@ -78,8 +78,8 @@ class TestGeminiCLI:
         import json
 
         result = _run_cli(
-            "-p", "gemini",
-            "chat", "--json", "--no-stream",
+            "chat",
+            "-p", "gemini", "--json", "--no-stream",
             "Say hello",
             timeout=120,
         )
@@ -109,8 +109,8 @@ class TestGeminiCLI:
     def test_chat_command_streaming(self, skip_if_no_gemini):
         """avatar chat --stream should stream output."""
         result = _run_cli(
-            "-p", "gemini",
-            "chat", "--stream",
+            "chat",
+            "-p", "gemini", "--stream",
             "Count from 1 to 5.",
             timeout=120,
         )
@@ -128,8 +128,8 @@ class TestClaudeCLI:
     def test_chat_command_basic(self, skip_if_no_claude):
         """avatar chat should work with Claude."""
         result = _run_cli(
-            "-p", "claude",
-            "chat", "--no-stream",
+            "chat",
+            "-p", "claude", "--no-stream",
             "What is 2+2? Reply with just the number.",
             timeout=120,
         )
@@ -141,8 +141,8 @@ class TestClaudeCLI:
         import json
 
         result = _run_cli(
-            "-p", "claude",
-            "chat", "--json", "--no-stream",
+            "chat",
+            "-p", "claude", "--json", "--no-stream",
             "Say hello",
             timeout=120,
         )
@@ -211,6 +211,6 @@ class TestHealthCLI:
 
     def test_health_gemini(self, skip_if_no_gemini):
         """avatar health should work with Gemini."""
-        result = _run_cli("-p", "gemini", "health", timeout=60)
+        result = _run_cli("health", "-p", "gemini", timeout=60)
         assert result.returncode == 0
         assert "healthy" in result.stdout.lower() or "Bridge" in result.stdout

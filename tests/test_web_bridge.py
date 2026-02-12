@@ -32,7 +32,11 @@ class FakeWebSocket:
 
 def _run(coro):
     """Helper to run async code in tests without pytest-asyncio."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 class TestWebSocketBridgeRegistration:

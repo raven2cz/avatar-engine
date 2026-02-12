@@ -977,6 +977,8 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 if self.acp_enabled:
                     model_configs: Dict[str, Any] = {}
                     actual_model = self.model or "gemini-3-pro-preview"
+                    # Store resolved model so _get_model() can report it
+                    self._actual_model = actual_model
 
                     # Model routing: customAliases to override default terminal
                     # alias. Only needed for non-default models.

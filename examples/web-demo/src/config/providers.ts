@@ -55,7 +55,6 @@ export const PROVIDERS: ProviderConfig[] = [
       'gemini-3-pro-preview',
       'gemini-3-flash-preview',
       'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
       // Image generation: default model (gemini-3-pro-preview) supports
       // native image gen via Nano Banana — just ask it to draw/generate.
       // Dedicated image models are NOT available on cloudcode-pa API
@@ -69,6 +68,9 @@ export const PROVIDERS: ProviderConfig[] = [
         label: 'Thinking Level',
         type: 'select',
         hideForModelPattern: 'image',
+        // Gemini 3 Pro: low, high only.
+        // Gemini 3 Flash: minimal, low, medium, high.
+        // Choices with modelPattern are only shown when model matches.
         choices: [
           { value: 'minimal', label: 'Minimal', modelPattern: 'flash' },
           { value: 'low', label: 'Low' },
@@ -139,6 +141,7 @@ export const PROVIDERS: ProviderConfig[] = [
     defaultModel: 'gpt-5.3-codex',
     models: [
       'gpt-5.3-codex',
+      'gpt-5.3-codex-spark',
       'gpt-5.2-codex',
       'gpt-5.1-codex-mini',
     ],

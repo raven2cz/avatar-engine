@@ -26,6 +26,9 @@ interface CompactHeaderProps {
   engineState: EngineState | string
   onFullscreen: () => void
   onClose: () => void
+  // Live activity detail — shown next to state labels
+  thinkingSubject?: string
+  toolName?: string
   // Provider/model switching — enables the ⋯ menu button
   switching?: boolean
   activeOptions?: Record<string, string | number>
@@ -49,6 +52,8 @@ export function CompactHeader({
   engineState,
   onFullscreen,
   onClose,
+  thinkingSubject,
+  toolName,
   switching,
   activeOptions = {},
   availableProviders,
@@ -90,12 +95,22 @@ export function CompactHeader({
             )}
           </span>
         )}
-        {stateInfo && (
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[0.6rem] font-medium ${stateInfo.cls}`}>
-            <span className="w-1 h-1 rounded-full bg-current animate-pulse" />
-            {stateInfo.label}
-          </span>
-        )}
+        {stateInfo && (() => {
+          // Dynamic detail: show thinking subject or tool name
+          const detail = engineState === 'thinking' && thinkingSubject
+            ? thinkingSubject
+            : engineState === 'tool_executing' && toolName
+              ? toolName
+              : ''
+          return (
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[0.6rem] font-medium max-w-[180px] ${stateInfo.cls}`}>
+              <span className="w-1 h-1 rounded-full bg-current animate-pulse flex-shrink-0" />
+              {detail
+                ? <span className="truncate">{detail}</span>
+                : stateInfo.label}
+            </span>
+          )
+        })()}
       </div>
 
       {/* Right: controls */}
@@ -248,6 +263,25 @@ function CompactProviderMenu({
     setOptionValues(providerId === currentProvider ? activeOptions : {})
   }, [currentProvider, activeOptions])
 
+  // Apply options change without switching model (re-apply current provider+model)
+  const handleApplyOptions = useCallback(() => {
+    const model = effectiveModel || selectedConfig?.defaultModel || undefined
+    if (model) {
+      onSwitch(selectedProvider, model, sanitizeOptions(model))
+    }
+  }, [selectedProvider, effectiveModel, selectedConfig, onSwitch, sanitizeOptions])
+
+  // Detect if options differ from currently active ones
+  const optionsDirty = selectedProvider === currentProvider && (() => {
+    const opts = getOptionsForProvider(selectedProvider)
+    for (const opt of opts) {
+      const current = activeOptions[opt.key] ?? opt.defaultValue
+      const local = optionValues[opt.key] ?? opt.defaultValue
+      if (String(current) !== String(local)) return true
+    }
+    return false
+  })()
+
   return (
     <div className="fixed inset-0 z-[1100]" onClick={onClose}>
       <div
@@ -336,7 +370,7 @@ function CompactProviderMenu({
             <div className="px-3 pt-2 pb-1">
               <span className="text-[0.65rem] text-text-muted uppercase tracking-wide">Options</span>
             </div>
-            <div className="px-2 pb-3 space-y-2">
+            <div className="px-2 pb-2 space-y-2">
               {providerOptions
                 .filter((opt) => !opt.hideForModelPattern || !effectiveModel || !new RegExp(opt.hideForModelPattern, 'i').test(effectiveModel))
                 .map((opt) => (
@@ -350,6 +384,16 @@ function CompactProviderMenu({
                   />
                 ))}
             </div>
+            {optionsDirty && (
+              <div className="px-2 pb-3">
+                <button
+                  onClick={handleApplyOptions}
+                  className="w-full py-1.5 rounded-lg text-[0.65rem] font-medium bg-synapse/20 text-synapse border border-synapse/30 hover:bg-synapse/30 transition-colors"
+                >
+                  Apply options
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

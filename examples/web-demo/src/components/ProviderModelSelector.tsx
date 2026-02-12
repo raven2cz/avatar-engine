@@ -126,6 +126,26 @@ export function ProviderModelSelector({
   const effectiveModel = (selectedProvider === currentProvider ? currentModel : null)
     || selectedConfig?.defaultModel || null
 
+  // Apply options change without switching model (re-apply current provider+model)
+  const handleApplyOptions = useCallback(() => {
+    const model = effectiveModel || selectedConfig?.defaultModel || undefined
+    if (model) {
+      onSwitch(selectedProvider, model, sanitizeOptions(model))
+      setOpen(false)
+    }
+  }, [selectedProvider, effectiveModel, selectedConfig, onSwitch, sanitizeOptions])
+
+  // Detect if options differ from currently active ones
+  const optionsDirty = selectedProvider === currentProvider && (() => {
+    const opts = getOptionsForProvider(selectedProvider)
+    for (const opt of opts) {
+      const current = activeOptions[opt.key] ?? opt.defaultValue
+      const local = optionValues[opt.key] ?? opt.defaultValue
+      if (String(current) !== String(local)) return true
+    }
+    return false
+  })()
+
   return (
     <div className="relative" ref={dropdownRef}>
       {/* Trigger: provider badge + model + chevron */}
@@ -245,7 +265,7 @@ export function ProviderModelSelector({
               <div className="px-3 pt-2 pb-1">
                 <span className="text-xs text-text-muted uppercase tracking-wide">Options</span>
               </div>
-              <div className="px-2 pb-3 space-y-2.5">
+              <div className="px-2 pb-2 space-y-2.5">
                 {providerOptions
                   .filter((opt) => !opt.hideForModelPattern || !effectiveModel || !new RegExp(opt.hideForModelPattern, 'i').test(effectiveModel))
                   .map((opt) => (
@@ -259,6 +279,16 @@ export function ProviderModelSelector({
                   />
                 ))}
               </div>
+              {optionsDirty && (
+                <div className="px-2 pb-3">
+                  <button
+                    onClick={handleApplyOptions}
+                    className="w-full py-1.5 rounded-lg text-xs font-medium bg-synapse/20 text-synapse border border-synapse/30 hover:bg-synapse/30 transition-colors"
+                  >
+                    Apply options
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

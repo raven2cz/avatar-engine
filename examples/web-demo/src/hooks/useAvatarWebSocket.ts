@@ -26,6 +26,7 @@ interface AvatarWSState {
     subject: string
     startedAt: number
   }
+  toolName: string
   cost: CostInfo
   error: string | null
   diagnostic: string | null
@@ -46,6 +47,7 @@ type Action =
   | { type: 'SWITCHING' }
   | { type: 'SESSION_TITLE_UPDATED'; sessionId: string; title: string | null; isCurrentSession: boolean }
   | { type: 'SESSION_ID_DISCOVERED'; sessionId: string }
+  | { type: 'TOOL'; toolName: string; status: string }
   | { type: 'DIAGNOSTIC'; message: string; level: string }
 
 const initialState: AvatarWSState = {
@@ -62,6 +64,7 @@ const initialState: AvatarWSState = {
   initDetail: '',
   switching: false,
   thinking: { active: false, phase: 'general', subject: '', startedAt: 0 },
+  toolName: '',
   cost: { totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0 },
   error: null,
   diagnostic: null,
@@ -125,6 +128,11 @@ function reducer(state: AvatarWSState, action: Action): AvatarWSState {
       return {
         ...state,
         thinking: { active: false, phase: 'general', subject: '', startedAt: 0 },
+      }
+    case 'TOOL':
+      return {
+        ...state,
+        toolName: action.status === 'started' ? action.toolName : '',
       }
     case 'COST':
       return {
@@ -265,6 +273,13 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
                 subject: msg.data.subject,
               })
             }
+            break
+          case 'tool':
+            dispatch({
+              type: 'TOOL',
+              toolName: msg.data.tool_name || '',
+              status: msg.data.status || 'started',
+            })
             break
           case 'cost':
             dispatch({

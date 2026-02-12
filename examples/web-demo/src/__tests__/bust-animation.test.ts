@@ -115,3 +115,46 @@ describe('hasText computation contract', () => {
     ])).toBe(false)
   })
 })
+
+describe('stateDetail computation contract', () => {
+  /**
+   * Contract: compact header shows dynamic detail instead of generic label.
+   *   - thinking + thinkingSubject → subject text (e.g. "Analyzing imports")
+   *   - tool_executing + toolName → tool name (e.g. "read_file")
+   *   - responding → no detail (uses default label)
+   *   - thinking without subject → no detail (uses default label)
+   */
+  function computeStateDetail(
+    engineState: string,
+    thinkingSubject: string,
+    toolName: string,
+  ): string {
+    if (engineState === 'thinking' && thinkingSubject) return thinkingSubject
+    if (engineState === 'tool_executing' && toolName) return toolName
+    return ''
+  }
+
+  it('thinking with subject → shows subject', () => {
+    expect(computeStateDetail('thinking', 'Analyzing imports', '')).toBe('Analyzing imports')
+  })
+
+  it('thinking without subject → empty (uses default label)', () => {
+    expect(computeStateDetail('thinking', '', '')).toBe('')
+  })
+
+  it('tool_executing with toolName → shows tool name', () => {
+    expect(computeStateDetail('tool_executing', '', 'read_file')).toBe('read_file')
+  })
+
+  it('tool_executing without toolName → empty', () => {
+    expect(computeStateDetail('tool_executing', '', '')).toBe('')
+  })
+
+  it('responding → empty (always uses default label)', () => {
+    expect(computeStateDetail('responding', 'some subject', 'some_tool')).toBe('')
+  })
+
+  it('idle → empty', () => {
+    expect(computeStateDetail('idle', '', '')).toBe('')
+  })
+})

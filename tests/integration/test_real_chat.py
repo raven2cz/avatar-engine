@@ -331,6 +331,7 @@ class TestRealErrorRecovery:
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 class TestConfigLoading:
     """Test loading configuration from files."""
 

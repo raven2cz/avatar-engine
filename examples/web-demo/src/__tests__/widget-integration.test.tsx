@@ -10,8 +10,8 @@
  */
 
 /// <reference types="vitest/globals" />
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { AvatarWidget } from '../components/AvatarWidget'
 import { LS_WIDGET_MODE, LS_HINTS_SHOWN } from '../types/avatar'
 
@@ -191,11 +191,15 @@ describe('AvatarWidget integration', () => {
       expect(localStorage.getItem(LS_WIDGET_MODE)).toBe('fab')
     })
 
-    it('return button in fullscreen goes to compact', () => {
+    it('return button in fullscreen goes to compact', async () => {
+      vi.useFakeTimers()
       localStorage.setItem(LS_WIDGET_MODE, 'fullscreen')
       renderWidget()
       fireEvent.click(screen.getByRole('button', { name: /switch to compact mode/i }))
+      // Morph transition delays mode change (rAF + complete() in rAF)
+      await act(async () => { vi.advanceTimersByTime(600) })
       expect(localStorage.getItem(LS_WIDGET_MODE)).toBe('compact')
+      vi.useRealTimers()
     })
   })
 })

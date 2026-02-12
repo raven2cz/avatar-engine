@@ -358,7 +358,11 @@ def create_app(
             return None
         mdl = None
         if eng._bridge:
-            mdl = getattr(eng._bridge, '_model', None) or getattr(eng._bridge, 'model', None) or None
+            for _attr in ('_actual_model', '_model', 'model'):
+                _val = getattr(eng._bridge, _attr, None)
+                if isinstance(_val, str) and _val:
+                    mdl = _val
+                    break
         if mdl is None and eng._config:
             mdl = eng._config.model
         if mdl is None:
@@ -659,7 +663,12 @@ def create_app(
                         logger.error(f"Switch failed: {e}")
                         engine = manager.engine
                         bridge = manager.ws_bridge
-                        _broadcast_error_and_connected(manager, f"Switch failed: {e}", provider_fallback=provider)
+                        # Use manager._provider (reverted to old) — NOT the
+                        # requested switch_provider which failed to start.
+                        _broadcast_error_and_connected(
+                            manager, f"Switch failed: {e}",
+                            provider_fallback=manager._provider or provider,
+                        )
 
                 elif msg_type == "resume_session":
                     session_id = msg_data.get("session_id", "")
