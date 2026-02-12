@@ -1,7 +1,7 @@
 # Avatar Engine — Stabilization Plan
 
 > Created: 2026-02-05
-> Updated: 2026-02-11
+> Updated: 2026-02-12
 > Phase 1–6 (Testing): ✅ COMPLETED — **290** testů
 > Phase 7 (Bridge Observability): 🟡 IN PROGRESS — kroky 1–3 DONE, kroky 4–6 OPEN
 
@@ -638,3 +638,112 @@ examples/web-demo/src/__tests__/diagnostic-display.test.ts:
 "debug", "trace"              →  level: "debug"
 default                       →  level: "info"
 ```
+
+---
+
+# Phase 8: Slow ACP/CLI Startup Investigation
+
+> Added: 2026-02-12
+> Status: 🔴 ROOT CAUSE IDENTIFIED — upstream issue in gemini-cli v0.28.2
+> Priority: **HIGH**
+
+## Problém
+
+ACP `initialize()` i oneshot `gemini -p "..."` trvají **~53 sekund**.
+Uživatel čeká téměř minutu, než engine odpoví. Dříve to bylo výrazně rychlejší.
+
+## Benchmark výsledky (2026-02-12)
+
+| Operace | Čas | Poznámka |
+|---------|-----|----------|
+| `node -e 'ok'` | **15ms** | Node.js cold start — OK |
+| `gemini --help` | **800ms** | Module load — OK |
+| `gemini --version` | **790ms** | — OK |
+| `gemini -p "Say ok" --yolo` | **53–66s** | ← PROBLÉM |
+| ACP subprocess spawn | **0ms** | OK |
+| ACP `connect_to_agent()` | **0ms** | OK |
+| ACP `initialize()` | **52s** | ← BOTTLENECK (stejný jako oneshot) |
+| ACP `new_session()` | **274ms** | OK |
+
+## Klíčový nález: 53s ticho před prvním HTTP voláním
+
+Pomocí `NODE_DEBUG=http` jsme zjistili timeline:
+
+```
+     0ms  — gemini-cli spuštěno
+53 543ms  — PRVNÍ HTTP volání: oauth2.googleapis.com/tokeninfo
+53 543ms  — loadCodeAssist volání na cloudcode-pa.googleapis.com
+58 807ms  — další API volání
+66 470ms  — odpověď
+```
+
+**53.5 sekund absolutního ticha** — žádné síťové volání, žádný stderr output.
+Vše se děje lokálně uvnitř gemini-cli.
+
+## Vyloučené příčiny
+
+| Hypotéza | Výsledek |
+|----------|----------|
+| Nanobanana extension | ❌ Vyloučeno — disable nanobanana → stále 53s |
+| MCP servery v naší konfiguraci | ❌ Vyloučeno — testy posílají prázdný list |
+| Síťová latence (OAuth, API) | ❌ Vyloučeno — síť začíná až po 53s |
+| ACP protokol overhead | ❌ Vyloučeno — oneshot má stejný čas |
+| Node.js cold start | ❌ Vyloučeno — `node -e` = 15ms, `gemini --help` = 800ms |
+
+## Pravděpodobná příčina
+
+Gemini-cli v0.28.2 interně dělá něco trvajícího ~53s PŘED prvním API voláním.
+Možné kandidáty (nelze ověřit bez strace/node profiling):
+
+1. **Synchronní inicializace** extension systému (i bez extensions)
+2. **Kompilace/transpilace** něčeho za běhu
+3. **Filesystem scan** — skenování .gemini/, project directory, GEMINI.md souborů
+4. **System prompt assembly** — sestavování kontextu z workspace files
+5. **OAuth token validation** — lokální kontrola tokenu před síťovým voláním
+
+## Srovnání s očekáváním
+
+- `gemini --help` = 800ms (module load kompletní)
+- `gemini -p ...` = 53 000ms (53x déle!)
+- Rozdíl **52 200ms** = něco co se děje POUZE při reálném chat mode
+
+## Další kroky (TODO)
+
+1. **Profilovat gemini-cli** — `node --cpu-prof $(which gemini) -p "ok" --yolo`
+2. **Porovnat verze** — otestovat starší gemini-cli (0.25.x, 0.26.x) jestli problém existoval vždy
+3. **Otestovat bez GEMINI.md** — dočasně přejmenovat ~/.gemini/GEMINI.md
+4. **Otestovat bez workspace** — spustit z /tmp místo project directory
+5. **Reportovat upstream** — pokud se potvrdí jako regrese v 0.28.x
+
+## Diagnostický skript
+
+Benchmark skript: `tests/integration/bench_acp_startup.py`
+Měří každou fázi ACP startupu + oneshot baseline + Node.js baseline.
+
+---
+
+# Phase 9: Integration Test Fixes (2026-02-12)
+
+> Added: 2026-02-12
+> Status: ✅ COMPLETED
+
+## Opravy
+
+| Oprava | Soubory | Detail |
+|--------|---------|--------|
+| Fix `-p` ordering | test_real_cli.py, test_real_cli_features.py, test_real_repl_pty.py | `-p` patří na subcommand (chat/repl), ne na group |
+| Rewrite PromptSession → Console.input | test_repl_prompt_toolkit_integration.py | repl.py přepsáno bez prompt_toolkit |
+| Rewrite PTY child script | test_real_repl_pty.py | Odstranění neexistujících PromptSession/patch_stdout |
+| Přidání @pytest.mark.slow | test_real_cli_features.py, test_real_chat.py | Testy s reálným API nemají běžet bez -m slow |
+| health → --help v non-slow testech | test_real_cli_features.py | Zabránění spuštění reálného engine |
+| Instalace chybějících deps | pip install | agent-client-protocol, pytest-asyncio, pytest-timeout |
+
+## Výsledky
+
+| Kategorie | Počet | Stav |
+|-----------|-------|------|
+| Unit testy | 966 | ✅ 966/966 passed |
+| Frontend testy | 97 | ✅ 97/97 passed |
+| Non-slow integrační | 33 | ✅ 33/33 passed |
+| Slow integrační (ověřeno) | ~19 | ✅ Vše prošlo individuálně |
+| Slow integrační (celkem) | 134 | Většina neověřena (30-60s per test) |
