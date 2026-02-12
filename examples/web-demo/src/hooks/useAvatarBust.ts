@@ -25,13 +25,21 @@ export interface UseAvatarBustReturn {
   loading: boolean
 }
 
-function engineStateToBustState(engineState: string): BustState {
+/**
+ * Map engine state to bust visual state.
+ *
+ * `responding` only maps to `speaking` when actual text content is being
+ * written to the chat (hasText=true). Before the first text chunk arrives,
+ * the bust stays in `thinking` — otherwise it would animate lip-sync
+ * while nothing is visible in the chat yet.
+ */
+function engineStateToBustState(engineState: string, hasText: boolean): BustState {
   switch (engineState) {
     case 'thinking':
     case 'tool_executing':
       return 'thinking'
     case 'responding':
-      return 'speaking'
+      return hasText ? 'speaking' : 'thinking'
     case 'error':
       return 'error'
     default:
@@ -67,7 +75,9 @@ function extractFrames(img: HTMLImageElement, frameCount: number): HTMLCanvasEle
 
 export function useAvatarBust(
   avatar: AvatarConfig | undefined,
-  engineState: string
+  engineState: string,
+  /** True when the current assistant message has non-empty text content. */
+  hasText: boolean = false,
 ): UseAvatarBustReturn {
   const [loading, setLoading] = useState(true)
   const posesRef = useRef<LoadedPoses>({ idle: null, thinking: null, error: null, speakingFrames: [] })
@@ -76,7 +86,7 @@ export function useAvatarBust(
   const animDirectionRef = useRef(1)
   const animIntervalRef = useRef<number>()
 
-  const bustState = engineStateToBustState(engineState)
+  const bustState = engineStateToBustState(engineState, hasText)
 
   // Load avatar assets
   useEffect(() => {

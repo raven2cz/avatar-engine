@@ -47,6 +47,7 @@ interface AvatarWidgetProps {
   wasConnected?: boolean
   initDetail?: string
   error?: string | null
+  diagnostic?: string | null
   provider: string
   model: string | null
   engineState: string
@@ -71,6 +72,7 @@ export function AvatarWidget({
   wasConnected,
   initDetail,
   error,
+  diagnostic,
   provider,
   model,
   engineState,
@@ -211,6 +213,11 @@ export function AvatarWidget({
   const showBust = bustVisible && !isNarrow
   const bustAreaWidth = showBust ? 230 : 0
 
+  // Bust should only animate speaking when the current assistant message
+  // has actual text content — prevents lip-sync before text appears in chat.
+  const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null
+  const hasText = !!(lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming && lastMsg.content)
+
   return (
     <>
       {/* ============================================================ */}
@@ -327,6 +334,7 @@ export function AvatarWidget({
               <AvatarBust
                 avatar={selectedAvatar}
                 engineState={engineState}
+                hasText={hasText}
                 className="absolute bottom-0 left-[14px] w-[200px]"
               />
               {/* Character picker button — appears on hover */}
@@ -401,6 +409,7 @@ export function AvatarWidget({
             wasConnected={wasConnected}
             initDetail={initDetail}
             error={error}
+            diagnostic={diagnostic}
             engineState={engineState}
             isStreaming={isStreaming}
             pendingFiles={pendingFiles}

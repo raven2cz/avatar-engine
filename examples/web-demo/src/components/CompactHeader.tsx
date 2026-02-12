@@ -14,9 +14,10 @@ import {
   getProvider,
   getModelsForProvider,
   getOptionsForProvider,
+  getModelDisplayName,
   filterChoicesForModel,
 } from '../config/providers'
-import type { ProviderOption } from '../config/providers'
+import { OptionControl } from './OptionControl'
 
 interface CompactHeaderProps {
   provider: string
@@ -55,6 +56,9 @@ export function CompactHeader({
   showExpandHint,
 }: CompactHeaderProps) {
   const stateInfo = STATE_LABELS[engineState]
+  const { modelName, featuredLabel } = getModelDisplayName(
+    provider, model, getProvider(provider)?.defaultModel, activeOptions,
+  )
   const [menuOpen, setMenuOpen] = useState(false)
   const menuBtnRef = useRef<HTMLButtonElement>(null)
   const menuPosRef = useRef({ bottom: 0, right: 0 })
@@ -78,9 +82,12 @@ export function CompactHeader({
           <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 shadow-[0_0_4px_theme(colors.emerald.400)]' : 'bg-red-400'}`} />
           {provider || 'Provider'}
         </span>
-        {model && (
+        {modelName && (
           <span className="text-[0.65rem] text-text-muted font-mono truncate">
-            {model}
+            {modelName}
+            {featuredLabel && (
+              <span className="font-sans"> ({featuredLabel})</span>
+            )}
           </span>
         )}
         {stateInfo && (
@@ -333,12 +340,13 @@ function CompactProviderMenu({
               {providerOptions
                 .filter((opt) => !opt.hideForModelPattern || !effectiveModel || !new RegExp(opt.hideForModelPattern, 'i').test(effectiveModel))
                 .map((opt) => (
-                  <CompactOptionControl
+                  <OptionControl
                     key={opt.key}
                     option={opt}
                     model={effectiveModel}
                     value={optionValues[opt.key]}
                     onChange={(val) => setOptionValues((prev) => ({ ...prev, [opt.key]: val }))}
+                    compact
                   />
                 ))}
             </div>
@@ -350,82 +358,3 @@ function CompactProviderMenu({
 }
 
 
-/* ------------------------------------------------------------------ */
-/*  Option control (select / slider / number) for compact dropdown     */
-/* ------------------------------------------------------------------ */
-
-function CompactOptionControl({
-  option,
-  model,
-  value,
-  onChange,
-}: {
-  option: ProviderOption
-  model: string | null
-  value: string | number | undefined
-  onChange: (value: string | number) => void
-}) {
-  const current = value ?? option.defaultValue
-  const filteredChoices = option.choices ? filterChoicesForModel(option.choices, model) : []
-
-  useEffect(() => {
-    if (option.type !== 'select' || !filteredChoices.length) return
-    const isValid = filteredChoices.some((c) => c.value === String(current))
-    if (!isValid) onChange(option.defaultValue as string | number)
-  }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div className="px-1">
-      <label className="text-[0.65rem] text-text-secondary font-medium block mb-1">
-        {option.label}
-      </label>
-
-      {option.type === 'select' && filteredChoices.length > 0 && (
-        <div className="flex gap-0.5 rounded-lg bg-obsidian/50 p-0.5 border border-slate-mid/30">
-          {filteredChoices.map((c) => (
-            <button
-              key={c.value}
-              onClick={() => onChange(c.value)}
-              className={`flex-1 px-1.5 py-0.5 rounded-md text-[0.6rem] transition-colors ${
-                String(current) === c.value
-                  ? 'bg-synapse/20 text-synapse border border-synapse/30'
-                  : 'text-text-muted hover:text-text-secondary'
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {option.type === 'slider' && (
-        <div className="flex items-center gap-2">
-          <input
-            type="range"
-            min={option.min ?? 0}
-            max={option.max ?? 1}
-            step={option.step ?? 0.1}
-            value={Number(current)}
-            onChange={(e) => onChange(parseFloat(e.target.value))}
-            className="flex-1 accent-synapse h-1"
-          />
-          <span className="text-[0.6rem] text-text-secondary font-mono w-6 text-right">
-            {Number(current).toFixed(1)}
-          </span>
-        </div>
-      )}
-
-      {option.type === 'number' && (
-        <input
-          type="number"
-          min={option.min}
-          max={option.max}
-          step={option.step}
-          value={current ?? ''}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          className="w-full px-2 py-1 rounded-lg text-xs font-mono bg-obsidian/50 border border-slate-mid/40 text-text-primary focus:border-synapse/50 focus:outline-none transition-colors"
-        />
-      )}
-    </div>
-  )
-}

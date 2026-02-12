@@ -299,8 +299,8 @@ class TestGeminiBridgeZeroFootprint:
         assert alias["modelConfig"]["generateContentConfig"]["temperature"] == 0.5
         bridge._sandbox.cleanup()
 
-    def test_acp_settings_no_mcp_servers(self, tmp_path):
-        """ACP mode without model/gen_config writes no settings (MCP via protocol)."""
+    def test_acp_settings_always_generated(self, tmp_path):
+        """ACP mode always generates settings (to bypass auto classifier)."""
         bridge = GeminiBridge(
             acp_enabled=True,
             mcp_servers={"tools": {"command": "python", "args": ["t.py"]}},
@@ -308,8 +308,12 @@ class TestGeminiBridgeZeroFootprint:
         )
         bridge._setup_config_files()
 
-        assert bridge._gemini_settings_path is None
-        assert not (bridge._sandbox.root / "gemini-settings.json").exists()
+        # ACP always generates settings with default model + customOverrides
+        assert bridge._gemini_settings_path is not None
+        data = json.loads(bridge._gemini_settings_path.read_text())
+        assert data["model"]["name"] == "gemini-3-pro-preview"
+        # MCP servers NOT in settings (passed via ACP protocol)
+        assert "mcpServers" not in data
         bridge._sandbox.cleanup()
 
     def test_oneshot_settings_have_mcp_servers(self, tmp_path):

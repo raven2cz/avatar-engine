@@ -28,6 +28,7 @@ interface AvatarWSState {
   }
   cost: CostInfo
   error: string | null
+  diagnostic: string | null
 }
 
 type Action =
@@ -45,6 +46,7 @@ type Action =
   | { type: 'SWITCHING' }
   | { type: 'SESSION_TITLE_UPDATED'; sessionId: string; title: string | null; isCurrentSession: boolean }
   | { type: 'SESSION_ID_DISCOVERED'; sessionId: string }
+  | { type: 'DIAGNOSTIC'; message: string; level: string }
 
 const initialState: AvatarWSState = {
   connected: false,
@@ -62,6 +64,7 @@ const initialState: AvatarWSState = {
   thinking: { active: false, phase: 'general', subject: '', startedAt: 0 },
   cost: { totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0 },
   error: null,
+  diagnostic: null,
 }
 
 function reducer(state: AvatarWSState, action: Action): AvatarWSState {
@@ -136,6 +139,8 @@ function reducer(state: AvatarWSState, action: Action): AvatarWSState {
       return { ...state, error: action.error }
     case 'CLEAR_ERROR':
       return { ...state, error: null }
+    case 'DIAGNOSTIC':
+      return { ...state, diagnostic: action.message || null }
     case 'SWITCHING':
       return { ...state, switching: true }
     case 'SESSION_TITLE_UPDATED':
@@ -286,6 +291,12 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
               isCurrentSession: !!msg.data.is_current_session,
             })
             break
+          case 'diagnostic':
+            // Surface CLI diagnostics (stderr, ACP errors) to the user
+            if (msg.data.message) {
+              dispatch({ type: 'DIAGNOSTIC', message: msg.data.message, level: msg.data.level || 'info' })
+            }
+            break
           case 'chat_response':
             // Backfill session ID for oneshot providers that don't emit it on startup
             if (msg.data.session_id) {
@@ -334,9 +345,10 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
 
   const sendMessage = useCallback((message: string, attachments?: import('../api/types').ChatAttachment[]) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      // Clear error fence — user is starting a new request
+      // Clear error fence + stale diagnostic — user is starting a new request
       errorFenceRef.current = false
       dispatch({ type: 'CLEAR_ERROR' })
+      dispatch({ type: 'DIAGNOSTIC', message: '', level: '' })
       const data: Record<string, unknown> = { message }
       if (attachments?.length) data.attachments = attachments
       wsRef.current.send(JSON.stringify({ type: 'chat', data }))

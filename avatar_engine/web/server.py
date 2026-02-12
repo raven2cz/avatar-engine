@@ -348,7 +348,11 @@ def create_app(
     # === WebSocket helpers ===
 
     def _get_model(mgr: EngineSessionManager) -> Optional[str]:
-        """Extract current model from engine/bridge/config."""
+        """Extract current model from engine/bridge/config.
+
+        Falls back to 'gemini-3-pro-preview' for Gemini provider when no
+        explicit model is set — this is the actual default used by gemini-cli.
+        """
         eng = mgr.engine
         if not eng:
             return None
@@ -359,6 +363,10 @@ def create_app(
             mdl = eng._config.model
         if mdl is None:
             mdl = mgr._model
+        # When no model is explicitly configured, report the actual default
+        # so the frontend knows what model is running.
+        if not mdl and mgr._provider == "gemini":
+            mdl = "gemini-3-pro-preview"
         return mdl or None
 
     def _get_session_title(mgr: EngineSessionManager, session_id: Optional[str]) -> Optional[str]:
@@ -549,14 +557,33 @@ def create_app(
                                 chat_timeout += int(total_att_mb * 3)  # +3s per MB
 
                             logger.debug(f"Chat request: {msg[:80]}... (attachments: {len(atts) if atts else 0}, {total_att_mb:.1f} MB, timeout: {chat_timeout}s)")
+                            chat_start = time.monotonic()
                             response = await asyncio.wait_for(eng.chat(msg, attachments=atts), timeout=chat_timeout)
                             brg.broadcast_message(response_to_dict(response))
                         except asyncio.TimeoutError:
-                            size_hint = ""
+                            elapsed = time.monotonic() - chat_start
+                            # Collect context to help user understand WHY
+                            ctx_parts: list[str] = []
                             if atts:
                                 total_mb = sum(a.size for a in atts) / (1024 * 1024)
-                                size_hint = f" (attachments: {total_mb:.1f} MB — try a smaller file)"
-                            error_text = f"No response from engine — request timed out{size_hint}"
+                                ctx_parts.append(f"attachments: {total_mb:.1f} MB")
+                            # Engine/bridge state
+                            try:
+                                bridge_state = eng._bridge.state.value if eng._bridge else "unknown"
+                                engine_state = brg.engine_state.value if brg else "unknown"
+                                ctx_parts.append(f"state: {engine_state}/{bridge_state}")
+                            except Exception:
+                                pass
+                            # Last stderr diagnostic
+                            try:
+                                stderr_buf = eng._bridge.get_stderr_buffer() if eng._bridge else []
+                                if stderr_buf:
+                                    last_line = stderr_buf[-1][:120]
+                                    ctx_parts.append(f"last diagnostic: {last_line}")
+                            except Exception:
+                                pass
+                            ctx = f" ({', '.join(ctx_parts)})" if ctx_parts else ""
+                            error_text = f"No response from engine — timed out after {int(elapsed)}s{ctx}"
                             logger.error(f"Chat timeout: {error_text}")
                             err_msg = {
                                 "type": "error",

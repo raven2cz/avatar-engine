@@ -39,6 +39,7 @@ export interface UseAvatarChatReturn {
   cost: { totalCostUsd: number; totalInputTokens: number; totalOutputTokens: number }
   capabilities: ReturnType<typeof useAvatarWebSocket>['state']['capabilities']
   error: string | null
+  diagnostic: string | null
 }
 
 let messageIdCounter = 0
@@ -364,5 +365,6 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
     cost: state.cost,
     capabilities: state.capabilities,
     error: state.error,
+    diagnostic: state.diagnostic,
   }
 }

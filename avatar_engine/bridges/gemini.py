@@ -190,6 +190,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         self._acp_session_id: Optional[str] = None
         self._acp_mode = False  # True = running in ACP warm session
         self._acp_restart_task: Optional[asyncio.Task] = None
+        self._acp_stderr_task: Optional[asyncio.Task] = None
 
         # Collected events from ACP session_update notifications
         self._acp_events: List[Dict[str, Any]] = []
@@ -354,15 +355,22 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
 
         logger.info(f"Spawning ACP: {' '.join(cmd_args[:6])}…")
 
-        # Spawn gemini process with stdio pipes
+        # Spawn gemini process with stdio pipes.
+        # Large JSON-RPC responses (e.g. search results) can exceed asyncio's
+        # default 64 KB StreamReader limit → LimitOverrunError.  We set 50 MB
+        # to match the ACP SDK's own DEFAULT_STDIO_BUFFER_LIMIT_BYTES.
         self._acp_proc = await asyncio.create_subprocess_exec(
             *cmd_args,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=None,
+            stderr=asyncio.subprocess.PIPE,
             cwd=self.working_dir,
             env=env,
+            limit=50 * 1024 * 1024,  # 50 MB
         )
+
+        # Monitor stderr — surfaces CLI diagnostics (auth, rate-limit, errors)
+        self._acp_stderr_task = asyncio.create_task(self._monitor_acp_stderr())
 
         # Build ACP client that handles permission requests and session updates
         client = _AvatarACPClient(
@@ -432,12 +440,54 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 mcp_servers_acp.append(entry)
         return mcp_servers_acp
 
+    async def _monitor_acp_stderr(self) -> None:
+        """Background task reading ACP subprocess stderr.
+
+        Surfaces CLI diagnostics (auth prompts, rate-limit, errors) via
+        the DiagnosticEvent pipeline so the user isn't blind.
+        """
+        from .base import _classify_stderr_level
+
+        try:
+            proc = self._acp_proc
+            while proc and proc.stderr and proc.returncode is None:
+                line = await proc.stderr.readline()
+                if not line:
+                    break
+                text = line.decode(errors="replace").strip()
+                if text:
+                    with self._stderr_lock:
+                        self._stderr_buffer.append(text)
+                    logger.debug(f"ACP stderr: {text}")
+                    if self._on_stderr:
+                        self._on_stderr(text)
+                    if self._on_event:
+                        self._on_event({
+                            "type": "diagnostic",
+                            "message": text,
+                            "level": _classify_stderr_level(text),
+                            "source": "acp-stderr",
+                        })
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.debug(f"ACP stderr monitor: {exc}")
+
     async def _cleanup_acp(self) -> None:
         """Clean up ACP connection and terminate process.
 
         Closes subprocess pipes and transport explicitly to prevent
         'Event loop is closed' errors from BaseSubprocessTransport.__del__.
         """
+        # Cancel stderr monitor first
+        if self._acp_stderr_task and not self._acp_stderr_task.done():
+            self._acp_stderr_task.cancel()
+            try:
+                await self._acp_stderr_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._acp_stderr_task = None
+
         if self._acp_conn:
             try:
                 await self._acp_conn.close()
@@ -497,7 +547,14 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         try:
             self._handle_acp_update_inner(session_id, update)
         except Exception as exc:
-            logger.debug(f"Error in ACP update handler: {exc}", exc_info=True)
+            logger.warning(f"Error in ACP update handler: {exc}", exc_info=True)
+            if self._on_event:
+                self._on_event({
+                    "type": "diagnostic",
+                    "message": f"ACP update error: {exc}",
+                    "level": "error",
+                    "source": "acp-callback",
+                })
 
     def _handle_acp_update_inner(self, session_id: str, update: Any) -> None:
         """Inner handler for ACP updates — uses typed SDK objects.
@@ -748,6 +805,11 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             if self.acp_enabled:
                 logger.warning("ACP error — falling back to oneshot for this request")
                 self._acp_mode = False
+                # If the ACP connection died (e.g. LimitOverrunError), restart
+                # in background so the next message uses a fresh ACP session.
+                if "limit" in str(exc).lower() or "separator" in str(exc).lower():
+                    logger.info("Restarting ACP after stream buffer overflow")
+                    self._acp_restart_task = asyncio.create_task(self._restart_acp())
                 return await super().send(prompt, attachments=attachments)
 
             response = BridgeResponse(
@@ -852,17 +914,40 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         Runtime config methods (setSessionConfigOption, setSessionModel)
         are NOT implemented by gemini-cli.
 
-        NEVER set ``model.name`` in ACP mode — it bypasses the entire alias
-        chain and causes "Internal error" from the API.
+        ACP with explicit model: DON'T set ``model.name`` — use customAliases.
+        ACP without model: set ``model.name`` = gemini-3-pro-preview to bypass
+        the auto-gemini-3 classifier (which may route simple queries to Flash).
         """
         self._sandbox = ConfigSandbox()
 
         settings: Dict[str, Any] = {}
 
-        # model.name — only for oneshot mode.
-        # ACP: NEVER set model.name (bypasses alias chain → "Internal error").
+        # model.name — specifies the concrete model, bypassing gemini-cli's
+        # auto-classifier (auto-gemini-3 may route to Flash).
+        #
+        # Oneshot: always set when model is specified.
+        # ACP with explicit model: DON'T set model.name — routing is
+        #   handled by customAliases below (model.name bypasses the alias
+        #   chain which can miss config for non-standard models).
+        # ACP without model: set model.name to force default Pro and
+        #   bypass the auto classifier.
         if not self.acp_enabled and self.model:
             settings["model"] = {"name": self.model}
+        elif self.acp_enabled and not self.model:
+            # No explicit model → force default Pro to bypass auto classifier
+            settings["model"] = {"name": "gemini-3-pro-preview"}
+
+        # ACP fast-start: disable MCP servers, extensions, and skills
+        # discovery in gemini-cli.  These are the main culprits of the
+        # 50-60s initialization delay.  Avatar-engine manages its own
+        # MCP servers via the ACP protocol, so gemini-cli's built-in
+        # discovery is redundant and wastes startup time.
+        if self.acp_enabled:
+            settings["admin"] = {
+                "mcp": {"enabled": False},
+                "extensions": {"enabled": False},
+                "skills": {"enabled": False},
+            }
 
         # MCP servers in settings (oneshot only — ACP passes via protocol)
         if not self.acp_enabled and self.mcp_servers:
@@ -882,7 +967,11 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         #
         # Oneshot mode: model.name (above) handles model selection;
         #   customAliases provides generateContentConfig overrides.
-        if self.model or self.generation_config:
+        # Always generate customOverrides in ACP mode — ensures thinkingConfig
+        # and temperature are applied even without explicit model/options.
+        # Without this, gemini-cli uses built-in defaults which may differ
+        # from what the user expects.
+        if self.acp_enabled or self.model or self.generation_config:
             gen_cfg = self._build_generation_config()
             if gen_cfg:
                 if self.acp_enabled:
@@ -1012,6 +1101,13 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         user's own Gemini CLI usage.
         """
         env = super()._build_subprocess_env()
+
+        # Skip gemini-cli's self-relaunch into sandbox / child process.
+        # Without this, gemini-cli spawns TWICE (parent does auth + relaunch,
+        # child re-does init), roughly doubling the ACP startup time.
+        # Safe because: (1) ACP mode already runs in our managed subprocess,
+        # (2) the relaunch is for crash-restart which we handle ourselves.
+        env["SANDBOX"] = "true"
 
         # System settings = highest priority (level 5 in Gemini CLI hierarchy)
         if hasattr(self, "_gemini_settings_path") and self._gemini_settings_path:

@@ -595,16 +595,28 @@ class TestSettingsJsonConfig:
         assert "previewFeatures" not in settings
         bridge._sandbox.cleanup()
 
-    def test_acp_mode_no_settings_without_config(self, tmp_path):
-        """ACP mode with no model and no generation_config writes no settings."""
+    def test_acp_mode_default_settings_without_config(self, tmp_path):
+        """ACP mode with no explicit model/config still generates settings.
+
+        Without settings, gemini-cli uses auto-gemini-3 classifier which
+        may route to Flash.  The default settings force gemini-3-pro-preview
+        via model.name and apply customOverrides with thinkingConfig.
+        """
         bridge = GeminiBridge(
             acp_enabled=True,
             working_dir=str(tmp_path),
         )
         bridge._setup_config_files()
 
-        assert bridge._gemini_settings_path is None
-        assert not (bridge._sandbox.root / "gemini-settings.json").exists()
+        assert bridge._gemini_settings_path is not None
+        settings = self._read_sandbox_settings(bridge)
+        # model.name forces Pro, bypassing auto classifier
+        assert settings["model"]["name"] == "gemini-3-pro-preview"
+        # customOverrides applied for default model
+        assert "modelConfigs" in settings
+        overrides = settings["modelConfigs"]["customOverrides"]
+        assert len(overrides) == 1
+        assert overrides[0]["match"]["model"] == "gemini-3-pro-preview"
         bridge._sandbox.cleanup()
 
     def test_oneshot_mode_has_custom_aliases(self, tmp_path):
@@ -655,3 +667,56 @@ class TestSettingsJsonConfig:
         assert gen_cfg["thinkingConfig"].get("thinkingLevel") == "HIGH"
         assert gen_cfg["thinkingConfig"].get("includeThoughts") is True
         bridge._sandbox.cleanup()
+
+
+class TestACPSubprocessBufferLimit:
+    """Verify that create_subprocess_exec is called with a large buffer limit.
+
+    asyncio's default 64 KB StreamReader limit causes LimitOverrunError
+    when gemini-cli sends large JSON-RPC responses (e.g. search results).
+    We set 50 MB to match the ACP SDK's own DEFAULT_STDIO_BUFFER_LIMIT_BYTES.
+    """
+
+    @pytest.mark.asyncio
+    async def test_subprocess_has_50mb_buffer_limit(self):
+        """ACP subprocess must be created with limit=50MB."""
+        captured_kwargs = {}
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 12345
+        mock_proc.returncode = None
+        mock_proc.stdin = MagicMock()
+        mock_proc.stdin.write = MagicMock()
+        mock_proc.stdin.drain = AsyncMock()
+        mock_proc.stdin.close = MagicMock()
+        mock_proc.stdout = MagicMock()
+        mock_proc.stdout.readline = AsyncMock(return_value=b"")
+        mock_proc.stderr = MagicMock()
+        mock_proc.stderr.readline = AsyncMock(return_value=b"")
+        mock_proc.wait = AsyncMock()
+        mock_proc.terminate = MagicMock()
+        mock_proc.kill = MagicMock()
+
+        async def capture_exec(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return mock_proc
+
+        with patch("asyncio.create_subprocess_exec", side_effect=capture_exec):
+            with patch("shutil.which", return_value="/usr/bin/gemini"):
+                with patch("acp.client.connection.ClientSideConnection") as mock_conn:
+                    mock_conn_instance = MagicMock()
+                    mock_conn_instance.initialize = AsyncMock(return_value=MagicMock(
+                        protocol_version="0.1", capabilities=None
+                    ))
+                    mock_conn.return_value = mock_conn_instance
+
+                    bridge = GeminiBridge(acp_enabled=True)
+                    try:
+                        await asyncio.wait_for(bridge.start(), timeout=3)
+                    except Exception:
+                        pass  # We only care about the subprocess args
+
+        assert "limit" in captured_kwargs, "create_subprocess_exec must be called with limit="
+        assert captured_kwargs["limit"] == 50 * 1024 * 1024, (
+            f"Buffer limit should be 50 MB, got {captured_kwargs['limit']}"
+        )

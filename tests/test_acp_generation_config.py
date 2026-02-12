@@ -303,10 +303,13 @@ class TestResponseModalities:
 
 
 class TestModelNameNeverInACP:
-    """CRITICAL: model.name at top level causes 'Internal error'.
+    """CRITICAL: model.name at top level causes 'Internal error' for
+    non-standard models (bypasses the alias chain).
 
-    These tests verify it's never written in ACP mode, regardless of
-    what model or options are specified.
+    Exception: when NO explicit model is set, model.name is written
+    with 'gemini-3-pro-preview' to bypass the auto-gemini-3 classifier
+    (which may route to Flash).  This is safe because gemini-3-pro-preview
+    has a valid built-in alias chain.
     """
 
     def test_no_model_name_default_model(self, tmp_path):
@@ -353,15 +356,16 @@ class TestModelNameNeverInACP:
         assert "model" not in settings
         bridge._sandbox.cleanup()
 
-    def test_no_model_name_empty_model(self, tmp_path):
-        """No model specified: no model.name in settings."""
+    def test_empty_model_has_default_model_name(self, tmp_path):
+        """No model specified: model.name = gemini-3-pro-preview to bypass auto classifier."""
         bridge = _simulate_switch(
             model=None,
             options={"generation_config": {"thinking_level": "medium"}},
             working_dir=str(tmp_path),
         )
         settings = _read_settings(bridge)
-        assert "model" not in settings
+        # Empty model → force default Pro to bypass auto-gemini-3 classifier
+        assert settings["model"]["name"] == "gemini-3-pro-preview"
         bridge._sandbox.cleanup()
 
 
@@ -546,21 +550,30 @@ class TestOneshotUnchanged:
 
 
 class TestNoSettingsWhenNotNeeded:
-    """Settings file should NOT be written when there's nothing to configure."""
+    """Settings file should NOT be written when there's nothing to configure.
 
-    def test_no_model_no_config_acp(self, tmp_path):
-        """ACP with no model and no generation_config → no settings."""
+    Note: ACP mode ALWAYS generates settings (to bypass auto classifier
+    and apply default thinkingConfig).  These tests cover oneshot mode
+    and ACP edge cases.
+    """
+
+    def test_acp_always_generates_settings(self, tmp_path):
+        """ACP always generates settings to bypass auto classifier."""
         bridge = GeminiBridge(
             acp_enabled=True,
             working_dir=str(tmp_path),
         )
         bridge._setup_config_files()
 
-        assert bridge._gemini_settings_path is None
+        # ACP mode: settings MUST be generated even without explicit config
+        assert bridge._gemini_settings_path is not None
+        settings = json.loads(bridge._gemini_settings_path.read_text())
+        assert settings["model"]["name"] == "gemini-3-pro-preview"
+        assert "modelConfigs" in settings
         bridge._sandbox.cleanup()
 
-    def test_only_mcp_servers_acp(self, tmp_path):
-        """ACP with only MCP servers (no model/gen_config) → no settings."""
+    def test_acp_with_mcp_servers_generates_settings(self, tmp_path):
+        """ACP with MCP servers also generates default settings."""
         bridge = GeminiBridge(
             acp_enabled=True,
             mcp_servers={"tools": {"command": "python", "args": ["t.py"]}},
@@ -568,11 +581,11 @@ class TestNoSettingsWhenNotNeeded:
         )
         bridge._setup_config_files()
 
-        assert bridge._gemini_settings_path is None
+        assert bridge._gemini_settings_path is not None
         bridge._sandbox.cleanup()
 
     def test_only_system_prompt_acp(self, tmp_path):
-        """ACP with only system prompt → no settings file (prompt is separate)."""
+        """ACP with only system prompt → settings file (for default model) + prompt file."""
         bridge = GeminiBridge(
             acp_enabled=True,
             system_prompt="Jsi avatar.",
@@ -580,8 +593,9 @@ class TestNoSettingsWhenNotNeeded:
         )
         bridge._setup_config_files()
 
-        assert bridge._gemini_settings_path is None
-        # But system prompt file should exist
+        # ACP always generates settings (to bypass auto classifier)
+        assert bridge._gemini_settings_path is not None
+        # System prompt file should also exist (separate mechanism)
         assert bridge._system_prompt_path is not None
         bridge._sandbox.cleanup()
 
@@ -607,8 +621,13 @@ class TestSettingsStructure:
         )
         settings = _read_settings(bridge)
 
-        # Default model → no customAliases, only customOverrides
+        # Default model → no customAliases, only customOverrides + admin fast-start
         expected = {
+            "admin": {
+                "mcp": {"enabled": False},
+                "extensions": {"enabled": False},
+                "skills": {"enabled": False},
+            },
             "modelConfigs": {
                 "customOverrides": [
                     {
@@ -638,6 +657,11 @@ class TestSettingsStructure:
         settings = _read_settings(bridge)
 
         expected = {
+            "admin": {
+                "mcp": {"enabled": False},
+                "extensions": {"enabled": False},
+                "skills": {"enabled": False},
+            },
             "modelConfigs": {
                 "customAliases": {
                     "gemini-3-pro-preview": {
@@ -670,6 +694,11 @@ class TestSettingsStructure:
         settings = _read_settings(bridge)
 
         expected = {
+            "admin": {
+                "mcp": {"enabled": False},
+                "extensions": {"enabled": False},
+                "skills": {"enabled": False},
+            },
             "modelConfigs": {
                 "customAliases": {
                     "gemini-3-pro-preview": {

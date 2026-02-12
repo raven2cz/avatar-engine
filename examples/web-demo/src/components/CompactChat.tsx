@@ -21,6 +21,7 @@ interface CompactChatProps {
   wasConnected?: boolean
   initDetail?: string
   error?: string | null
+  diagnostic?: string | null
   engineState: EngineState | string
   isStreaming: boolean
   pendingFiles?: UploadedFile[]
@@ -48,6 +49,7 @@ export function CompactChat({
   wasConnected,
   initDetail,
   error,
+  diagnostic,
   engineState,
   isStreaming,
   pendingFiles,
@@ -105,6 +107,11 @@ export function CompactChat({
                 Connection lost. Attempting to reconnect...
               </p>
             )}
+            {diagnostic && (
+              <p className="text-[0.6rem] text-amber-400/70 font-mono mt-2 max-w-[280px] truncate">
+                {diagnostic}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -113,6 +120,13 @@ export function CompactChat({
       {connected && error && (
         <div className="mx-3 mt-1 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/25 text-red-400 text-[0.7rem] flex-shrink-0 animate-fade-in">
           {error}
+        </div>
+      )}
+
+      {/* Diagnostic banner — shows CLI stderr/diagnostic messages */}
+      {connected && diagnostic && !error && (
+        <div className="mx-3 mt-1 px-3 py-1.5 rounded-lg bg-amber-500/8 border border-amber-500/20 text-amber-400/80 text-[0.65rem] font-mono flex-shrink-0 animate-fade-in truncate">
+          {diagnostic}
         </div>
       )}
 

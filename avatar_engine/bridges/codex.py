@@ -151,6 +151,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         self._acp_conn = None
         self._acp_proc = None
         self._acp_session_id: Optional[str] = None
+        self._acp_stderr_task: Optional[asyncio.Task] = None
 
         # Collected events from ACP session_update notifications
         self._acp_events: List[Dict[str, Any]] = []
@@ -241,10 +242,13 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             *cmd_args,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=None,
+            stderr=asyncio.subprocess.PIPE,
             cwd=self.working_dir,
             env=env,
         )
+
+        # Monitor stderr — surfaces CLI diagnostics (auth, rate-limit, errors)
+        self._acp_stderr_task = asyncio.create_task(self._monitor_acp_stderr())
 
         # Build ACP client that handles permission requests
         client = _CodexACPClient(
@@ -327,12 +331,54 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 mcp_servers_acp.append(entry)
         return mcp_servers_acp
 
+    async def _monitor_acp_stderr(self) -> None:
+        """Background task reading ACP subprocess stderr.
+
+        Surfaces CLI diagnostics (auth prompts, rate-limit, errors) via
+        the DiagnosticEvent pipeline so the user isn't blind.
+        """
+        from .base import _classify_stderr_level
+
+        try:
+            proc = self._acp_proc
+            while proc and proc.stderr and proc.returncode is None:
+                line = await proc.stderr.readline()
+                if not line:
+                    break
+                text = line.decode(errors="replace").strip()
+                if text:
+                    with self._stderr_lock:
+                        self._stderr_buffer.append(text)
+                    logger.debug(f"ACP stderr: {text}")
+                    if self._on_stderr:
+                        self._on_stderr(text)
+                    if self._on_event:
+                        self._on_event({
+                            "type": "diagnostic",
+                            "message": text,
+                            "level": _classify_stderr_level(text),
+                            "source": "acp-stderr",
+                        })
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.debug(f"ACP stderr monitor: {exc}")
+
     async def _cleanup_acp(self) -> None:
         """Clean up ACP connection and terminate process.
 
         Closes subprocess pipes and transport explicitly to prevent
         'Event loop is closed' errors from BaseSubprocessTransport.__del__.
         """
+        # Cancel stderr monitor first
+        if self._acp_stderr_task and not self._acp_stderr_task.done():
+            self._acp_stderr_task.cancel()
+            try:
+                await self._acp_stderr_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._acp_stderr_task = None
+
         if self._acp_conn:
             try:
                 await self._acp_conn.close()
@@ -377,7 +423,14 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         try:
             self._handle_acp_update_inner(session_id, update)
         except Exception as exc:
-            logger.debug(f"Error in ACP update handler: {exc}", exc_info=True)
+            logger.warning(f"Error in ACP update handler: {exc}", exc_info=True)
+            if self._on_event:
+                self._on_event({
+                    "type": "diagnostic",
+                    "message": f"ACP update error: {exc}",
+                    "level": "error",
+                    "source": "acp-callback",
+                })
 
     def _handle_acp_update_inner(self, session_id: str, update: Any) -> None:
         """Inner handler for ACP updates — uses typed SDK objects.

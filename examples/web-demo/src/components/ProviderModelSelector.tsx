@@ -9,8 +9,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { ChevronDown, Loader2 } from 'lucide-react'
-import { PROVIDERS, getProvider, getModelsForProvider, getOptionsForProvider, getFeaturedLabel, filterChoicesForModel } from '../config/providers'
-import type { ProviderOption } from '../config/providers'
+import { PROVIDERS, getProvider, getModelsForProvider, getOptionsForProvider, getModelDisplayName, filterChoicesForModel } from '../config/providers'
+import { OptionControl } from './OptionControl'
 
 interface ProviderModelSelectorProps {
   currentProvider: string
@@ -119,8 +119,9 @@ export function ProviderModelSelector({
   const selectedConfig = getProvider(selectedProvider)
   const models = getModelsForProvider(selectedProvider)
   const providerOptions = getOptionsForProvider(selectedProvider)
-  const featuredLabel = getFeaturedLabel(currentProvider, activeOptions)
-  const displayModel = currentModel || providerConfig?.defaultModel || null
+  const { modelName: displayModel, featuredLabel } = getModelDisplayName(
+    currentProvider, currentModel, providerConfig?.defaultModel, activeOptions,
+  )
   // Model used to filter model-specific option choices (e.g. thinking levels)
   const effectiveModel = (selectedProvider === currentProvider ? currentModel : null)
     || selectedConfig?.defaultModel || null
@@ -254,6 +255,7 @@ export function ProviderModelSelector({
                     model={effectiveModel}
                     value={optionValues[opt.key]}
                     onChange={(val) => handleOptionChange(opt.key, val)}
+                    compact={false}
                   />
                 ))}
               </div>
@@ -265,83 +267,3 @@ export function ProviderModelSelector({
   )
 }
 
-function OptionControl({
-  option,
-  model,
-  value,
-  onChange,
-}: {
-  option: ProviderOption
-  model: string | null
-  value: string | number | undefined
-  onChange: (value: string | number) => void
-}) {
-  const current = value ?? option.defaultValue
-
-  // Filter choices based on model (e.g. 'minimal'/'medium' only for Flash)
-  const filteredChoices = option.choices ? filterChoicesForModel(option.choices, model) : []
-
-  // Auto-reset if current value is no longer available
-  useEffect(() => {
-    if (option.type !== 'select' || !filteredChoices.length) return
-    const isValid = filteredChoices.some((c) => c.value === String(current))
-    if (!isValid) {
-      onChange(option.defaultValue as string | number)
-    }
-  }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div className="px-1">
-      <label className="text-xs text-text-secondary font-medium block mb-1">
-        {option.label}
-      </label>
-
-      {option.type === 'select' && filteredChoices.length > 0 && (
-        <div className="flex gap-0.5 rounded-lg bg-obsidian/50 p-0.5 border border-slate-mid/30">
-          {filteredChoices.map((c) => (
-            <button
-              key={c.value}
-              onClick={() => onChange(c.value)}
-              className={`flex-1 px-2 py-1 rounded-md text-xs transition-colors ${
-                String(current) === c.value
-                  ? 'bg-synapse/20 text-synapse border border-synapse/30'
-                  : 'text-text-muted hover:text-text-secondary'
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {option.type === 'slider' && (
-        <div className="flex items-center gap-2">
-          <input
-            type="range"
-            min={option.min ?? 0}
-            max={option.max ?? 1}
-            step={option.step ?? 0.1}
-            value={Number(current)}
-            onChange={(e) => onChange(parseFloat(e.target.value))}
-            className="flex-1 accent-synapse h-1.5"
-          />
-          <span className="text-xs text-text-secondary font-mono w-8 text-right">
-            {Number(current).toFixed(1)}
-          </span>
-        </div>
-      )}
-
-      {option.type === 'number' && (
-        <input
-          type="number"
-          min={option.min}
-          max={option.max}
-          step={option.step}
-          value={current ?? ''}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          className="w-full px-2.5 py-1.5 rounded-lg text-sm font-mono bg-obsidian/50 border border-slate-mid/40 text-text-primary focus:border-synapse/50 focus:outline-none transition-colors"
-        />
-      )}
-    </div>
-  )
-}

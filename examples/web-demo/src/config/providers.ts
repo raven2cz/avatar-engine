@@ -237,3 +237,21 @@ export function getFeaturedLabel(
   }
   return parts.join(', ')
 }
+
+/**
+ * Build the full model display string with featured options in parentheses.
+ * E.g. "gemini-3-pro-preview (High)"
+ *
+ * Single source of truth — use this everywhere a model name is rendered
+ * (compact header, fullscreen header, status bar, etc.).
+ */
+export function getModelDisplayName(
+  providerId: string,
+  model: string | null,
+  defaultModel?: string,
+  activeOptions: Record<string, string | number> = {},
+): { modelName: string | null; featuredLabel: string } {
+  const modelName = model || defaultModel || null
+  const featuredLabel = getFeaturedLabel(providerId, activeOptions)
+  return { modelName, featuredLabel }
+}

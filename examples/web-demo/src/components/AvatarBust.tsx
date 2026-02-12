@@ -13,11 +13,13 @@ import { useAvatarBust } from '../hooks/useAvatarBust'
 interface AvatarBustProps {
   avatar: AvatarConfig | undefined
   engineState: string
+  /** True when the current assistant message has non-empty text content. */
+  hasText?: boolean
   className?: string
 }
 
-export function AvatarBust({ avatar, engineState, className = '' }: AvatarBustProps) {
-  const { bustState, currentFrame, loading } = useAvatarBust(avatar, engineState)
+export function AvatarBust({ avatar, engineState, hasText = false, className = '' }: AvatarBustProps) {
+  const { bustState, currentFrame, loading } = useAvatarBust(avatar, engineState, hasText)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // Render current frame to canvas

@@ -56,6 +56,7 @@ export default function App() {
     cost,
     capabilities,
     error,
+    diagnostic,
   } = useAvatarChat(WS_URL)
 
   return (
@@ -69,6 +70,7 @@ export default function App() {
       wasConnected={wasConnected}
       initDetail={initDetail}
       error={error}
+      diagnostic={diagnostic}
       provider={provider}
       model={model}
       engineState={engineState}
@@ -123,6 +125,11 @@ export default function App() {
         {error && connected && (
           <div className="mx-6 mt-2 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm animate-slide-up">
             {error}
+          </div>
+        )}
+        {diagnostic && connected && !error && (
+          <div className="mx-6 mt-2 px-4 py-1.5 rounded-xl bg-amber-500/8 border border-amber-500/20 text-amber-400/80 text-xs font-mono animate-slide-up truncate">
+            {diagnostic}
           </div>
         )}
 
