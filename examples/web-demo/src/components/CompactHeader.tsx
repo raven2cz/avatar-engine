@@ -7,6 +7,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
 import type { EngineState } from '../api/types'
 import {
@@ -39,11 +40,11 @@ interface CompactHeaderProps {
   showExpandHint?: boolean
 }
 
-const STATE_LABELS: Record<string, { label: string; cls: string }> = {
-  thinking: { label: 'Thinking...', cls: 'bg-synapse/12 text-synapse' },
-  responding: { label: 'Responding...', cls: 'bg-pulse/12 text-pulse' },
-  tool_executing: { label: 'Running tool...', cls: 'bg-neural/12 text-neural' },
-  error: { label: 'Error', cls: 'bg-red-500/12 text-red-400' },
+const STATE_LABELS: Record<string, { labelKey: string; cls: string }> = {
+  thinking: { labelKey: 'compact.header.thinking', cls: 'bg-synapse/12 text-synapse' },
+  responding: { labelKey: 'compact.header.responding', cls: 'bg-pulse/12 text-pulse' },
+  tool_executing: { labelKey: 'compact.header.runningTool', cls: 'bg-neural/12 text-neural' },
+  error: { labelKey: 'compact.header.error', cls: 'bg-red-500/12 text-red-400' },
 }
 
 export function CompactHeader({
@@ -62,6 +63,7 @@ export function CompactHeader({
   onSwitchProvider,
   showExpandHint,
 }: CompactHeaderProps) {
+  const { t } = useTranslation()
   const stateInfo = STATE_LABELS[engineState]
   const { modelName, featuredLabel } = getModelDisplayName(
     provider, model, getProvider(provider)?.defaultModel, activeOptions,
@@ -115,7 +117,7 @@ export function CompactHeader({
               <span className="w-1 h-1 rounded-full bg-current animate-pulse flex-shrink-0" />
               {detail
                 ? <span className="truncate">{detail}</span>
-                : stateInfo.label}
+                : t(stateInfo.labelKey)}
             </span>
           )
         })()}
@@ -130,8 +132,8 @@ export function CompactHeader({
             onClick={handleMenuOpen}
             disabled={switching}
             className="w-6 h-6 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-white/8 transition-colors disabled:opacity-40"
-            title="Provider & model settings"
-            aria-label="Provider and model settings"
+            title={t('compact.header.providerSettings')}
+            aria-label={t('compact.header.providerSettingsLabel')}
           >
             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
               <circle cx="12" cy="5" r="2" />
@@ -146,8 +148,8 @@ export function CompactHeader({
           <button
             onClick={onFullscreen}
             className="w-6 h-6 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-white/8 transition-colors"
-            title="Fullscreen (Ctrl+Shift+F)"
-            aria-label="Expand to fullscreen"
+            title={t('compact.header.fullscreen')}
+            aria-label={t('compact.header.expandFullscreen')}
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
@@ -162,8 +164,8 @@ export function CompactHeader({
         <button
           onClick={onClose}
           className="w-6 h-6 rounded-md flex items-center justify-center text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
-          title="Close (Esc)"
-          aria-label="Close chat panel"
+          title={t('compact.header.close')}
+          aria-label={t('compact.header.closePanel')}
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
             <path d="M18 6L6 18M6 6l12 12" />
@@ -215,6 +217,7 @@ function CompactProviderMenu({
   onClose,
   position,
 }: CompactProviderMenuProps) {
+  const { t } = useTranslation()
   const [selectedProvider, setSelectedProvider] = useState(currentProvider)
   const [customModel, setCustomModel] = useState('')
   const [optionValues, setOptionValues] = useState<Record<string, string | number>>(activeOptions)
@@ -299,7 +302,7 @@ function CompactProviderMenu({
       >
         {/* Provider section */}
         <div className="px-3 pt-3 pb-2">
-          <span className="text-[0.65rem] text-text-muted uppercase tracking-wide">Provider</span>
+          <span className="text-[0.65rem] text-text-muted uppercase tracking-wide">{t('compact.menu.provider')}</span>
         </div>
         <div className="px-2 pb-2 space-y-0.5">
           {visibleProviders.map((p) => (
@@ -315,7 +318,7 @@ function CompactProviderMenu({
               <div className={`w-2 h-2 rounded-full ${p.dotColor}`} />
               <span className="font-medium">{p.label}</span>
               {p.id === currentProvider && (
-                <span className="ml-auto text-[0.6rem] text-text-muted">current</span>
+                <span className="ml-auto text-[0.6rem] text-text-muted">{t('compact.menu.current')}</span>
               )}
             </button>
           ))}
@@ -325,7 +328,7 @@ function CompactProviderMenu({
 
         {/* Model section */}
         <div className="px-3 pt-2 pb-1 flex items-center justify-between">
-          <span className="text-[0.65rem] text-text-muted uppercase tracking-wide">Model</span>
+          <span className="text-[0.65rem] text-text-muted uppercase tracking-wide">{t('compact.menu.model')}</span>
           {selectedConfig && (
             <span className="text-[0.6rem] text-text-muted">
               default: <span className="font-mono">{selectedConfig.defaultModel}</span>
@@ -345,7 +348,7 @@ function CompactProviderMenu({
             >
               {m}
               {m === selectedConfig?.defaultModel && (
-                <span className="ml-1.5 text-text-muted text-[0.6rem] font-sans">(default)</span>
+                <span className="ml-1.5 text-text-muted text-[0.6rem] font-sans">({t('compact.menu.default')})</span>
               )}
             </button>
           ))}
@@ -356,7 +359,7 @@ function CompactProviderMenu({
           <form onSubmit={handleCustomSubmit} className="flex gap-1">
             <input
               type="text"
-              placeholder="Custom model..."
+              placeholder={t('compact.menu.customModel')}
               value={customModel}
               onChange={(e) => setCustomModel(e.target.value)}
               className="flex-1 px-2 py-1 rounded-lg text-xs font-mono bg-obsidian/50 border border-slate-mid/40 text-text-primary placeholder:text-text-muted/50 focus:border-synapse/50 focus:outline-none transition-colors"
@@ -366,7 +369,7 @@ function CompactProviderMenu({
               disabled={!customModel.trim()}
               className="px-2 py-1 rounded-lg text-[0.65rem] font-medium bg-synapse/20 text-synapse border border-synapse/30 hover:bg-synapse/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Go
+              {t('compact.menu.go')}
             </button>
           </form>
         </div>
@@ -376,7 +379,7 @@ function CompactProviderMenu({
           <>
             <div className="border-t border-slate-mid/30" />
             <div className="px-3 pt-2 pb-1">
-              <span className="text-[0.65rem] text-text-muted uppercase tracking-wide">Options</span>
+              <span className="text-[0.65rem] text-text-muted uppercase tracking-wide">{t('compact.menu.options')}</span>
             </div>
             <div className="px-2 pb-2 space-y-2">
               {providerOptions
@@ -398,7 +401,7 @@ function CompactProviderMenu({
                   onClick={handleApplyOptions}
                   className="w-full py-1.5 rounded-lg text-[0.65rem] font-medium bg-synapse/20 text-synapse border border-synapse/30 hover:bg-synapse/30 transition-colors"
                 >
-                  Apply options
+                  {t('compact.menu.applyOptions')}
                 </button>
               </div>
             )}

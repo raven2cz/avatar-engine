@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useRef, useState, type DragEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ArrowUp, Paperclip, Square } from 'lucide-react'
 import type { UploadedFile } from '../api/types'
 
@@ -18,6 +19,7 @@ interface CompactInputProps {
 }
 
 export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFiles = [], onUpload, onRemoveFile }: CompactInputProps) {
+  const { t } = useTranslation()
   const [input, setInput] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -111,7 +113,7 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={!connected ? 'Waiting for connection...' : isStreaming ? 'Waiting for response...' : 'Type a message...'}
+          placeholder={!connected ? t('compact.input.waitingConnection') : isStreaming ? t('compact.input.waitingResponse') : t('compact.input.placeholder')}
           disabled={!connected || isStreaming}
           rows={1}
           className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted/70 text-sm resize-none outline-none min-h-[28px] max-h-[120px] py-0.5 leading-relaxed disabled:cursor-not-allowed"
@@ -123,7 +125,7 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
               onClick={() => fileInputRef.current?.click()}
               disabled={!connected}
               className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-text-secondary hover:bg-white/[0.05] transition-colors disabled:opacity-30"
-              title="Attach file"
+              title={t('compact.input.attachFile')}
             >
               <Paperclip className="w-4 h-4" />
             </button>
@@ -132,7 +134,7 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
             <button
               onClick={onStop}
               className="w-8 h-8 rounded-full flex items-center justify-center bg-red-500/80 text-white hover:bg-red-500 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-red-500/20"
-              title="Stop"
+              title={t('compact.input.stop')}
             >
               <Square className="w-3 h-3" fill="currentColor" />
             </button>
@@ -141,7 +143,7 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
               onClick={handleSend}
               disabled={!input.trim() || !connected}
               className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-r from-synapse to-pulse text-white shadow-lg shadow-synapse/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none hover:scale-105 active:scale-95 transition-all"
-              title="Send (Enter)"
+              title={t('compact.input.send')}
             >
               <ArrowUp className="w-4 h-4" />
             </button>

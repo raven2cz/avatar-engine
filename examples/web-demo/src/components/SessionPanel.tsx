@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Plus, Loader2, X, Pencil } from 'lucide-react'
 import type { SessionInfo, ProviderCapabilities } from '../api/types'
 
@@ -54,6 +55,7 @@ export function SessionPanel({
   onNewSession,
   onTitleUpdated,
 }: SessionPanelProps) {
+  const { t } = useTranslation()
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -164,7 +166,7 @@ export function SessionPanel({
             <div className="flex items-start justify-between">
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold gradient-text truncate">
-                  {projectName || 'Sessions'}
+                  {projectName || t('fullscreen.statusBar.sessions')}
                 </h2>
                 {cwd && (
                   <p className="text-xs text-text-muted font-mono mt-0.5 truncate">
@@ -188,7 +190,7 @@ export function SessionPanel({
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-synapse/20 to-pulse/20 text-synapse border border-synapse/30 hover:from-synapse/30 hover:to-pulse/30 transition-all hover:shadow-lg hover:shadow-synapse/10"
             >
               <Plus className="w-4 h-4" />
-              New Session
+              {t('fullscreen.sessions.newSession')}
             </button>
           </div>
 
@@ -196,25 +198,25 @@ export function SessionPanel({
           <div className="flex-1 overflow-y-auto min-h-0">
             {!capabilities?.can_list_sessions ? (
               <div className="flex items-center justify-center py-12 text-text-muted text-sm">
-                Session listing not supported for {provider}
+                {t('fullscreen.sessions.notSupported', { provider })}
               </div>
             ) : loading ? (
               <div className="flex items-center justify-center py-12 text-text-muted text-sm">
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Loading sessions...
+                {t('fullscreen.sessions.loading')}
               </div>
             ) : sessions.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-text-muted">
-                <p className="text-sm">No previous sessions</p>
-                <p className="text-xs mt-1">Start a conversation to create one</p>
+                <p className="text-sm">{t('fullscreen.sessions.noSessions')}</p>
+                <p className="text-xs mt-1">{t('fullscreen.sessions.startConversation')}</p>
               </div>
             ) : (
               <div className="px-4 py-3">
                 {/* Table header */}
                 <div className="grid grid-cols-[1fr_120px_100px] gap-3 px-4 py-2 text-[10px] text-text-muted uppercase tracking-widest">
-                  <span>Title</span>
-                  <span>Session ID</span>
-                  <span className="text-right">Updated</span>
+                  <span>{t('fullscreen.sessions.title')}</span>
+                  <span>{t('fullscreen.sessions.sessionId')}</span>
+                  <span className="text-right">{t('fullscreen.sessions.updated')}</span>
                 </div>
 
                 {/* Rows */}
@@ -266,7 +268,7 @@ export function SessionPanel({
                               <button
                                 onClick={(e) => { e.stopPropagation(); startEdit(s) }}
                                 className="flex-none p-0.5 rounded text-text-muted opacity-0 group-hover/row:opacity-60 hover:!opacity-100 hover:text-synapse transition-opacity"
-                                title="Rename session"
+                                title={t('fullscreen.sessions.renameSession')}
                               >
                                 <Pencil className="w-3 h-3" />
                               </button>
@@ -277,7 +279,7 @@ export function SessionPanel({
                         {/* Session ID */}
                         <div className="min-w-0">
                           {isCurrent ? (
-                            <span className="text-xs text-synapse font-medium">current</span>
+                            <span className="text-xs text-synapse font-medium">{t('fullscreen.sessions.current')}</span>
                           ) : (
                             <span className="text-xs text-text-muted font-mono truncate block">
                               {s.session_id.slice(0, 10)}
@@ -303,13 +305,13 @@ export function SessionPanel({
           <div className="px-6 py-3 border-t border-slate-mid/30 flex-shrink-0">
             <div className="flex items-center justify-between">
               <span className="text-xs text-text-muted">
-                {sessions.length} session{sessions.length !== 1 ? 's' : ''} &middot; {provider}
+                {t('fullscreen.sessions.sessionCount', { count: sessions.length })} &middot; {provider}
               </span>
               <button
                 onClick={onClose}
                 className="px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-text-secondary hover:bg-slate-mid/30 transition-colors"
               >
-                Close
+                {t('fullscreen.sessions.close')}
               </button>
             </div>
           </div>

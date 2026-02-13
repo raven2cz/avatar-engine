@@ -1,0 +1,179 @@
+{
+  "app": {
+    "name": "Avatar Engine",
+    "tagline": "AI-powered conversational assistant with animated avatars, multi-provider support, and real-time streaming.",
+    "footer": "Avatar Engine Web Demo"
+  },
+  "landing": {
+    "features": {
+      "multiProvider": { "title": "Multi-Provider", "desc": "Gemini, Claude, OpenAI — switch on the fly" },
+      "animatedBust": { "title": "Animated Bust", "desc": "8 characters with sprite sheet mouth animation" },
+      "liveStreaming": { "title": "Live Streaming", "desc": "Real-time token streaming with thinking phases" },
+      "toolExecution": { "title": "Tool Execution", "desc": "Watch AI use tools in real-time with status tracking" },
+      "fileUpload": { "title": "File Upload", "desc": "Drag & drop images, PDFs, audio for multimodal input" },
+      "sessionHistory": { "title": "Session History", "desc": "Resume conversations, track costs across sessions" }
+    },
+    "shortcuts": {
+      "title": "Keyboard Shortcuts",
+      "toggleCompact": "Toggle compact chat",
+      "toggleFullscreen": "Toggle fullscreen",
+      "toggleBust": "Toggle bust visibility",
+      "close": "Close / minimize",
+      "send": "Send message",
+      "newLine": "New line in message"
+    },
+    "modes": {
+      "title": "Startup Mode",
+      "fab": "FAB",
+      "compact": "Compact",
+      "fullscreen": "Fullscreen",
+      "description": "Widget opens in this mode on first visit"
+    },
+    "docs": "Documentation & README →",
+    "openChat": "Open chat",
+    "language": "Language"
+  },
+  "compact": {
+    "header": {
+      "thinking": "Thinking...",
+      "responding": "Responding...",
+      "runningTool": "Running tool...",
+      "error": "Error",
+      "providerSettings": "Provider & model settings",
+      "providerSettingsLabel": "Provider and model settings",
+      "fullscreen": "Fullscreen (Ctrl+Shift+F)",
+      "expandFullscreen": "Expand to fullscreen",
+      "close": "Close (Esc)",
+      "closePanel": "Close chat panel"
+    },
+    "menu": {
+      "provider": "Provider",
+      "model": "Model",
+      "default": "default",
+      "current": "current",
+      "customModel": "Custom model...",
+      "go": "Go",
+      "options": "Options",
+      "applyOptions": "Apply options"
+    },
+    "input": {
+      "waitingConnection": "Waiting for connection...",
+      "waitingResponse": "Waiting for response...",
+      "placeholder": "Type a message...",
+      "attachFile": "Attach file",
+      "stop": "Stop",
+      "send": "Send (Enter)"
+    },
+    "messages": {
+      "ready": "Ready to help. Type a message below.",
+      "thinking": "Thinking",
+      "toolsUsed_one": "{{count}} tool used",
+      "toolsUsed_other": "{{count}} tools used"
+    }
+  },
+  "fullscreen": {
+    "chat": {
+      "title": "Avatar Engine",
+      "subtitle": "AI-powered assistant ready to help. Type a message to start.",
+      "dropFiles": "Drop files here",
+      "dropHint": "Images, PDFs, audio",
+      "clear": "Clear",
+      "uploading": "Uploading...",
+      "connecting": "Connecting...",
+      "waitingResponse": "Waiting for response...",
+      "placeholder": "Type your message...",
+      "attachFile": "Attach file",
+      "stopResponse": "Stop response",
+      "enterToSend": "to send",
+      "shiftEnterNewLine": "for new line"
+    },
+    "statusBar": {
+      "ready": "Ready",
+      "thinking": "Thinking",
+      "responding": "Responding",
+      "executing": "Executing",
+      "awaitingApproval": "Awaiting approval",
+      "error": "Error",
+      "compactMode": "Compact mode (Esc)",
+      "switchCompact": "Switch to compact mode",
+      "sessionDetails": "Session details",
+      "sessions": "Sessions"
+    },
+    "detail": {
+      "title": "Session Details",
+      "provider": "Provider",
+      "model": "Model",
+      "engine": "Engine",
+      "state": "State",
+      "session": "Session",
+      "capabilities": "Capabilities",
+      "capThinking": "Thinking",
+      "capCost": "Cost",
+      "capStreaming": "Streaming",
+      "capMcp": "MCP",
+      "capParallelTools": "Parallel tools",
+      "capSessions": "Sessions",
+      "usage": "Usage",
+      "requests": "Requests",
+      "avgLatency": "Avg latency",
+      "inputTokens": "Input tokens",
+      "outputTokens": "Output tokens",
+      "cost": "Cost",
+      "budget": "Budget",
+      "loadingUsage": "Loading usage...",
+      "noRequests": "No requests yet",
+      "failed": "failed"
+    },
+    "sessions": {
+      "title": "Title",
+      "sessionId": "Session ID",
+      "updated": "Updated",
+      "newSession": "New Session",
+      "notSupported": "Session listing not supported for {{provider}}",
+      "loading": "Loading sessions...",
+      "noSessions": "No previous sessions",
+      "startConversation": "Start a conversation to create one",
+      "renameSession": "Rename session",
+      "current": "current",
+      "close": "Close",
+      "sessionCount_one": "{{count}} session",
+      "sessionCount_other": "{{count}} sessions"
+    }
+  },
+  "provider": {
+    "label": "Provider",
+    "model": "Model",
+    "default": "default",
+    "current": "current",
+    "customModel": "Custom model...",
+    "go": "Go",
+    "options": "Options",
+    "applyOptions": "Apply options",
+    "switching": "Switching..."
+  },
+  "connection": {
+    "reconnecting": "Reconnecting...",
+    "connecting": "Connecting to provider...",
+    "initializing": "Initializing {{provider}}. This may take a moment.",
+    "lost": "Connection lost. Attempting to reconnect..."
+  },
+  "avatar": {
+    "change": "Change avatar",
+    "choose": "Choose avatar character",
+    "hideBust": "Hide bust (Ctrl+Shift+H)",
+    "showBust": "Show bust (Ctrl+Shift+H)",
+    "hideLabel": "Hide avatar bust",
+    "showLabel": "Show avatar bust"
+  },
+  "fab": {
+    "openChat": "Open chat (Ctrl+Shift+A)",
+    "openChatPanel": "Open chat panel"
+  },
+  "chat": {
+    "panel": "Chat panel",
+    "resizeHeight": "Resize chat height",
+    "resizeWidth": "Resize chat width",
+    "stopped": "[Stopped]",
+    "copyCode": "Copy code"
+  }
+}

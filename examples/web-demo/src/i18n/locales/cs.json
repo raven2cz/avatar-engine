@@ -1,0 +1,181 @@
+{
+  "app": {
+    "name": "Avatar Engine",
+    "tagline": "AI asistent s animovanými avatary, podporou více poskytovatelů a streamováním v reálném čase.",
+    "footer": "Avatar Engine Web Demo"
+  },
+  "landing": {
+    "features": {
+      "multiProvider": { "title": "Více poskytovatelů", "desc": "Gemini, Claude, OpenAI — přepínej za běhu" },
+      "animatedBust": { "title": "Animovaný bust", "desc": "8 postav s animací rtů pomocí sprite sheetů" },
+      "liveStreaming": { "title": "Živé streamování", "desc": "Tokeny v reálném čase s fázemi přemýšlení" },
+      "toolExecution": { "title": "Spouštění nástrojů", "desc": "Sleduj AI používající nástroje v reálném čase" },
+      "fileUpload": { "title": "Nahrávání souborů", "desc": "Přetáhni obrázky, PDF, audio pro multimodální vstup" },
+      "sessionHistory": { "title": "Historie relací", "desc": "Obnov konverzace, sleduj náklady napříč relacemi" }
+    },
+    "shortcuts": {
+      "title": "Klávesové zkratky",
+      "toggleCompact": "Přepnout kompaktní chat",
+      "toggleFullscreen": "Přepnout celou obrazovku",
+      "toggleBust": "Přepnout viditelnost bustu",
+      "close": "Zavřít / minimalizovat",
+      "send": "Odeslat zprávu",
+      "newLine": "Nový řádek ve zprávě"
+    },
+    "modes": {
+      "title": "Výchozí režim",
+      "fab": "FAB",
+      "compact": "Kompaktní",
+      "fullscreen": "Celá obrazovka",
+      "description": "Widget se otevře v tomto režimu při první návštěvě"
+    },
+    "docs": "Dokumentace & README →",
+    "openChat": "Otevřít chat",
+    "language": "Jazyk"
+  },
+  "compact": {
+    "header": {
+      "thinking": "Přemýšlím...",
+      "responding": "Odpovídám...",
+      "runningTool": "Spouštím nástroj...",
+      "error": "Chyba",
+      "providerSettings": "Nastavení poskytovatele a modelu",
+      "providerSettingsLabel": "Nastavení poskytovatele a modelu",
+      "fullscreen": "Celá obrazovka (Ctrl+Shift+F)",
+      "expandFullscreen": "Rozbalit na celou obrazovku",
+      "close": "Zavřít (Esc)",
+      "closePanel": "Zavřít panel chatu"
+    },
+    "menu": {
+      "provider": "Poskytovatel",
+      "model": "Model",
+      "default": "výchozí",
+      "current": "aktuální",
+      "customModel": "Vlastní model...",
+      "go": "Go",
+      "options": "Volby",
+      "applyOptions": "Použít volby"
+    },
+    "input": {
+      "waitingConnection": "Čekám na připojení...",
+      "waitingResponse": "Čekám na odpověď...",
+      "placeholder": "Napiš zprávu...",
+      "attachFile": "Připojit soubor",
+      "stop": "Zastavit",
+      "send": "Odeslat (Enter)"
+    },
+    "messages": {
+      "ready": "Připraven pomoci. Napiš zprávu níže.",
+      "thinking": "Přemýšlím",
+      "toolsUsed_one": "{{count}} nástroj použit",
+      "toolsUsed_few": "{{count}} nástroje použity",
+      "toolsUsed_other": "{{count}} nástrojů použito"
+    }
+  },
+  "fullscreen": {
+    "chat": {
+      "title": "Avatar Engine",
+      "subtitle": "AI asistent připraven pomoci. Napiš zprávu pro začátek.",
+      "dropFiles": "Přetáhni soubory sem",
+      "dropHint": "Obrázky, PDF, audio",
+      "clear": "Vymazat",
+      "uploading": "Nahrávám...",
+      "connecting": "Připojování...",
+      "waitingResponse": "Čekám na odpověď...",
+      "placeholder": "Napiš svou zprávu...",
+      "attachFile": "Připojit soubor",
+      "stopResponse": "Zastavit odpověď",
+      "enterToSend": "pro odeslání",
+      "shiftEnterNewLine": "pro nový řádek"
+    },
+    "statusBar": {
+      "ready": "Připraven",
+      "thinking": "Přemýšlím",
+      "responding": "Odpovídám",
+      "executing": "Provádím",
+      "awaitingApproval": "Čekám na schválení",
+      "error": "Chyba",
+      "compactMode": "Kompaktní režim (Esc)",
+      "switchCompact": "Přepnout na kompaktní režim",
+      "sessionDetails": "Podrobnosti relace",
+      "sessions": "Relace"
+    },
+    "detail": {
+      "title": "Podrobnosti relace",
+      "provider": "Poskytovatel",
+      "model": "Model",
+      "engine": "Engine",
+      "state": "Stav",
+      "session": "Relace",
+      "capabilities": "Schopnosti",
+      "capThinking": "Přemýšlení",
+      "capCost": "Náklady",
+      "capStreaming": "Streaming",
+      "capMcp": "MCP",
+      "capParallelTools": "Paralelní nástroje",
+      "capSessions": "Relace",
+      "usage": "Využití",
+      "requests": "Požadavky",
+      "avgLatency": "Průměrná latence",
+      "inputTokens": "Vstupní tokeny",
+      "outputTokens": "Výstupní tokeny",
+      "cost": "Náklady",
+      "budget": "Rozpočet",
+      "loadingUsage": "Načítám využití...",
+      "noRequests": "Zatím žádné požadavky",
+      "failed": "selhalo"
+    },
+    "sessions": {
+      "title": "Název",
+      "sessionId": "ID relace",
+      "updated": "Aktualizováno",
+      "newSession": "Nová relace",
+      "notSupported": "Seznam relací není podporován pro {{provider}}",
+      "loading": "Načítám relace...",
+      "noSessions": "Žádné předchozí relace",
+      "startConversation": "Začni konverzaci pro vytvoření relace",
+      "renameSession": "Přejmenovat relaci",
+      "current": "aktuální",
+      "close": "Zavřít",
+      "sessionCount_one": "{{count}} relace",
+      "sessionCount_few": "{{count}} relace",
+      "sessionCount_other": "{{count}} relací"
+    }
+  },
+  "provider": {
+    "label": "Poskytovatel",
+    "model": "Model",
+    "default": "výchozí",
+    "current": "aktuální",
+    "customModel": "Vlastní model...",
+    "go": "Go",
+    "options": "Volby",
+    "applyOptions": "Použít volby",
+    "switching": "Přepínám..."
+  },
+  "connection": {
+    "reconnecting": "Znovu se připojuji...",
+    "connecting": "Připojování k poskytovateli...",
+    "initializing": "Inicializuji {{provider}}. Může to chvíli trvat.",
+    "lost": "Spojení ztraceno. Pokouším se znovu připojit..."
+  },
+  "avatar": {
+    "change": "Změnit avatar",
+    "choose": "Vybrat postavu avatara",
+    "hideBust": "Skrýt bust (Ctrl+Shift+H)",
+    "showBust": "Zobrazit bust (Ctrl+Shift+H)",
+    "hideLabel": "Skrýt bust avatara",
+    "showLabel": "Zobrazit bust avatara"
+  },
+  "fab": {
+    "openChat": "Otevřít chat (Ctrl+Shift+A)",
+    "openChatPanel": "Otevřít panel chatu"
+  },
+  "chat": {
+    "panel": "Panel chatu",
+    "resizeHeight": "Změnit výšku chatu",
+    "resizeWidth": "Změnit šířku chatu",
+    "stopped": "[Zastaveno]",
+    "copyCode": "Kopírovat kód"
+  }
+}

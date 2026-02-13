@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ChatAttachment, ChatMessage, ServerMessage, ToolInfo, UploadedFile } from '../api/types'
 import { useAvatarWebSocket } from './useAvatarWebSocket'
 import { useFileUpload } from './useFileUpload'
@@ -38,6 +39,7 @@ export interface UseAvatarChatReturn {
   thinking: { active: boolean; phase: string; subject: string; startedAt: number }
   cost: { totalCostUsd: number; totalInputTokens: number; totalOutputTokens: number }
   capabilities: ReturnType<typeof useAvatarWebSocket>['state']['capabilities']
+  toolName: string | undefined
   error: string | null
   diagnostic: string | null
 }
@@ -64,6 +66,7 @@ function summarizeParams(params: Record<string, unknown>): string {
 }
 
 export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
+  const { t } = useTranslation()
   const { state, sendMessage: wsSend, clearHistory: wsClear, switchProvider: wsSwitch, resumeSession: wsResume, newSession: wsNew, onServerMessage, stopResponse: wsStop } =
     useAvatarWebSocket(wsUrl)
   const { pending: pendingFiles, uploading, upload: uploadFile, remove: removeFile, clear: clearFiles } =
@@ -325,7 +328,7 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === currentAssistantIdRef.current
-            ? { ...m, isStreaming: false, content: m.content || '[Stopped]' }
+            ? { ...m, isStreaming: false, content: m.content || t('chat.stopped') }
             : m
         )
       )

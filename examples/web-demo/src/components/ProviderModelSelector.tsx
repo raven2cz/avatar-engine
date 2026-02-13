@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ChevronDown, Loader2 } from 'lucide-react'
 import { PROVIDERS, getProvider, getModelsForProvider, getOptionsForProvider, getModelDisplayName, filterChoicesForModel } from '../config/providers'
 import { OptionControl } from './OptionControl'
@@ -29,6 +30,7 @@ export function ProviderModelSelector({
   availableProviders,
   onSwitch,
 }: ProviderModelSelectorProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState(currentProvider)
   const [customModel, setCustomModel] = useState('')
@@ -157,7 +159,7 @@ export function ProviderModelSelector({
         {switching ? (
           <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg text-xs font-medium bg-gradient-to-r from-synapse/20 to-pulse/20 border border-synapse/40">
             <Loader2 className="w-3 h-3 animate-spin" />
-            Switching...
+            {t('provider.switching')}
           </div>
         ) : (
           <>
@@ -184,7 +186,7 @@ export function ProviderModelSelector({
         <div className="absolute top-full left-0 mt-2 z-50 w-72 glass-panel rounded-xl border border-slate-mid/40 shadow-2xl shadow-black/60 animate-slide-up">
           {/* Provider section */}
           <div className="px-3 pt-3 pb-2">
-            <span className="text-xs text-text-muted uppercase tracking-wide">Provider</span>
+            <span className="text-xs text-text-muted uppercase tracking-wide">{t('provider.label')}</span>
           </div>
           <div className="px-2 pb-2 space-y-0.5">
             {visibleProviders.map((p) => (
@@ -200,7 +202,7 @@ export function ProviderModelSelector({
                 <div className={`w-2 h-2 rounded-full ${p.dotColor}`} />
                 <span className="font-medium">{p.label}</span>
                 {p.id === currentProvider && (
-                  <span className="ml-auto text-xs text-text-muted">current</span>
+                  <span className="ml-auto text-xs text-text-muted">{t('provider.current')}</span>
                 )}
               </button>
             ))}
@@ -211,7 +213,7 @@ export function ProviderModelSelector({
 
           {/* Model section */}
           <div className="px-3 pt-2 pb-1 flex items-center justify-between">
-            <span className="text-xs text-text-muted uppercase tracking-wide">Model</span>
+            <span className="text-xs text-text-muted uppercase tracking-wide">{t('provider.model')}</span>
             {selectedConfig && (
               <span className="text-xs text-text-muted">
                 default: <span className="font-mono">{selectedConfig.defaultModel}</span>
@@ -231,7 +233,7 @@ export function ProviderModelSelector({
               >
                 {m}
                 {m === selectedConfig?.defaultModel && (
-                  <span className="ml-2 text-text-muted text-xs font-sans">(default)</span>
+                  <span className="ml-2 text-text-muted text-xs font-sans">({t('provider.default')})</span>
                 )}
               </button>
             ))}
@@ -243,7 +245,7 @@ export function ProviderModelSelector({
               <input
                 ref={inputRef}
                 type="text"
-                placeholder="Custom model..."
+                placeholder={t('provider.customModel')}
                 value={customModel}
                 onChange={(e) => setCustomModel(e.target.value)}
                 className="flex-1 px-2.5 py-1.5 rounded-lg text-sm font-mono bg-obsidian/50 border border-slate-mid/40 text-text-primary placeholder:text-text-muted/50 focus:border-synapse/50 focus:outline-none transition-colors"
@@ -253,7 +255,7 @@ export function ProviderModelSelector({
                 disabled={!customModel.trim()}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-synapse/20 text-synapse border border-synapse/30 hover:bg-synapse/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Go
+                {t('provider.go')}
               </button>
             </form>
           </div>
@@ -263,7 +265,7 @@ export function ProviderModelSelector({
             <>
               <div className="border-t border-slate-mid/30" />
               <div className="px-3 pt-2 pb-1">
-                <span className="text-xs text-text-muted uppercase tracking-wide">Options</span>
+                <span className="text-xs text-text-muted uppercase tracking-wide">{t('provider.options')}</span>
               </div>
               <div className="px-2 pb-2 space-y-2.5">
                 {providerOptions
@@ -285,7 +287,7 @@ export function ProviderModelSelector({
                     onClick={handleApplyOptions}
                     className="w-full py-1.5 rounded-lg text-xs font-medium bg-synapse/20 text-synapse border border-synapse/30 hover:bg-synapse/30 transition-colors"
                   >
-                    Apply options
+                    {t('provider.applyOptions')}
                   </button>
                 </div>
               )}

@@ -24,6 +24,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ChatMessage, UploadedFile } from '../api/types'
 import type { WidgetMode } from '../types/avatar'
 import { useWidgetMode } from '../hooks/useWidgetMode'
@@ -95,6 +96,8 @@ export function AvatarWidget({
   switchProvider,
   onCompactModeRef,
 }: AvatarWidgetProps) {
+  const { t } = useTranslation()
+
   // --- Refs used by resize ---
   const drawerRef = useRef<HTMLDivElement>(null)
 
@@ -305,7 +308,7 @@ export function AvatarWidget({
           willChange: mode === 'compact' ? 'auto' : 'transform',
         }}
         role="dialog"
-        aria-label="Chat panel"
+        aria-label={t('chat.panel')}
       >
         {/* Vertical resize handle (top) */}
         <div
@@ -314,7 +317,7 @@ export function AvatarWidget({
           onMouseDown={onResizeVStart}
           role="separator"
           aria-orientation="horizontal"
-          aria-label="Resize chat height"
+          aria-label={t('chat.resizeHeight')}
         >
           <div className={`h-2 rounded transition-all ${resizingV ? 'w-24 bg-synapse shadow-[0_0_12px_rgba(99,102,241,0.4)]' : 'w-[72px] bg-slate-light group-hover:w-24 group-hover:bg-synapse group-hover:shadow-[0_0_12px_rgba(99,102,241,0.4)]'}`}
             style={{
@@ -331,7 +334,7 @@ export function AvatarWidget({
             onMouseDown={onResizeHStart}
             role="separator"
             aria-orientation="vertical"
-            aria-label="Resize chat width"
+            aria-label={t('chat.resizeWidth')}
           >
             <div className={`w-2 rounded transition-all ${resizingH ? 'h-24 bg-synapse shadow-[0_0_12px_rgba(99,102,241,0.4)]' : 'h-[72px] bg-slate-light group-hover:h-24 group-hover:bg-synapse group-hover:shadow-[0_0_12px_rgba(99,102,241,0.4)]'}`}
               style={{
@@ -364,8 +367,8 @@ export function AvatarWidget({
                   opacity-0 hover:opacity-100 group-hover/bust:opacity-100
                   hover:bg-synapse/30 hover:border-synapse hover:text-white hover:scale-110
                   transition-all duration-200"
-                title="Change avatar"
-                aria-label="Choose avatar character"
+                title={t('avatar.change')}
+                aria-label={t('avatar.choose')}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -407,8 +410,8 @@ export function AvatarWidget({
                 text-text-muted opacity-0 group-hover/panel:opacity-100 hover:opacity-100
                 hover:bg-synapse/20 hover:border-synapse/40 hover:text-text-primary
                 transition-all duration-200"
-              title={bustVisible ? 'Hide bust (Ctrl+Shift+H)' : 'Show bust (Ctrl+Shift+H)'}
-              aria-label={bustVisible ? 'Hide avatar bust' : 'Show avatar bust'}
+              title={bustVisible ? t('avatar.hideBust') : t('avatar.showBust')}
+              aria-label={bustVisible ? t('avatar.hideLabel') : t('avatar.showLabel')}
             >
               <div className="flex flex-col gap-[3px] items-center">
                 <span className="block w-[10px] h-[1.5px] bg-current rounded-sm opacity-70" />

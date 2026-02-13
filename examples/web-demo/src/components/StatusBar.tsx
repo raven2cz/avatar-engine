@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Activity, History, Info, Wifi, WifiOff, X, Zap } from 'lucide-react'
 import type { CostInfo, EngineState, ProviderCapabilities } from '../api/types'
 import { AvatarLogo } from './AvatarLogo'
@@ -34,13 +35,13 @@ interface StatusBarProps {
   onCompactMode?: () => void
 }
 
-const STATE_LABELS: Record<EngineState, { label: string; color: string }> = {
-  idle: { label: 'Ready', color: 'text-emerald-400' },
-  thinking: { label: 'Thinking', color: 'text-cyan-400' },
-  responding: { label: 'Responding', color: 'text-synapse' },
-  tool_executing: { label: 'Executing', color: 'text-amber-400' },
-  waiting_approval: { label: 'Awaiting approval', color: 'text-violet-400' },
-  error: { label: 'Error', color: 'text-red-400' },
+const STATE_LABELS: Record<EngineState, { labelKey: string; color: string }> = {
+  idle: { labelKey: 'fullscreen.statusBar.ready', color: 'text-emerald-400' },
+  thinking: { labelKey: 'fullscreen.statusBar.thinking', color: 'text-cyan-400' },
+  responding: { labelKey: 'fullscreen.statusBar.responding', color: 'text-synapse' },
+  tool_executing: { labelKey: 'fullscreen.statusBar.executing', color: 'text-amber-400' },
+  waiting_approval: { labelKey: 'fullscreen.statusBar.awaitingApproval', color: 'text-violet-400' },
+  error: { labelKey: 'fullscreen.statusBar.error', color: 'text-red-400' },
 }
 
 
@@ -98,6 +99,7 @@ export function StatusBar({
   onNewSession,
   onCompactMode,
 }: StatusBarProps) {
+  const { t } = useTranslation()
   const stateConfig = STATE_LABELS[engineState] || STATE_LABELS.idle
   const providerConfig = getProvider(provider)
   const [showDetail, setShowDetail] = useState(false)
@@ -149,7 +151,7 @@ export function StatusBar({
               <AvatarLogo className="w-7 h-7" />
             </div>
             <div className="flex items-baseline gap-2">
-              <h1 className="text-lg font-semibold gradient-text">Avatar Engine</h1>
+              <h1 className="text-lg font-semibold gradient-text">{t('app.name')}</h1>
               {version && (
                 <span className="text-xs text-text-muted font-mono">v{version}</span>
               )}
@@ -203,7 +205,7 @@ export function StatusBar({
             <div className="flex items-center gap-1.5">
               <Activity className={`w-3.5 h-3.5 ${stateConfig.color}`} />
               <span className={`text-xs font-medium ${stateConfig.color}`}>
-                {stateConfig.label}
+                {t(stateConfig.labelKey)}
               </span>
             </div>
           </div>
@@ -222,8 +224,8 @@ export function StatusBar({
               <button
                 onClick={onCompactMode}
                 className="p-1.5 rounded-lg text-text-muted hover:text-synapse hover:bg-slate-mid/30 transition-colors"
-                title="Compact mode (Esc)"
-                aria-label="Switch to compact mode"
+                title={t('fullscreen.statusBar.compactMode')}
+                aria-label={t('fullscreen.statusBar.switchCompact')}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
@@ -235,7 +237,7 @@ export function StatusBar({
             <button
               onClick={toggleDetail}
               className="p-1.5 rounded-lg text-text-muted hover:text-text-secondary hover:bg-slate-mid/30 transition-colors"
-              title="Session details"
+              title={t('fullscreen.statusBar.sessionDetails')}
             >
               <Info className="w-4 h-4" />
             </button>
@@ -253,7 +255,7 @@ export function StatusBar({
                 ) : sessionId ? (
                   <span className="truncate text-text-secondary font-mono">{sessionId.slice(0, 8)}</span>
                 ) : (
-                  <span className="text-text-muted">Sessions</span>
+                  <span className="text-text-muted">{t('fullscreen.statusBar.sessions')}</span>
                 )}
               </button>
             )}
@@ -289,7 +291,7 @@ export function StatusBar({
             <div className="relative px-5 py-4 border-b border-slate-mid/30">
               <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-synapse/50 to-transparent" />
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold gradient-text">Session Details</h3>
+                <h3 className="text-sm font-semibold gradient-text">{t('fullscreen.detail.title')}</h3>
                 <button
                   onClick={() => setShowDetail(false)}
                   className="p-1 rounded-lg text-text-muted hover:text-text-secondary hover:bg-slate-mid/30 transition-colors"
@@ -303,7 +305,7 @@ export function StatusBar({
               {/* Provider + Model */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-text-muted text-xs">Provider</span>
+                  <span className="text-text-muted text-xs">{t('fullscreen.detail.provider')}</span>
                   {providerConfig ? (
                     <div className={`px-2 py-0.5 rounded-md text-xs font-medium bg-gradient-to-r ${providerConfig.gradient} border`}>
                       {providerConfig.label}
@@ -312,17 +314,17 @@ export function StatusBar({
                     <span className="text-text-secondary">{provider || '-'}</span>
                   )}
                 </div>
-                <DetailRow label="Model" value={model || providerConfig?.defaultModel || '-'} mono />
-                <DetailRow label="Engine" value={version ? `v${version}` : '-'} />
+                <DetailRow label={t('fullscreen.detail.model')} value={model || providerConfig?.defaultModel || '-'} mono />
+                <DetailRow label={t('fullscreen.detail.engine')} value={version ? `v${version}` : '-'} />
                 <div className="flex items-center justify-between">
-                  <span className="text-text-muted text-xs">State</span>
-                  <span className={`text-xs font-medium ${stateConfig.color}`}>{stateConfig.label}</span>
+                  <span className="text-text-muted text-xs">{t('fullscreen.detail.state')}</span>
+                  <span className={`text-xs font-medium ${stateConfig.color}`}>{t(stateConfig.labelKey)}</span>
                 </div>
               </div>
 
               {/* Session */}
               <div className="rounded-lg bg-slate-mid/20 border border-slate-mid/30 px-3 py-2.5 space-y-1">
-                <span className="text-xs text-text-muted">Session</span>
+                <span className="text-xs text-text-muted">{t('fullscreen.detail.session')}</span>
                 {displayTitle && (
                   <p className="text-xs text-text-secondary truncate">{displayTitle}</p>
                 )}
@@ -332,14 +334,14 @@ export function StatusBar({
               {/* Capabilities */}
               {capabilities && (
                 <div className="space-y-2">
-                  <SectionLabel label="Capabilities" />
+                  <SectionLabel label={t('fullscreen.detail.capabilities')} />
                   <div className="flex flex-wrap gap-1.5">
-                    {capabilities.thinking_supported && <CapBadge label="Thinking" />}
-                    {capabilities.cost_tracking && <CapBadge label="Cost" />}
-                    {capabilities.streaming && <CapBadge label="Streaming" />}
-                    {capabilities.mcp_supported && <CapBadge label="MCP" />}
-                    {capabilities.parallel_tools && <CapBadge label="Parallel tools" />}
-                    {capabilities.can_list_sessions && <CapBadge label="Sessions" />}
+                    {capabilities.thinking_supported && <CapBadge label={t('fullscreen.detail.capThinking')} />}
+                    {capabilities.cost_tracking && <CapBadge label={t('fullscreen.detail.capCost')} />}
+                    {capabilities.streaming && <CapBadge label={t('fullscreen.detail.capStreaming')} />}
+                    {capabilities.mcp_supported && <CapBadge label={t('fullscreen.detail.capMcp')} />}
+                    {capabilities.parallel_tools && <CapBadge label={t('fullscreen.detail.capParallelTools')} />}
+                    {capabilities.can_list_sessions && <CapBadge label={t('fullscreen.detail.capSessions')} />}
                   </div>
                 </div>
               )}
@@ -347,27 +349,27 @@ export function StatusBar({
               {/* Usage stats (fetched from REST API) */}
               {usage && usage.total_requests > 0 && (
                 <div className="space-y-2.5">
-                  <SectionLabel label="Usage" />
+                  <SectionLabel label={t('fullscreen.detail.usage')} />
                   <DetailRow
-                    label="Requests"
-                    value={`${usage.successful_requests}/${usage.total_requests}${usage.failed_requests ? ` (${usage.failed_requests} failed)` : ''}`}
+                    label={t('fullscreen.detail.requests')}
+                    value={`${usage.successful_requests}/${usage.total_requests}${usage.failed_requests ? ` (${usage.failed_requests} ${t('fullscreen.detail.failed')})` : ''}`}
                   />
                   <DetailRow
-                    label="Avg latency"
+                    label={t('fullscreen.detail.avgLatency')}
                     value={formatDuration(Math.round(usage.total_duration_ms / usage.total_requests))}
                   />
                   {(usage.total_input_tokens > 0 || usage.total_output_tokens > 0) && (
                     <>
-                      <DetailRow label="Input tokens" value={formatTokens(usage.total_input_tokens)} />
-                      <DetailRow label="Output tokens" value={formatTokens(usage.total_output_tokens)} />
+                      <DetailRow label={t('fullscreen.detail.inputTokens')} value={formatTokens(usage.total_input_tokens)} />
+                      <DetailRow label={t('fullscreen.detail.outputTokens')} value={formatTokens(usage.total_output_tokens)} />
                     </>
                   )}
                   {usage.total_cost_usd > 0 && (
-                    <DetailRow label="Cost" value={`$${usage.total_cost_usd.toFixed(4)}`} />
+                    <DetailRow label={t('fullscreen.detail.cost')} value={`$${usage.total_cost_usd.toFixed(4)}`} />
                   )}
                   {usage.budget_usd !== undefined && (
                     <DetailRow
-                      label="Budget"
+                      label={t('fullscreen.detail.budget')}
                       value={`$${(usage.budget_remaining_usd ?? 0).toFixed(2)} / $${usage.budget_usd.toFixed(2)}`}
                     />
                   )}
@@ -375,12 +377,12 @@ export function StatusBar({
               )}
               {!usage && showDetail && connected && (
                 <div className="pt-1">
-                  <span className="text-xs text-text-muted animate-pulse">Loading usage...</span>
+                  <span className="text-xs text-text-muted animate-pulse">{t('fullscreen.detail.loadingUsage')}</span>
                 </div>
               )}
               {usage && usage.total_requests === 0 && (
                 <div className="pt-1">
-                  <span className="text-xs text-text-muted">No requests yet</span>
+                  <span className="text-xs text-text-muted">{t('fullscreen.detail.noRequests')}</span>
                 </div>
               )}
             </div>

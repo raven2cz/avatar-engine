@@ -6,12 +6,16 @@
  * Click opens compact mode.
  */
 
+import { useTranslation } from 'react-i18next'
+
 interface AvatarFabProps {
   onClick: () => void
   avatarThumbUrl?: string
 }
 
 export function AvatarFab({ onClick, avatarThumbUrl }: AvatarFabProps) {
+  const { t } = useTranslation()
+
   return (
     <button
       onClick={onClick}
@@ -30,8 +34,8 @@ export function AvatarFab({ onClick, avatarThumbUrl }: AvatarFabProps) {
         cursor-pointer overflow-hidden
         group
       "
-      title="Open chat (Ctrl+Shift+A)"
-      aria-label="Open chat panel"
+      title={t('fab.openChat')}
+      aria-label={t('fab.openChatPanel')}
     >
       {avatarThumbUrl ? (
         <img

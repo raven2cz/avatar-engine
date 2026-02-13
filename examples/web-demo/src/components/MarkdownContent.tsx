@@ -7,6 +7,7 @@
  */
 
 import { useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -51,6 +52,7 @@ Object.assign(synapseTheme, {
 /* ---------- Copy button ---------- */
 
 function CopyButton({ text }: { text: string }) {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(() => {
@@ -65,7 +67,7 @@ function CopyButton({ text }: { text: string }) {
       className="p-1 rounded-md
         text-[#8b949e] hover:text-[#c9d1d9] transition-colors duration-150
         opacity-0 group-hover:opacity-100"
-      title="Copy code"
+      title={t('chat.copyCode')}
     >
       {copied ? (
         <Check className="w-3.5 h-3.5 text-emerald-400" />

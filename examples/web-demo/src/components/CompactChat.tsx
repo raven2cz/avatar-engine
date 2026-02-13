@@ -8,6 +8,7 @@
  * so the user always knows what's happening and when they can type.
  */
 
+import { useTranslation } from 'react-i18next'
 import type { ChatMessage, EngineState, UploadedFile } from '../api/types'
 import { CompactHeader } from './CompactHeader'
 import { CompactMessages } from './CompactMessages'
@@ -72,6 +73,8 @@ export function CompactChat({
   onSwitchProvider,
   showExpandHint,
 }: CompactChatProps) {
+  const { t } = useTranslation()
+
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-t-2xl bg-[rgba(18,18,35,0.96)] backdrop-blur-[24px] border-t border-l border-white/[0.08] shadow-[0_-8px_40px_rgba(0,0,0,0.6)]">
       {/* Accent gradient line at top edge for visual separation from background */}
@@ -99,7 +102,7 @@ export function CompactChat({
           <div className="w-8 h-8 border-2 border-synapse/40 border-t-synapse rounded-full animate-spin" />
           <div className="text-center">
             <p className="text-sm font-medium text-text-primary mb-1">
-              {wasConnected ? 'Reconnecting...' : 'Connecting to provider...'}
+              {wasConnected ? t('connection.reconnecting') : t('connection.connecting')}
             </p>
             {initDetail && (
               <p className="text-[0.7rem] text-synapse animate-pulse max-w-[250px]">
@@ -108,12 +111,12 @@ export function CompactChat({
             )}
             {!initDetail && !wasConnected && (
               <p className="text-[0.7rem] text-text-muted max-w-[250px]">
-                Initializing {provider || 'engine'}. This may take a moment.
+                {t('connection.initializing', { provider: provider || 'engine' })}
               </p>
             )}
             {wasConnected && (
               <p className="text-[0.7rem] text-text-muted">
-                Connection lost. Attempting to reconnect...
+                {t('connection.lost')}
               </p>
             )}
             {diagnostic && (

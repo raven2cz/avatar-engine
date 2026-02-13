@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { User } from 'lucide-react'
 import type { ChatMessage } from '../api/types'
 import { MarkdownContent } from './MarkdownContent'
@@ -16,6 +17,7 @@ interface CompactMessagesProps {
 }
 
 function CompactBubble({ message }: { message: ChatMessage }) {
+  const { t } = useTranslation()
   const isUser = message.role === 'user'
   const activeTool = message.tools.find((t) => t.status === 'started')
 
@@ -47,7 +49,7 @@ function CompactBubble({ message }: { message: ChatMessage }) {
               <span className="text-[0.65rem] text-synapse font-medium">
                 {message.thinking.phase && message.thinking.phase !== 'general'
                   ? message.thinking.phase.charAt(0).toUpperCase() + message.thinking.phase.slice(1)
-                  : 'Thinking'}
+                  : t('compact.messages.thinking')}
               </span>
               {message.thinking.subject && (
                 <span className="text-[0.6rem] text-text-muted truncate max-w-[180px]">
@@ -83,7 +85,7 @@ function CompactBubble({ message }: { message: ChatMessage }) {
                     <path strokeLinecap="round" d="M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l5.652-4.655M17.5 6.5l-1 1" />
                     <path d="M15.5 8.5l4.586-4.586a2 2 0 0 1 2.828 2.828L18.33 11.41" />
                   </svg>
-                  <span>{message.tools.length} tool{message.tools.length > 1 ? 's' : ''} used</span>
+                  <span>{t('compact.messages.toolsUsed', { count: message.tools.length })}</span>
                 </div>
               )}
             </div>
@@ -119,6 +121,7 @@ function CompactBubble({ message }: { message: ChatMessage }) {
 }
 
 export function CompactMessages({ messages, version }: CompactMessagesProps) {
+  const { t } = useTranslation()
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -133,11 +136,11 @@ export function CompactMessages({ messages, version }: CompactMessagesProps) {
             <BreathingOrb size="sm" phase="general" />
             <div className="text-center">
               <h3 className="text-sm font-semibold gradient-text mb-0.5">
-                Avatar Engine
+                {t('app.name')}
                 {version && <span className="text-[0.6rem] text-text-muted/60 font-mono font-normal ml-1.5">v{version}</span>}
               </h3>
               <p className="text-[0.65rem] text-text-muted max-w-[200px]">
-                Ready to help. Type a message below.
+                {t('compact.messages.ready')}
               </p>
             </div>
           </div>
