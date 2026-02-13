@@ -515,6 +515,11 @@ class BaseBridge(ABC):
                 events.append(event)
                 if self._on_event:
                     self._on_event(event)
+                # Emit text deltas in real-time (streaming via send())
+                if self._on_output:
+                    delta = self._extract_text_delta(event)
+                    if delta:
+                        self._on_output(delta)
                 if self._is_turn_complete(event):
                     break
         return events
