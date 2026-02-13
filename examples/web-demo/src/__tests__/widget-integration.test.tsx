@@ -44,12 +44,15 @@ const defaultProps = {
   pendingFiles: [],
 }
 
+const compactModeRef = { current: null as (() => void) | null }
+
 function renderWidget(overrides = {}) {
   return render(
-    <AvatarWidget {...defaultProps} {...overrides}>
+    <AvatarWidget {...defaultProps} {...overrides} onCompactModeRef={compactModeRef}>
       <div data-testid="fullscreen-content">
         <div data-testid="status-bar">StatusBar</div>
         <div data-testid="chat-panel">ChatPanel with messages</div>
+        <button aria-label="Switch to compact mode" onClick={() => compactModeRef.current?.()}>Compact</button>
       </div>
     </AvatarWidget>
   )
@@ -196,8 +199,8 @@ describe('AvatarWidget integration', () => {
       localStorage.setItem(LS_WIDGET_MODE, 'fullscreen')
       renderWidget()
       fireEvent.click(screen.getByRole('button', { name: /switch to compact mode/i }))
-      // Morph transition delays mode change (rAF + complete() in rAF)
-      await act(async () => { vi.advanceTimersByTime(600) })
+      // Crossfade transition — mode changes immediately, transitioning flag clears after 300ms
+      await act(async () => { vi.advanceTimersByTime(400) })
       expect(localStorage.getItem(LS_WIDGET_MODE)).toBe('compact')
       vi.useRealTimers()
     })

@@ -13,8 +13,12 @@
  *   </AvatarWidget>
  */
 
+import type { WidgetMode } from '../types/avatar'
+
 interface LandingPageProps {
   showFabHint: boolean
+  defaultMode: WidgetMode
+  onDefaultModeChange: (mode: WidgetMode) => void
 }
 
 const FEATURES = [
@@ -84,7 +88,13 @@ const SHORTCUTS = [
   { keys: 'Shift+Enter', action: 'New line in message' },
 ]
 
-export function LandingPage({ showFabHint }: LandingPageProps) {
+const MODE_OPTIONS: { value: WidgetMode; label: string }[] = [
+  { value: 'fab', label: 'FAB' },
+  { value: 'compact', label: 'Compact' },
+  { value: 'fullscreen', label: 'Fullscreen' },
+]
+
+export function LandingPage({ showFabHint, defaultMode, onDefaultModeChange }: LandingPageProps) {
   return (
     <div className="min-h-screen bg-obsidian flex flex-col items-center justify-center px-6 relative overflow-auto"
       style={{
@@ -97,7 +107,7 @@ export function LandingPage({ showFabHint }: LandingPageProps) {
     >
       {/* Hero */}
       <div className="text-center mb-12 animate-fade-in">
-        <h1 className="text-4xl sm:text-5xl font-bold mb-3 gradient-text tracking-tight">
+        <h1 className="text-4xl sm:text-5xl font-bold mb-3 pb-1 gradient-text tracking-tight">
           Avatar Engine
         </h1>
         <p className="text-text-secondary text-lg max-w-lg mx-auto leading-relaxed">
@@ -123,7 +133,7 @@ export function LandingPage({ showFabHint }: LandingPageProps) {
       </div>
 
       {/* Keyboard shortcuts */}
-      <div className="max-w-md w-full mb-16">
+      <div className="max-w-md w-full mb-8">
         <h2 className="text-text-secondary text-xs font-semibold uppercase tracking-widest mb-3 text-center">
           Keyboard Shortcuts
         </h2>
@@ -142,6 +152,43 @@ export function LandingPage({ showFabHint }: LandingPageProps) {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Startup mode selector */}
+      <div className="max-w-md w-full mb-8">
+        <h2 className="text-text-secondary text-xs font-semibold uppercase tracking-widest mb-3 text-center">
+          Startup Mode
+        </h2>
+        <div className="flex justify-center gap-2">
+          {MODE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onDefaultModeChange(opt.value)}
+              className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                defaultMode === opt.value
+                  ? 'bg-synapse/20 border border-synapse/40 text-synapse'
+                  : 'bg-white/[0.02] border border-white/[0.05] text-text-muted hover:bg-white/[0.04] hover:border-white/[0.08] hover:text-text-secondary'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-text-muted/50 text-[0.6rem] text-center mt-2">
+          Widget opens in this mode on first visit
+        </p>
+      </div>
+
+      {/* Documentation link */}
+      <div className="mb-16">
+        <a
+          href="https://github.com/anthropics/avatar-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-text-muted hover:text-synapse text-xs transition-colors duration-200"
+        >
+          Documentation & README →
+        </a>
       </div>
 
       {/* Blinking arrow pointing to FAB (bottom-left) — high contrast for dark theme */}

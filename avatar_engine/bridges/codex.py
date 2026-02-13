@@ -331,13 +331,19 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 mcp_servers_acp.append(entry)
         return mcp_servers_acp
 
+    # Known-harmless Codex stderr patterns (internal debug noise, not user-facing)
+    _CODEX_STDERR_IGNORE = (
+        "state db missing rollout path",  # Stale session DB entry (fixed in Codex ≥0.100)
+        "rollout::list",                  # Related rollout listing noise
+    )
+
     async def _monitor_acp_stderr(self) -> None:
         """Background task reading ACP subprocess stderr.
 
         Surfaces CLI diagnostics (auth prompts, rate-limit, errors) via
         the DiagnosticEvent pipeline so the user isn't blind.
         """
-        from .base import _classify_stderr_level
+        from .base import _classify_stderr_level, _strip_ansi
 
         try:
             proc = self._acp_proc
@@ -345,20 +351,25 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 line = await proc.stderr.readline()
                 if not line:
                     break
-                text = line.decode(errors="replace").strip()
-                if text:
-                    with self._stderr_lock:
-                        self._stderr_buffer.append(text)
-                    logger.debug(f"ACP stderr: {text}")
-                    if self._on_stderr:
-                        self._on_stderr(text)
-                    if self._on_event:
-                        self._on_event({
-                            "type": "diagnostic",
-                            "message": text,
-                            "level": _classify_stderr_level(text),
-                            "source": "acp-stderr",
-                        })
+                text = _strip_ansi(line.decode(errors="replace").strip())
+                if not text:
+                    continue
+                # Skip known-harmless internal Codex noise
+                if any(pat in text for pat in self._CODEX_STDERR_IGNORE):
+                    logger.debug(f"ACP stderr (ignored): {text}")
+                    continue
+                with self._stderr_lock:
+                    self._stderr_buffer.append(text)
+                logger.debug(f"ACP stderr: {text}")
+                if self._on_stderr:
+                    self._on_stderr(text)
+                if self._on_event:
+                    self._on_event({
+                        "type": "diagnostic",
+                        "message": text,
+                        "level": _classify_stderr_level(text),
+                        "source": "acp-stderr",
+                    })
         except asyncio.CancelledError:
             pass
         except Exception as exc:

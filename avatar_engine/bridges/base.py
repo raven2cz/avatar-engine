@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -69,6 +70,14 @@ def _classify_stderr_level(text: str) -> str:
     if any(w in lower for w in ["debug", "trace"]):
         return "debug"
     return "info"
+
+
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def _strip_ansi(text: str) -> str:
+    """Strip ANSI escape codes from text."""
+    return _ANSI_RE.sub('', text)
 
 
 class BaseBridge(ABC):
@@ -324,7 +333,7 @@ class BaseBridge(ABC):
                 line = await self._proc.stderr.readline()
                 if not line:
                     break
-                text = line.decode(errors="replace").strip()
+                text = _strip_ansi(line.decode(errors="replace").strip())
                 if text:
                     with self._stderr_lock:  # RC-8: safe concurrent access
                         self._stderr_buffer.append(text)

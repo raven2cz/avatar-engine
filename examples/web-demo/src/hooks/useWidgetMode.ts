@@ -15,6 +15,7 @@ import {
   LS_COMPACT_HEIGHT,
   LS_COMPACT_WIDTH,
   LS_BUST_VISIBLE,
+  LS_DEFAULT_MODE,
 } from '../types/avatar'
 
 const DEFAULT_COMPACT_WIDTH = 1030
@@ -25,6 +26,9 @@ const DEFAULT_COMPACT_HEIGHT = 420
 function loadMode(): WidgetMode {
   const v = localStorage.getItem(LS_WIDGET_MODE)
   if (v === 'compact' || v === 'fullscreen') return v
+  // Check user's preferred default (set from landing page)
+  const def = localStorage.getItem(LS_DEFAULT_MODE)
+  if (def === 'compact' || def === 'fullscreen') return def
   return 'fab'
 }
 
@@ -60,6 +64,8 @@ export interface UseWidgetModeReturn {
   setCompactHeight: (h: number) => void
   bustVisible: boolean
   toggleBust: () => void
+  defaultMode: WidgetMode
+  setDefaultMode: (mode: WidgetMode) => void
 }
 
 export function useWidgetMode(
@@ -82,6 +88,17 @@ export function useWidgetMode(
     const v = localStorage.getItem(LS_BUST_VISIBLE)
     return v !== '0'
   })
+
+  const [defaultMode, setDefaultModeState] = useState<WidgetMode>(() => {
+    const v = localStorage.getItem(LS_DEFAULT_MODE)
+    if (v === 'compact' || v === 'fullscreen') return v
+    return 'fab'
+  })
+
+  const setDefaultMode = useCallback((m: WidgetMode) => {
+    setDefaultModeState(m)
+    localStorage.setItem(LS_DEFAULT_MODE, m)
+  }, [])
 
   /** Commit a mode change (no animation). */
   const commitMode = useCallback((m: WidgetMode) => {
@@ -196,5 +213,7 @@ export function useWidgetMode(
     setCompactHeight,
     bustVisible,
     toggleBust,
+    defaultMode,
+    setDefaultMode,
   }
 }

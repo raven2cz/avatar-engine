@@ -43,7 +43,7 @@
 
 /* Gradient text */
 .gradient-text {
-  background: linear-gradient(135deg, #818cf8, #a78bfa);
+  background: linear-gradient(135deg, #6366f1, #a78bfa, #c084fc);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -147,12 +147,16 @@
   line-height: 1.5;
 }
 .compact-markdown .markdown-body pre {
-  padding: 0.6rem;
-  font-size: 0.7rem;
+  padding: 0.5rem;
+  font-size: 0.65rem;
   border-radius: 0.5rem;
 }
 .compact-markdown .markdown-body code {
-  font-size: 0.75em;
+  font-size: 0.7em;
+}
+.compact-markdown .markdown-body .group {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
 }
 .compact-markdown .markdown-body p {
   margin-bottom: 0.4em;

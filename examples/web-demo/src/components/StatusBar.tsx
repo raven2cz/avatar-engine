@@ -31,6 +31,7 @@ interface StatusBarProps {
   onSwitch?: (provider: string, model?: string, options?: Record<string, string | number>) => void
   onResume?: (sessionId: string) => void
   onNewSession?: () => void
+  onCompactMode?: () => void
 }
 
 const STATE_LABELS: Record<EngineState, { label: string; color: string }> = {
@@ -95,6 +96,7 @@ export function StatusBar({
   onSwitch,
   onResume,
   onNewSession,
+  onCompactMode,
 }: StatusBarProps) {
   const stateConfig = STATE_LABELS[engineState] || STATE_LABELS.idle
   const providerConfig = getProvider(provider)
@@ -213,6 +215,20 @@ export function StatusBar({
                 <Zap className="w-3 h-3 inline mr-1" />
                 ${cost.totalCostUsd.toFixed(4)}
               </div>
+            )}
+
+            {/* Compact mode button */}
+            {onCompactMode && (
+              <button
+                onClick={onCompactMode}
+                className="p-1.5 rounded-lg text-text-muted hover:text-synapse hover:bg-slate-mid/30 transition-colors"
+                title="Compact mode (Esc)"
+                aria-label="Switch to compact mode"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+                </svg>
+              </button>
             )}
 
             {/* Info / detail button */}

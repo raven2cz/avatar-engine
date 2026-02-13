@@ -446,7 +446,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         Surfaces CLI diagnostics (auth prompts, rate-limit, errors) via
         the DiagnosticEvent pipeline so the user isn't blind.
         """
-        from .base import _classify_stderr_level
+        from .base import _classify_stderr_level, _strip_ansi
 
         try:
             proc = self._acp_proc
@@ -454,7 +454,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 line = await proc.stderr.readline()
                 if not line:
                     break
-                text = line.decode(errors="replace").strip()
+                text = _strip_ansi(line.decode(errors="replace").strip())
                 if text:
                     with self._stderr_lock:
                         self._stderr_buffer.append(text)

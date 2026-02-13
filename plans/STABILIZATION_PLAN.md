@@ -644,7 +644,8 @@ default                       →  level: "info"
 # Phase 8: Slow ACP/CLI Startup Investigation
 
 > Added: 2026-02-12
-> Status: 🔴 ROOT CAUSE IDENTIFIED — upstream issue in gemini-cli v0.28.2
+> Updated: 2026-02-13
+> Status: ✅ RESOLVED — nanobanana extension uninstall (disable nestačil)
 > Priority: **HIGH**
 
 ## Problém
@@ -680,40 +681,28 @@ Pomocí `NODE_DEBUG=http` jsme zjistili timeline:
 **53.5 sekund absolutního ticha** — žádné síťové volání, žádný stderr output.
 Vše se děje lokálně uvnitř gemini-cli.
 
-## Vyloučené příčiny
+## Root Cause: nanobanana extension
 
-| Hypotéza | Výsledek |
-|----------|----------|
-| Nanobanana extension | ❌ Vyloučeno — disable nanobanana → stále 53s |
-| MCP servery v naší konfiguraci | ❌ Vyloučeno — testy posílají prázdný list |
-| Síťová latence (OAuth, API) | ❌ Vyloučeno — síť začíná až po 53s |
-| ACP protokol overhead | ❌ Vyloučeno — oneshot má stejný čas |
-| Node.js cold start | ❌ Vyloučeno — `node -e` = 15ms, `gemini --help` = 800ms |
+**`extensions disable` nestačil, `extensions uninstall` vyřešil problém.**
 
-## Pravděpodobná příčina
+Gemini-cli v0.28.2 při `disable` stále skenoval extension directory a
+inicializoval extension systém. Teprve po `uninstall` (smazání souborů
+z ~/.gemini/extensions/nanobanana/) se startup vrátil na normální časy.
 
-Gemini-cli v0.28.2 interně dělá něco trvajícího ~53s PŘED prvním API voláním.
-Možné kandidáty (nelze ověřit bez strace/node profiling):
+## Výsledky po uninstall (2026-02-13)
 
-1. **Synchronní inicializace** extension systému (i bez extensions)
-2. **Kompilace/transpilace** něčeho za běhu
-3. **Filesystem scan** — skenování .gemini/, project directory, GEMINI.md souborů
-4. **System prompt assembly** — sestavování kontextu z workspace files
-5. **OAuth token validation** — lokální kontrola tokenu před síťovým voláním
+| Operace | Před (s nanobanana) | Po (bez) | Zrychlení |
+|---------|---------------------|----------|-----------|
+| `gemini -p "Say ok"` | 53s | **13s** | 4x |
+| ACP `initialize()` | 52s | **~10s** | 5x |
+| ACP test basic | 39s | **11s** | 3.5x |
+| CLI chat test | 42s | **12s** | 3.5x |
 
-## Srovnání s očekáváním
+## Poučení
 
-- `gemini --help` = 800ms (module load kompletní)
-- `gemini -p ...` = 53 000ms (53x déle!)
-- Rozdíl **52 200ms** = něco co se děje POUZE při reálném chat mode
-
-## Další kroky (TODO)
-
-1. **Profilovat gemini-cli** — `node --cpu-prof $(which gemini) -p "ok" --yolo`
-2. **Porovnat verze** — otestovat starší gemini-cli (0.25.x, 0.26.x) jestli problém existoval vždy
-3. **Otestovat bez GEMINI.md** — dočasně přejmenovat ~/.gemini/GEMINI.md
-4. **Otestovat bez workspace** — spustit z /tmp místo project directory
-5. **Reportovat upstream** — pokud se potvrdí jako regrese v 0.28.x
+- `gemini extensions disable` nebrání extension inicializaci — bug v gemini-cli
+- Extension s MCP serverem (nanobanana) přidává ~40s k KAŽDÉMU startu
+- Pro produkci nikdy neinstalovat zbytečné extensions
 
 ## Diagnostický skript
 

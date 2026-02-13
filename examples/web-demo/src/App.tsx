@@ -13,6 +13,7 @@
  *   <LandingPage> (inside AvatarWidget) with your own background.
  */
 
+import { useCallback, useRef } from 'react'
 import { StatusBar } from './components/StatusBar'
 import { ChatPanel } from './components/ChatPanel'
 import { CostTracker } from './components/CostTracker'
@@ -27,6 +28,9 @@ const WS_URL =
     : `ws://${window.location.host}/api/avatar/ws`
 
 export default function App() {
+  const compactModeRef = useRef<(() => void) | null>(null)
+  const handleCompactMode = useCallback(() => compactModeRef.current?.(), [])
+
   const availableProviders = useAvailableProviders()
   const {
     messages,
@@ -87,6 +91,7 @@ export default function App() {
       activeOptions={activeOptions}
       availableProviders={availableProviders}
       switchProvider={switchProvider}
+      onCompactModeRef={compactModeRef}
     >
       {/* ============================================================ */}
       {/* FULLSCREEN CONTENT — rendered as overlay by AvatarWidget     */}
@@ -111,6 +116,7 @@ export default function App() {
           onSwitch={switchProvider}
           onResume={resumeSession}
           onNewSession={newSession}
+          onCompactMode={handleCompactMode}
         />
 
         {/* Status banner — initialization or error */}

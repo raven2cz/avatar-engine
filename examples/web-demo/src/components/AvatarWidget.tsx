@@ -63,6 +63,8 @@ interface AvatarWidgetProps {
   activeOptions?: Record<string, string | number>
   availableProviders?: Set<string> | null
   switchProvider?: (provider: string, model?: string, options?: Record<string, string | number>) => void
+  /** Ref to receive the openCompact callback — allows parent to wire it into StatusBar */
+  onCompactModeRef?: React.MutableRefObject<(() => void) | null>
 }
 
 export function AvatarWidget({
@@ -89,72 +91,22 @@ export function AvatarWidget({
   activeOptions,
   availableProviders,
   switchProvider,
+  onCompactModeRef,
 }: AvatarWidgetProps) {
-  // --- Refs used by morph transition and resize ---
+  // --- Refs used by resize ---
   const drawerRef = useRef<HTMLDivElement>(null)
 
-  // --- Morph transition state (clip-path animation between modes) ---
-  const [morphActive, setMorphActive] = useState(false)
-  const [morphClip, setMorphClip] = useState('')
-  const [morphTransition, setMorphTransition] = useState(false)
-  const morphTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  // --- Crossfade transition state ---
+  const [transitioning, setTransitioning] = useState(false)
+  const transitionTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
   const onTransition = useCallback((from: WidgetMode, to: WidgetMode, complete: () => void) => {
-    // Clear any in-progress morph
-    if (morphTimerRef.current) clearTimeout(morphTimerRef.current)
-
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-
-    if (from === 'compact' && to === 'fullscreen') {
-      // Capture compact drawer rect
-      const rect = drawerRef.current?.getBoundingClientRect()
-      if (!rect) { complete(); return }
-      const compactClip = `inset(${rect.top}px ${vw - rect.right}px ${vh - rect.bottom}px ${rect.left}px round 16px 16px 0 0)`
-
-      // Phase 1: show morph at compact position (no transition)
-      setMorphActive(true)
-      setMorphTransition(false)
-      setMorphClip(compactClip)
-
-      // Phase 2: animate to fullscreen (double-rAF ensures paint)
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        setMorphTransition(true)
-        setMorphClip('inset(0 0 0 0 round 0)')
-      }))
-
-      // Phase 3: switch mode, remove morph
-      morphTimerRef.current = setTimeout(() => {
-        complete()
-        requestAnimationFrame(() => setMorphActive(false))
-      }, 480)
-
-    } else if (from === 'fullscreen' && to === 'compact') {
-      // Calculate target compact rect from current dimensions
-      const w = window.innerWidth < 768 ? vw : compactWidthRef.current
-      const h = compactHeightRef.current
-      const targetClip = `inset(${vh - h}px ${vw - w}px 0 0 round 16px 16px 0 0)`
-
-      // Phase 1: show morph at full viewport
-      setMorphActive(true)
-      setMorphTransition(false)
-      setMorphClip('inset(0 0 0 0 round 0)')
-
-      // Phase 2: switch mode immediately (drawer appears behind morph)
-      requestAnimationFrame(() => {
-        complete()
-        // Phase 3: animate morph shrinking to compact rect
-        requestAnimationFrame(() => {
-          setMorphTransition(true)
-          setMorphClip(targetClip)
-        })
-      })
-
-      // Phase 4: remove morph
-      morphTimerRef.current = setTimeout(() => {
-        setMorphActive(false)
-      }, 520)
-    }
+    if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current)
+    setTransitioning(true)
+    complete() // Apply mode change immediately — CSS transitions handle the rest
+    transitionTimerRef.current = setTimeout(() => {
+      setTransitioning(false)
+    }, 300)
   }, [])
 
   const {
@@ -168,13 +120,15 @@ export function AvatarWidget({
     setCompactHeight,
     bustVisible,
     toggleBust,
+    defaultMode,
+    setDefaultMode,
   } = useWidgetMode(onTransition)
 
-  // Refs for compact dimensions (used in onTransition closure)
-  const compactWidthRef = useRef(compactWidth)
-  compactWidthRef.current = compactWidth
-  const compactHeightRef = useRef(compactHeight)
-  compactHeightRef.current = compactHeight
+  // Expose openCompact to parent via ref
+  useEffect(() => {
+    if (onCompactModeRef) onCompactModeRef.current = openCompact
+    return () => { if (onCompactModeRef) onCompactModeRef.current = null }
+  }, [onCompactModeRef, openCompact])
 
   // --- Avatar selection (persisted to localStorage) ---
   const [selectedAvatarId, setSelectedAvatarId] = useState(() =>
@@ -302,7 +256,7 @@ export function AvatarWidget({
       {/* Replace LandingPage with your own app content when           */}
       {/* integrating Avatar Engine into an existing application.      */}
       {/* ============================================================ */}
-      <LandingPage showFabHint={showFabHint} />
+      <LandingPage showFabHint={showFabHint} defaultMode={defaultMode} onDefaultModeChange={setDefaultMode} />
 
       {/* ============================================================ */}
       {/* FULLSCREEN OVERLAY — existing app content (StatusBar, Chat)  */}
@@ -310,49 +264,17 @@ export function AvatarWidget({
       {/* when not in fullscreen mode. No unmount → no reinit.         */}
       {/* ============================================================ */}
       <div
-        className={`fixed inset-0 z-[2000] ${
-          morphActive ? '' : 'transition-opacity duration-300'
-        } ${
+        className={`fixed inset-0 z-[2000] transition-all duration-300 ${
           mode === 'fullscreen'
-            ? 'opacity-100'
-            : 'opacity-0 pointer-events-none'
+            ? 'opacity-100 scale-100'
+            : transitioning
+              ? 'opacity-0 scale-[0.98] pointer-events-none'
+              : 'opacity-0 scale-[0.98] pointer-events-none'
         }`}
         aria-hidden={mode !== 'fullscreen'}
       >
         {children}
       </div>
-
-      {/* Fullscreen → compact return button (top-right, like normal windows) */}
-      {mode === 'fullscreen' && !morphActive && (
-        <button
-          onClick={openCompact}
-          className="fixed top-4 right-4 z-[2001] w-10 h-10 rounded-xl
-            bg-slate-dark/80 backdrop-blur-sm border border-white/10
-            flex items-center justify-center
-            text-text-muted hover:text-synapse hover:border-synapse/40
-            opacity-60 hover:opacity-100
-            transition-all duration-200 hover:scale-105"
-          title="Compact mode (Esc)"
-          aria-label="Switch to compact mode"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
-          </svg>
-        </button>
-      )}
-
-      {/* Morph transition overlay — clip-path animated between compact rect and full viewport */}
-      {morphActive && (
-        <div
-          className="fixed inset-0 z-[2500] bg-[rgba(18,18,35,0.96)] backdrop-blur-[24px] border-t border-l border-white/[0.08]"
-          style={{
-            clipPath: morphClip,
-            transition: morphTransition
-              ? 'clip-path 480ms cubic-bezier(0.16, 1, 0.3, 1)'
-              : 'none',
-          }}
-        />
-      )}
 
       {/* ============================================================ */}
       {/* FAB — floating action button, bottom-left                    */}
@@ -369,16 +291,15 @@ export function AvatarWidget({
       {/* ============================================================ */}
       <div
         ref={drawerRef}
-        className={`fixed bottom-0 left-0 z-[999] flex overflow-visible ${
-          morphActive ? '' : 'transition-transform duration-500'
-        } ${
-          mode === 'compact' ? 'translate-y-0' : 'translate-y-full pointer-events-none'
+        className={`fixed bottom-0 left-0 z-[999] flex overflow-visible transition-transform duration-500 ${
+          mode === 'compact' ? 'translate-y-0' : 'pointer-events-none'
         }`}
         style={{
           width: isNarrow ? '100%' : compactWidth,
           maxWidth: '100%',
           height: compactHeight,
-          transitionTimingFunction: morphActive ? undefined : 'cubic-bezier(0.16, 1, 0.3, 1)',
+          ...( mode !== 'compact' ? { transform: 'translateY(calc(100% + 14px))' } : {}),
+          transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
           willChange: mode === 'compact' ? 'auto' : 'transform',
         }}
         role="dialog"

@@ -4,9 +4,11 @@
  */
 
 import { useEffect, useRef } from 'react'
+import { User } from 'lucide-react'
 import type { ChatMessage } from '../api/types'
 import { MarkdownContent } from './MarkdownContent'
 import { BreathingOrb } from './BreathingOrb'
+import { AvatarLogo } from './AvatarLogo'
 
 interface CompactMessagesProps {
   messages: ChatMessage[]
@@ -20,13 +22,13 @@ function CompactBubble({ message }: { message: ChatMessage }) {
     <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
       {/* Avatar icon — sized to match a single line of text */}
       <div
-        className={`flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center mt-[1px] text-[0.6rem] font-bold ${
+        className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-[1px] ${
           isUser
             ? 'bg-gradient-to-br from-synapse to-pulse text-white'
             : 'bg-synapse/15 border border-synapse/25 text-synapse'
         }`}
       >
-        {isUser ? 'U' : 'A'}
+        {isUser ? <User className="w-3 h-3" /> : <AvatarLogo className="w-4 h-4" />}
       </div>
 
       {/* Message body */}
@@ -34,8 +36,8 @@ function CompactBubble({ message }: { message: ChatMessage }) {
         <div
           className={`inline-block rounded-xl px-2.5 py-1.5 text-left ${
             isUser
-              ? 'bg-gradient-to-r from-synapse/15 to-pulse/15 border border-synapse/15 rounded-tr-sm'
-              : 'bg-slate-mid/40 border border-slate-mid/20 rounded-tl-sm'
+              ? 'bg-gradient-to-r from-synapse/15 to-pulse/15 border border-synapse/15'
+              : 'bg-slate-mid/40 border border-slate-mid/20'
           }`}
         >
           {/* Thinking indicator — shows phase + subject for visibility */}
