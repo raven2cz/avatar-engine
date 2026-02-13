@@ -52,7 +52,7 @@ class ClaudeBridge(BaseBridge):
         executable: str = "claude",
         model: str = "claude-sonnet-4-5",
         working_dir: str = "",
-        timeout: int = 120,
+        timeout: int = 600,
         system_prompt: str = "",
         allowed_tools: Optional[List[str]] = None,
         permission_mode: str = "acceptEdits",

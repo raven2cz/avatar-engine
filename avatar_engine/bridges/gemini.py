@@ -137,7 +137,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         executable: str = "gemini",
         model: str = "",  # Empty = use Gemini CLI default
         working_dir: str = "",
-        timeout: int = 120,
+        timeout: int = 600,
         system_prompt: str = "",
         approval_mode: str = "yolo",
         auth_method: str = "oauth-personal",
@@ -704,21 +704,11 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             # Build content blocks: attachments (if any) + text
             prompt_blocks = _build_prompt_blocks(effective_prompt, attachments)
 
-            # Dynamic timeout: add extra time for large attachments
-            # (base64 encoding + transfer + API processing)
-            effective_timeout = self.timeout
-            if attachments:
-                total_mb = sum(a.size for a in attachments) / (1024 * 1024)
-                effective_timeout += int(total_mb * 3)  # +3s per MB
-                if total_mb > 1:
-                    logger.info(f"Large payload ({total_mb:.1f} MB), timeout extended to {effective_timeout}s")
-
-            result = await asyncio.wait_for(
-                self._acp_conn.prompt(
-                    session_id=self._acp_session_id,
-                    prompt=prompt_blocks,
-                ),
-                timeout=effective_timeout,
+            # No timeout on prompt — user controls stop via UI.
+            # Gemini tool chains and complex analyses can take many minutes.
+            result = await self._acp_conn.prompt(
+                session_id=self._acp_session_id,
+                prompt=prompt_blocks,
             )
 
             elapsed = int((time.time() - t0) * 1000)
@@ -771,7 +761,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 content="",
                 duration_ms=int((time.time() - t0) * 1000),
                 success=False,
-                error=f"ACP timeout ({self.timeout}s)",
+                error=f"ACP timeout ({int((time.time() - t0))}s) — cancelled by outer timeout",
             )
             self._update_stats(response)
             return response
@@ -878,7 +868,8 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         try:
             full_text = ""
             while True:
-                chunk = await asyncio.wait_for(queue.get(), timeout=self.timeout)
+                # Per-chunk timeout (not total): wait up to 10 min for next chunk.
+                chunk = await asyncio.wait_for(queue.get(), timeout=600)
                 if chunk is None:
                     break
                 full_text += chunk

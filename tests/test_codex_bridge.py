@@ -149,7 +149,7 @@ class TestCodexBridgeInit:
         assert bridge.executable == "npx"
         assert bridge.executable_args == ["@zed-industries/codex-acp"]
         assert bridge.model == ""
-        assert bridge.timeout == 120
+        assert bridge.timeout == 600
         assert bridge.auth_method == "chatgpt"
         assert bridge.approval_mode == "auto"
         assert bridge.sandbox_mode == "workspace-write"

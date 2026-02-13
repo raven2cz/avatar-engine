@@ -628,30 +628,6 @@ class TestACPStateMachine:
                     assert "start failed" in caplog.text.lower()
 
     @pytest.mark.asyncio
-    async def test_state_on_prompt_timeout(self):
-        """State should go to ERROR on prompt timeout."""
-        conn, proc = self._make_mock_conn_proc()
-
-        async def slow_prompt(**kwargs):
-            await asyncio.sleep(10)
-            return FakePromptResult(text="too late")
-
-        conn.prompt = slow_prompt
-
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
-            with patch("avatar_engine.bridges.codex.connect_to_agent", return_value=conn):
-                with patch("shutil.which", return_value="/usr/bin/npx"):
-                    bridge = CodexBridge(timeout=0.1)
-                    await bridge.start()
-
-                    response = await bridge.send("Hello")
-                    assert response.success is False
-                    assert "timeout" in response.error.lower()
-                    assert bridge.state == BridgeState.ERROR
-
-                    await bridge.stop()
-
-    @pytest.mark.asyncio
     async def test_state_recovery_after_error(self, caplog):
         """Bridge should be able to restart after error state."""
         conn1, proc1 = self._make_mock_conn_proc(session_id="s-error")

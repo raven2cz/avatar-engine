@@ -85,7 +85,7 @@ class TestClaudeBridgeInit:
         bridge = ClaudeBridge()
         assert bridge.executable == "claude"
         assert bridge.model == "claude-sonnet-4-5"
-        assert bridge.timeout == 120
+        assert bridge.timeout == 600
         assert bridge.state == BridgeState.DISCONNECTED
 
     def test_custom_values(self):
@@ -217,7 +217,7 @@ class TestGeminiBridgeInit:
         bridge = GeminiBridge()
         assert bridge.executable == "gemini"
         assert bridge.model == ""
-        assert bridge.timeout == 120
+        assert bridge.timeout == 600
         assert bridge.approval_mode == "yolo"
         assert bridge.state == BridgeState.DISCONNECTED
 

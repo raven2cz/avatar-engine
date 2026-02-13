@@ -88,7 +88,7 @@ class BaseBridge(ABC):
         executable: str,
         model: str,
         working_dir: str = "",
-        timeout: int = 120,
+        timeout: int = 600,
         system_prompt: str = "",
         env: Optional[Dict[str, str]] = None,
         mcp_servers: Optional[Dict[str, Any]] = None,

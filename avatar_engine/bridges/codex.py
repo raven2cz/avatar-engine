@@ -97,7 +97,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         executable_args: Optional[List[str]] = None,
         model: str = "",  # Empty = Codex default (gpt-5.3-codex)
         working_dir: str = "",
-        timeout: int = 120,
+        timeout: int = 600,
         system_prompt: str = "",
         auth_method: str = "chatgpt",  # chatgpt | codex-api-key | openai-api-key
         approval_mode: str = "auto",   # auto-approve tool calls
@@ -592,18 +592,11 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         try:
             prompt_blocks = _build_prompt_blocks(effective_prompt, attachments)
 
-            # Dynamic timeout for large attachments
-            effective_timeout = self.timeout
-            if attachments:
-                total_mb = sum(a.size for a in attachments) / (1024 * 1024)
-                effective_timeout += int(total_mb * 3)  # +3s per MB
-
-            result = await asyncio.wait_for(
-                self._acp_conn.prompt(
-                    session_id=self._acp_session_id,
-                    prompt=prompt_blocks,
-                ),
-                timeout=effective_timeout,
+            # No timeout on prompt — user controls stop via UI.
+            # Codex tool chains and complex analyses can take many minutes.
+            result = await self._acp_conn.prompt(
+                session_id=self._acp_session_id,
+                prompt=prompt_blocks,
             )
 
             elapsed = int((time.time() - t0) * 1000)
@@ -643,7 +636,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 content="",
                 duration_ms=int((time.time() - t0) * 1000),
                 success=False,
-                error=f"Codex ACP timeout ({self.timeout}s)",
+                error=f"Codex ACP timeout ({int((time.time() - t0))}s) — cancelled by outer timeout",
             )
             self._update_stats(response)
             return response
@@ -704,7 +697,9 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         try:
             full_text = ""
             while True:
-                chunk = await asyncio.wait_for(queue.get(), timeout=self.timeout)
+                # Per-chunk timeout (not total): wait up to 10 min for next chunk.
+                # Codex tool chains can have long pauses between outputs.
+                chunk = await asyncio.wait_for(queue.get(), timeout=600)
                 if chunk is None:
                     break
                 full_text += chunk
