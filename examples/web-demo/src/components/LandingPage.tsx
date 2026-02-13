@@ -17,6 +17,7 @@ import type { WidgetMode } from '../types/avatar'
 
 interface LandingPageProps {
   showFabHint: boolean
+  version?: string | null
   defaultMode: WidgetMode
   onDefaultModeChange: (mode: WidgetMode) => void
 }
@@ -94,7 +95,7 @@ const MODE_OPTIONS: { value: WidgetMode; label: string }[] = [
   { value: 'fullscreen', label: 'Fullscreen' },
 ]
 
-export function LandingPage({ showFabHint, defaultMode, onDefaultModeChange }: LandingPageProps) {
+export function LandingPage({ showFabHint, version, defaultMode, onDefaultModeChange }: LandingPageProps) {
   return (
     <div className="min-h-screen bg-obsidian flex flex-col items-center justify-center px-6 relative overflow-auto"
       style={{
@@ -109,6 +110,7 @@ export function LandingPage({ showFabHint, defaultMode, onDefaultModeChange }: L
       <div className="text-center mb-12 animate-fade-in">
         <h1 className="text-4xl sm:text-5xl font-bold mb-3 pb-1 gradient-text tracking-tight">
           Avatar Engine
+          {version && <span className="text-base sm:text-lg text-text-muted/50 font-mono font-normal ml-2 align-middle">v{version}</span>}
         </h1>
         <p className="text-text-secondary text-lg max-w-lg mx-auto leading-relaxed">
           AI-powered conversational assistant with animated avatars,

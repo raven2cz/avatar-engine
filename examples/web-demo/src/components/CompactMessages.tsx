@@ -12,6 +12,7 @@ import { AvatarLogo } from './AvatarLogo'
 
 interface CompactMessagesProps {
   messages: ChatMessage[]
+  version?: string | null
 }
 
 function CompactBubble({ message }: { message: ChatMessage }) {
@@ -117,7 +118,7 @@ function CompactBubble({ message }: { message: ChatMessage }) {
   )
 }
 
-export function CompactMessages({ messages }: CompactMessagesProps) {
+export function CompactMessages({ messages, version }: CompactMessagesProps) {
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -131,7 +132,10 @@ export function CompactMessages({ messages }: CompactMessagesProps) {
           <div className="flex flex-col items-center gap-3 animate-fade-in">
             <BreathingOrb size="sm" phase="general" />
             <div className="text-center">
-              <h3 className="text-sm font-semibold gradient-text mb-0.5">Avatar Engine</h3>
+              <h3 className="text-sm font-semibold gradient-text mb-0.5">
+                Avatar Engine
+                {version && <span className="text-[0.6rem] text-text-muted/60 font-mono font-normal ml-1.5">v{version}</span>}
+              </h3>
               <p className="text-[0.65rem] text-text-muted max-w-[200px]">
                 Ready to help. Type a message below.
               </p>

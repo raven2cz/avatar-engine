@@ -258,7 +258,7 @@ export function AvatarWidget({
       {/* Replace LandingPage with your own app content when           */}
       {/* integrating Avatar Engine into an existing application.      */}
       {/* ============================================================ */}
-      <LandingPage showFabHint={showFabHint} defaultMode={defaultMode} onDefaultModeChange={setDefaultMode} />
+      <LandingPage showFabHint={showFabHint} version={version} defaultMode={defaultMode} onDefaultModeChange={setDefaultMode} />
 
       {/* ============================================================ */}
       {/* FULLSCREEN OVERLAY — existing app content (StatusBar, Chat)  */}

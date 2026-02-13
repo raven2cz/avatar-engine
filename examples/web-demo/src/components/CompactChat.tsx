@@ -140,7 +140,7 @@ export function CompactChat({
       )}
 
       {/* Messages area — only shown when connected */}
-      {connected && <CompactMessages messages={messages} />}
+      {connected && <CompactMessages messages={messages} version={version} />}
 
       <CompactInput
         onSend={onSend}

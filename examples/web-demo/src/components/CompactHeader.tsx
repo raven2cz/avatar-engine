@@ -97,9 +97,6 @@ export function CompactHeader({
             )}
           </span>
         )}
-        {version && !stateInfo && (
-          <span className="text-[0.55rem] text-text-muted/50 font-mono flex-shrink-0">v{version}</span>
-        )}
         {stateInfo && (() => {
           // Dynamic detail: show thinking subject or tool name
           const detail = engineState === 'thinking' && thinkingSubject

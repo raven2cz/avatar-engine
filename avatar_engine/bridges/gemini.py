@@ -801,13 +801,27 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 self._acp_restart_task = asyncio.create_task(self._restart_acp())
                 return response
 
+            # Terminal errors (quota, auth) — no point falling back to oneshot
+            # because the same quota/auth applies to all modes.
+            exc_lower = str(exc).lower()
+            if "exhausted" in exc_lower or "quota" in exc_lower or "capacity" in exc_lower:
+                logger.warning("Terminal quota error — not retrying")
+                response = BridgeResponse(
+                    content="",
+                    duration_ms=int((time.time() - t0) * 1000),
+                    success=False,
+                    error=str(exc),
+                )
+                self._update_stats(response)
+                return response
+
             # Attempt fallback to oneshot for this single request
             if self.acp_enabled:
                 logger.warning("ACP error — falling back to oneshot for this request")
                 self._acp_mode = False
                 # If the ACP connection died (e.g. LimitOverrunError), restart
                 # in background so the next message uses a fresh ACP session.
-                if "limit" in str(exc).lower() or "separator" in str(exc).lower():
+                if "limit" in exc_lower or "separator" in exc_lower:
                     logger.info("Restarting ACP after stream buffer overflow")
                     self._acp_restart_task = asyncio.create_task(self._restart_acp())
                 return await super().send(prompt, attachments=attachments)
