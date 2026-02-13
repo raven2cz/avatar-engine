@@ -22,6 +22,7 @@ import { OptionControl } from './OptionControl'
 interface CompactHeaderProps {
   provider: string
   model: string | null
+  version?: string | null
   connected: boolean
   engineState: EngineState | string
   onFullscreen: () => void
@@ -48,6 +49,7 @@ const STATE_LABELS: Record<string, { label: string; cls: string }> = {
 export function CompactHeader({
   provider,
   model,
+  version,
   connected,
   engineState,
   onFullscreen,
@@ -94,6 +96,9 @@ export function CompactHeader({
               <span className="font-sans"> ({featuredLabel})</span>
             )}
           </span>
+        )}
+        {version && !stateInfo && (
+          <span className="text-[0.55rem] text-text-muted/50 font-mono flex-shrink-0">v{version}</span>
         )}
         {stateInfo && (() => {
           // Dynamic detail: show thinking subject or tool name

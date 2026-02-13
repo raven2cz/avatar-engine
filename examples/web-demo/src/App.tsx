@@ -79,6 +79,7 @@ export default function App() {
       diagnostic={diagnostic}
       provider={provider}
       model={model}
+      version={version}
       engineState={engineState}
       thinkingSubject={thinking.active ? thinking.subject : ''}
       toolName={toolName}

@@ -17,6 +17,7 @@ interface CompactChatProps {
   messages: ChatMessage[]
   provider: string
   model: string | null
+  version?: string | null
   connected: boolean
   wasConnected?: boolean
   initDetail?: string
@@ -47,6 +48,7 @@ export function CompactChat({
   messages,
   provider,
   model,
+  version,
   connected,
   wasConnected,
   initDetail,
@@ -77,6 +79,7 @@ export function CompactChat({
       <CompactHeader
         provider={provider}
         model={model}
+        version={version}
         connected={connected}
         engineState={engineState}
         thinkingSubject={thinkingSubject}

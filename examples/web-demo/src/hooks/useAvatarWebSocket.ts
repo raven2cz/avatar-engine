@@ -317,6 +317,11 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
             if (msg.data.session_id) {
               dispatch({ type: 'SESSION_ID_DISCOVERED', sessionId: msg.data.session_id })
             }
+            // Surface bridge errors (quota exhaustion, auth failures, etc.)
+            if (msg.data.error) {
+              dispatch({ type: 'ERROR', error: msg.data.error })
+              errorFenceRef.current = true
+            }
             // Defensive: ensure engine state returns to idle when response completes.
             dispatch({ type: 'ENGINE_STATE', state: 'idle' })
             dispatch({ type: 'THINKING_END' })

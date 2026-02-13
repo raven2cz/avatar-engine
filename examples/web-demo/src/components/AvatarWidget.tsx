@@ -54,6 +54,7 @@ interface AvatarWidgetProps {
   engineState: string
   thinkingSubject?: string
   toolName?: string
+  version?: string | null
   pendingFiles?: UploadedFile[]
   uploading?: boolean
   uploadFile?: (file: File) => Promise<unknown>
@@ -83,6 +84,7 @@ export function AvatarWidget({
   engineState,
   thinkingSubject,
   toolName,
+  version,
   pendingFiles,
   uploading,
   uploadFile,
@@ -420,6 +422,7 @@ export function AvatarWidget({
             messages={messages}
             provider={provider}
             model={model}
+            version={version}
             connected={connected}
             wasConnected={wasConnected}
             initDetail={initDetail}
