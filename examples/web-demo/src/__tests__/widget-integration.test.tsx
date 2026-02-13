@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { AvatarWidget } from '../components/AvatarWidget'
-import { LS_WIDGET_MODE, LS_HINTS_SHOWN } from '../types/avatar'
+import { LS_WIDGET_MODE, LS_HINTS_SHOWN, LS_DEFAULT_MODE } from '../types/avatar'
 
 // Mock avatar assets (canvas operations not available in jsdom)
 vi.mock('../hooks/useAvatarThumb', () => ({
@@ -203,6 +203,67 @@ describe('AvatarWidget integration', () => {
       await act(async () => { vi.advanceTimersByTime(400) })
       expect(localStorage.getItem(LS_WIDGET_MODE)).toBe('compact')
       vi.useRealTimers()
+    })
+  })
+
+  describe('landing page features', () => {
+    it('renders startup mode selector buttons', () => {
+      renderWidget()
+      expect(screen.getByText('Startup Mode')).toBeInTheDocument()
+      // Use getByRole to match accessible name (avoids collision with fullscreen children button)
+      expect(screen.getByRole('button', { name: 'FAB' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Compact' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Fullscreen' })).toBeInTheDocument()
+    })
+
+    it('mode selector persists default mode to localStorage', () => {
+      renderWidget()
+      fireEvent.click(screen.getByRole('button', { name: 'Compact' }))
+      expect(localStorage.getItem(LS_DEFAULT_MODE)).toBe('compact')
+    })
+
+    it('mode selector highlights the active default', () => {
+      localStorage.setItem(LS_DEFAULT_MODE, 'fullscreen')
+      renderWidget()
+      const fsButton = screen.getByText('Fullscreen')
+      expect(fsButton.className).toContain('text-synapse')
+    })
+
+    it('renders documentation link', () => {
+      renderWidget()
+      const link = screen.getByText('Documentation & README →')
+      expect(link).toBeInTheDocument()
+      expect(link.tagName).toBe('A')
+      expect(link).toHaveAttribute('target', '_blank')
+    })
+
+    it('renders keyboard shortcuts section', () => {
+      renderWidget()
+      expect(screen.getByText('Keyboard Shortcuts')).toBeInTheDocument()
+      expect(screen.getByText('Ctrl+Shift+A')).toBeInTheDocument()
+      expect(screen.getByText('Ctrl+Shift+F')).toBeInTheDocument()
+    })
+  })
+
+  describe('compact message avatars', () => {
+    it('renders SVG icons instead of text U/A in compact bubbles', () => {
+      localStorage.setItem(LS_WIDGET_MODE, 'compact')
+      renderWidget()
+      // Should NOT contain plain text "U" or "A" as avatar letters
+      const avatarIcons = document.querySelectorAll('.rounded-full svg')
+      expect(avatarIcons.length).toBeGreaterThanOrEqual(2)
+      // User avatar should have lucide User icon (has specific path)
+      // Assistant avatar should have AvatarLogo SVG
+    })
+
+    it('compact bubbles use consistent rounded-xl (no pointed tips)', () => {
+      localStorage.setItem(LS_WIDGET_MODE, 'compact')
+      renderWidget()
+      // No element should have rounded-tr-sm or rounded-tl-sm
+      const allBubbles = document.querySelectorAll('.rounded-xl')
+      expect(allBubbles.length).toBeGreaterThan(0)
+      const tippedBubbles = document.querySelectorAll('.rounded-tr-sm, .rounded-tl-sm')
+      expect(tippedBubbles.length).toBe(0)
     })
   })
 })

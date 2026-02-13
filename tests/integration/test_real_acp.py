@@ -85,7 +85,7 @@ class TestGeminiACP:
             timeout=180,
             acp_enabled=True,
             generation_config={
-                "thinking_level": "medium",
+                "thinking_level": "low",
             }
         )
 
@@ -370,7 +370,8 @@ class TestACPGenerationConfig:
             assert bridge._gemini_settings_path is not None
             import json
             settings = json.loads(bridge._gemini_settings_path.read_text())
-            assert "model" not in settings, "model.name must not be in ACP settings"
+            # ACP sets model.name to bypass auto classifier
+            assert settings.get("model", {}).get("name") == "gemini-3-pro-preview"
             overrides = settings["modelConfigs"]["customOverrides"]
             gen_cfg = overrides[0]["modelConfig"]["generateContentConfig"]
             assert gen_cfg["thinkingConfig"]["thinkingLevel"] == "LOW"

@@ -148,10 +148,11 @@ class TestClaudeCLI:
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
 
-        # Extract last JSON object from stdout (logging may precede it)
+        # Extract last JSON object from stdout (logging may precede or follow it)
         start = result.stdout.rfind("{")
-        assert start >= 0, f"No JSON found in stdout: {result.stdout[:500]}"
-        data = json.loads(result.stdout[start:])
+        end = result.stdout.rfind("}")
+        assert start >= 0 and end >= start, f"No JSON found in stdout: {result.stdout[:500]}"
+        data = json.loads(result.stdout[start:end + 1])
         assert data["success"] is True
 
 

@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useWidgetMode } from '../hooks/useWidgetMode'
-import { LS_WIDGET_MODE, LS_COMPACT_HEIGHT, LS_COMPACT_WIDTH, LS_BUST_VISIBLE } from '../types/avatar'
+import { LS_WIDGET_MODE, LS_COMPACT_HEIGHT, LS_COMPACT_WIDTH, LS_BUST_VISIBLE, LS_DEFAULT_MODE } from '../types/avatar'
 
 describe('useWidgetMode', () => {
   beforeEach(() => {
@@ -169,6 +169,57 @@ describe('useWidgetMode', () => {
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'H', ctrlKey: true, shiftKey: true }))
       })
       expect(result.current.bustVisible).toBe(false)
+    })
+  })
+
+  describe('default mode', () => {
+    it('starts with fab as defaultMode', () => {
+      const { result } = renderHook(() => useWidgetMode())
+      expect(result.current.defaultMode).toBe('fab')
+    })
+
+    it('setDefaultMode persists to localStorage', () => {
+      const { result } = renderHook(() => useWidgetMode())
+
+      act(() => result.current.setDefaultMode('compact'))
+      expect(result.current.defaultMode).toBe('compact')
+      expect(localStorage.getItem(LS_DEFAULT_MODE)).toBe('compact')
+
+      act(() => result.current.setDefaultMode('fullscreen'))
+      expect(result.current.defaultMode).toBe('fullscreen')
+      expect(localStorage.getItem(LS_DEFAULT_MODE)).toBe('fullscreen')
+    })
+
+    it('restores defaultMode from localStorage', () => {
+      localStorage.setItem(LS_DEFAULT_MODE, 'compact')
+      const { result } = renderHook(() => useWidgetMode())
+      expect(result.current.defaultMode).toBe('compact')
+    })
+
+    it('uses defaultMode as initial mode when LS_WIDGET_MODE is absent', () => {
+      localStorage.setItem(LS_DEFAULT_MODE, 'compact')
+      const { result } = renderHook(() => useWidgetMode())
+      expect(result.current.mode).toBe('compact')
+    })
+
+    it('uses defaultMode fullscreen as initial mode', () => {
+      localStorage.setItem(LS_DEFAULT_MODE, 'fullscreen')
+      const { result } = renderHook(() => useWidgetMode())
+      expect(result.current.mode).toBe('fullscreen')
+    })
+
+    it('LS_WIDGET_MODE takes priority over LS_DEFAULT_MODE', () => {
+      localStorage.setItem(LS_DEFAULT_MODE, 'fullscreen')
+      localStorage.setItem(LS_WIDGET_MODE, 'compact')
+      const { result } = renderHook(() => useWidgetMode())
+      expect(result.current.mode).toBe('compact')
+    })
+
+    it('ignores invalid defaultMode values', () => {
+      localStorage.setItem(LS_DEFAULT_MODE, 'invalid')
+      const { result } = renderHook(() => useWidgetMode())
+      expect(result.current.mode).toBe('fab')
+      expect(result.current.defaultMode).toBe('fab')
     })
   })
 })
