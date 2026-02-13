@@ -146,17 +146,31 @@
 .compact-markdown .markdown-body {
   line-height: 1.5;
 }
+/* SyntaxHighlighter uses PreTag="div", so target [class*="language-"] not <pre> */
+.compact-markdown .markdown-body [class*="language-"] {
+  padding: 0.5rem !important;
+  font-size: 0.65rem !important;
+  line-height: 1.45 !important;
+}
 .compact-markdown .markdown-body pre {
-  padding: 0.5rem;
-  font-size: 0.65rem;
+  padding: 0.5rem !important;
+  font-size: 0.65rem !important;
   border-radius: 0.5rem;
+  line-height: 1.45 !important;
 }
 .compact-markdown .markdown-body code {
-  font-size: 0.7em;
+  font-size: 0.85em !important;
 }
 .compact-markdown .markdown-body .group {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
+}
+/* Shrink code block header bar in compact mode */
+.compact-markdown .markdown-body .group > div:first-child {
+  padding: 0.2rem 0.6rem !important;
+}
+.compact-markdown .markdown-body .group > div:first-child span {
+  font-size: 9px !important;
 }
 .compact-markdown .markdown-body p {
   margin-bottom: 0.4em;

@@ -1198,6 +1198,98 @@ class TestCodexAbstractMethods:
 # =============================================================================
 
 
+class TestThinkingDedup:
+    """Test _should_suppress_text_output — prevents thinking text leaking into content."""
+
+    def _make_bridge(self):
+        bridge = CodexBridge()
+        return bridge
+
+    def test_exact_match_suppressed(self):
+        """Text that exactly matches a thinking block is suppressed."""
+        bridge = self._make_bridge()
+        bridge._recent_thinking_norm.append("let me analyze the code")
+        assert bridge._should_suppress_text_output("Let me analyze the code") is True
+
+    def test_prefix_match_suppressed(self):
+        """Text that is a prefix of a thinking block is suppressed."""
+        bridge = self._make_bridge()
+        bridge._recent_thinking_norm.append("let me analyze the code structure in detail")
+        assert bridge._should_suppress_text_output("Let me analyze the code") is True
+
+    def test_thought_prefix_of_text_suppressed(self):
+        """Thinking block that is a prefix of text is suppressed."""
+        bridge = self._make_bridge()
+        bridge._recent_thinking_norm.append("let me")
+        assert bridge._should_suppress_text_output("Let me analyze") is True
+
+    def test_substring_match_suppressed(self):
+        """Small text chunk contained in a thinking block is suppressed (min 4 chars)."""
+        bridge = self._make_bridge()
+        bridge._recent_thinking_norm.append("i will start by analyzing the code structure")
+        assert bridge._should_suppress_text_output("analyzing the code") is True
+
+    def test_short_substring_not_suppressed(self):
+        """Very short text (< 4 chars) is not suppressed by substring match."""
+        bridge = self._make_bridge()
+        bridge._recent_thinking_norm.append("let me analyze the code")
+        assert bridge._should_suppress_text_output("the") is False
+
+    def test_novel_text_not_suppressed(self):
+        """Text that doesn't match any thinking block passes through."""
+        bridge = self._make_bridge()
+        bridge._recent_thinking_norm.append("let me analyze the code")
+        assert bridge._should_suppress_text_output("Here is the result:") is False
+
+    def test_accumulated_dedup(self):
+        """Streaming fragments: accumulated message text matches thinking."""
+        bridge = self._make_bridge()
+        bridge._thinking_accum = "let me analyze the code structure "
+        # First chunk
+        assert bridge._should_suppress_text_output("Let me") is True
+        # Second chunk (message_accum was updated by first call)
+        assert bridge._should_suppress_text_output(" analyze") is True
+
+    def test_accumulated_dedup_divergence_passes(self):
+        """Once accumulated message text diverges from thinking, text passes."""
+        bridge = self._make_bridge()
+        bridge._thinking_accum = "let me analyze the code "
+        # Novel text that doesn't match thinking prefix
+        assert bridge._should_suppress_text_output("Here is the result:") is False
+
+    def test_empty_text_not_suppressed(self):
+        """Empty or whitespace-only text is not suppressed."""
+        bridge = self._make_bridge()
+        bridge._recent_thinking_norm.append("some thinking")
+        assert bridge._should_suppress_text_output("") is False
+        assert bridge._should_suppress_text_output("  ") is False
+
+    def test_bold_markers_normalized(self):
+        """Bold markers (**) are stripped before comparison."""
+        bridge = self._make_bridge()
+        bridge._recent_thinking_norm.append("analyzing code")
+        assert bridge._should_suppress_text_output("**Analyzing** code") is True
+
+    def test_clear_on_new_prompt(self):
+        """Accumulators are cleared when a new prompt starts."""
+        bridge = self._make_bridge()
+        bridge._thinking_accum = "old thinking "
+        bridge._message_accum = "old message"
+        bridge._recent_thinking_norm.append("old")
+        bridge._acp_events.append({"type": "thinking"})
+        bridge._acp_text_buffer = "old text"
+        # Simulate reset (same as in send())
+        with bridge._acp_buffer_lock:
+            bridge._acp_events.clear()
+            bridge._acp_text_buffer = ""
+            bridge._recent_thinking_norm.clear()
+            bridge._thinking_accum = ""
+            bridge._message_accum = ""
+        assert len(bridge._recent_thinking_norm) == 0
+        assert bridge._thinking_accum == ""
+        assert bridge._message_accum == ""
+
+
 class TestCodexWithoutACP:
     """Test behavior when ACP SDK is not installed."""
 

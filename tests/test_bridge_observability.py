@@ -53,6 +53,7 @@ def create_mock_acp_proc(
     # stdout — minimal mock (ACP SDK reads this)
     proc.stdout = MagicMock()
     proc.stdout.readline = AsyncMock(return_value=b"")
+    proc.stdout.read = AsyncMock(return_value=b"")
 
     # stderr — THIS IS THE KEY: PIPE with simulated output
     stderr_queue: asyncio.Queue = asyncio.Queue()

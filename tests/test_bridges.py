@@ -43,8 +43,16 @@ def make_mock_process(
         except StopIteration:
             return b""
 
+    async def mock_read(_n=None):
+        try:
+            line = next(stdout_iter)
+            return line.encode() if line else b""
+        except StopIteration:
+            return b""
+
     proc.stdout = MagicMock()
     proc.stdout.readline = mock_readline
+    proc.stdout.read = mock_read
 
     # Mock stderr
     proc.stderr = MagicMock()

@@ -64,8 +64,19 @@ def create_mock_subprocess(
         except asyncio.QueueEmpty:
             return b""
 
+    async def mock_read(_n=None):
+        """Simulate stream.read() — returns one queued line per call."""
+        if delay_per_line > 0:
+            await asyncio.sleep(delay_per_line)
+        try:
+            line = stdout_queue.get_nowait()
+            return line.encode() if line else b""
+        except asyncio.QueueEmpty:
+            return b""
+
     proc.stdout = MagicMock()
     proc.stdout.readline = mock_readline
+    proc.stdout.read = mock_read
 
     # Stderr mock
     stderr_content = "\n".join(stderr_lines) if stderr_lines else ""
@@ -341,6 +352,7 @@ class TestTimeoutHandling:
 
         proc.stdout = MagicMock()
         proc.stdout.readline = hang_forever
+        proc.stdout.read = hang_forever
         proc.stderr = MagicMock()
         proc.stderr.read = AsyncMock(return_value=b"")
         proc.terminate = MagicMock()

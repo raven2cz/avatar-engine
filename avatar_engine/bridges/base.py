@@ -192,6 +192,30 @@ class BaseBridge(ABC):
         """Build environment for subprocesses. Override to add sandbox env vars."""
         return {**os.environ, **self.env}
 
+    # === Unbounded line reader ==========================================
+    # asyncio's readline() raises LimitOverrunError when a single line
+    # exceeds the stream buffer limit (default 64 KB).  Large JSON events
+    # (e.g. code-block responses) easily surpass this.  read() has *no*
+    # limit, so we accumulate raw chunks and split on newlines ourselves.
+
+    _read_buf: bytes = b""
+
+    async def _read_line(self, stream: asyncio.StreamReader) -> bytes:
+        """Read one \\n-terminated line with no size limit.
+
+        Returns b'' on EOF (same contract as readline).
+        """
+        while b"\n" not in self._read_buf:
+            chunk = await stream.read(256 * 1024)  # 256 KB chunks
+            if not chunk:
+                # EOF — return whatever is left
+                remaining = self._read_buf
+                self._read_buf = b""
+                return remaining
+            self._read_buf += chunk
+        line, self._read_buf = self._read_buf.split(b"\n", 1)
+        return line + b"\n"
+
     # === Callbacks ======================================================
 
     def on_output(self, cb: Callable[[str], None]) -> None:
@@ -300,6 +324,7 @@ class BaseBridge(ABC):
         env = self._build_subprocess_env()
 
         logger.info(f"Spawning: {' '.join(cmd[:10])}…")
+        self._read_buf = b""  # reset line buffer for new process
         self._proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.PIPE,
@@ -475,7 +500,7 @@ class BaseBridge(ABC):
         async with self._read_lock:
             while True:
                 raw = await asyncio.wait_for(
-                    self._proc.stdout.readline(), timeout=self.timeout,
+                    self._read_line(self._proc.stdout), timeout=self.timeout,
                 )
                 if not raw:
                     raise RuntimeError("Process exited unexpectedly")
@@ -498,7 +523,7 @@ class BaseBridge(ABC):
         async with self._read_lock:
             while True:
                 raw = await asyncio.wait_for(
-                    self._proc.stdout.readline(), timeout=self.timeout,
+                    self._read_line(self._proc.stdout), timeout=self.timeout,
                 )
                 if not raw:
                     raise RuntimeError("Process exited unexpectedly")
@@ -562,9 +587,21 @@ class BaseBridge(ABC):
             cwd=self.working_dir, env=env,
         )
         event_count = 0
+        oneshot_buf = b""
+        async def _read_line_local(stream: asyncio.StreamReader) -> bytes:
+            nonlocal oneshot_buf
+            while b"\n" not in oneshot_buf:
+                chunk = await stream.read(256 * 1024)
+                if not chunk:
+                    remaining = oneshot_buf
+                    oneshot_buf = b""
+                    return remaining
+                oneshot_buf += chunk
+            line, oneshot_buf = oneshot_buf.split(b"\n", 1)
+            return line + b"\n"
         try:
             while True:
-                raw = await asyncio.wait_for(proc.stdout.readline(), timeout=self.timeout)
+                raw = await asyncio.wait_for(_read_line_local(proc.stdout), timeout=self.timeout)
                 if not raw:
                     break
                 text = raw.decode(errors="replace").strip()

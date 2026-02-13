@@ -83,20 +83,26 @@ export function CompactHeader({
 
   return (
     <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-mid/30 bg-black/20 min-h-[38px] flex-shrink-0 rounded-t-2xl">
-      {/* Left: provider + model + state */}
+      {/* Left: provider + model (clickable to open menu) + state */}
       <div className="flex items-center gap-2 min-w-0">
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-synapse/10 border border-synapse/20 text-[0.65rem] font-medium text-synapse flex-shrink-0">
-          <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 shadow-[0_0_4px_theme(colors.emerald.400)]' : 'bg-red-400'}`} />
-          {provider || 'Provider'}
-        </span>
-        {modelName && (
-          <span className="text-[0.65rem] text-text-muted font-mono truncate">
-            {modelName}
-            {featuredLabel && (
-              <span className="font-sans"> ({featuredLabel})</span>
-            )}
+        <button
+          onClick={onSwitchProvider ? handleMenuOpen : undefined}
+          disabled={!onSwitchProvider || switching}
+          className="flex items-center gap-2 min-w-0 rounded-lg px-0.5 -mx-0.5 hover:bg-white/[0.04] transition-colors disabled:hover:bg-transparent"
+        >
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-synapse/10 border border-synapse/20 text-[0.65rem] font-medium text-synapse flex-shrink-0">
+            <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 shadow-[0_0_4px_theme(colors.emerald.400)]' : 'bg-red-400'}`} />
+            {provider || 'Provider'}
           </span>
-        )}
+          {modelName && (
+            <span className="text-[0.65rem] text-text-muted font-mono truncate">
+              {modelName}
+              {featuredLabel && (
+                <span className="font-sans"> ({featuredLabel})</span>
+              )}
+            </span>
+          )}
+        </button>
         {stateInfo && (() => {
           // Dynamic detail: show thinking subject or tool name
           const detail = engineState === 'thinking' && thinkingSubject

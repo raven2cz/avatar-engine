@@ -266,7 +266,7 @@ export function AvatarWidget({
       {/* when not in fullscreen mode. No unmount → no reinit.         */}
       {/* ============================================================ */}
       <div
-        className={`fixed inset-0 z-[2000] transition-all duration-300 ${
+        className={`fixed inset-0 z-[2000] overflow-hidden transition-all duration-300 ${
           mode === 'fullscreen'
             ? 'opacity-100 scale-100'
             : transitioning

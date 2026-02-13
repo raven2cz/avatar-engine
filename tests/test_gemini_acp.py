@@ -49,8 +49,16 @@ def create_mock_subprocess(stdout_lines: List[str], returncode: int = 0):
         except asyncio.QueueEmpty:
             return b""
 
+    async def mock_read(_n=None):
+        try:
+            line = stdout_queue.get_nowait()
+            return line.encode() if line else b""
+        except asyncio.QueueEmpty:
+            return b""
+
     proc.stdout = MagicMock()
     proc.stdout.readline = mock_readline
+    proc.stdout.read = mock_read
     proc.stderr = MagicMock()
     proc.stderr.read = AsyncMock(return_value=b"")
     proc.terminate = MagicMock()
@@ -691,6 +699,7 @@ class TestACPSubprocessBufferLimit:
         mock_proc.stdin.close = MagicMock()
         mock_proc.stdout = MagicMock()
         mock_proc.stdout.readline = AsyncMock(return_value=b"")
+        mock_proc.stdout.read = AsyncMock(return_value=b"")
         mock_proc.stderr = MagicMock()
         mock_proc.stderr.readline = AsyncMock(return_value=b"")
         mock_proc.wait = AsyncMock()

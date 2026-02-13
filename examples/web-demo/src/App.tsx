@@ -99,7 +99,7 @@ export default function App() {
       {/* This is the existing full app UI (StatusBar + ChatPanel).    */}
       {/* It stays in the DOM at all times to avoid remounting.        */}
       {/* ============================================================ */}
-      <div className="min-h-screen bg-obsidian flex flex-col">
+      <div className="h-full bg-obsidian flex flex-col overflow-hidden">
         <StatusBar
           connected={connected}
           provider={provider}
