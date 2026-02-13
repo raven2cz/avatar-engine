@@ -157,8 +157,9 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         self._acp_events: List[Dict[str, Any]] = []
         self._acp_text_buffer: str = ""
         self._recent_thinking_norm = deque(maxlen=8)
-        self._thinking_accum = ""    # Accumulated normalized thinking text (for dedup)
-        self._message_accum = ""     # Accumulated normalized message text (for dedup)
+        self._thinking_raw = ""      # Raw accumulated thinking text (for replay dedup)
+        self._message_raw = ""       # Raw accumulated message text (for replay dedup)
+        self._dedup_active = True    # True while message text still tracks thinking replay
         self._was_thinking = False   # Track thinking→text transition for is_complete
         self._acp_buffer_lock = threading.Lock()  # RC-3/4: sync callback vs main thread
 
@@ -463,7 +464,8 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 if norm:
                     with self._acp_buffer_lock:
                         self._recent_thinking_norm.append(norm)
-                        self._thinking_accum += norm + " "
+                with self._acp_buffer_lock:
+                    self._thinking_raw += thinking
                 thinking_event = {
                     "type": "thinking",
                     "session_id": session_id,
@@ -583,8 +585,9 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             self._acp_events.clear()
             self._acp_text_buffer = ""
             self._recent_thinking_norm.clear()
-            self._thinking_accum = ""
-            self._message_accum = ""
+            self._thinking_raw = ""
+            self._message_raw = ""
+            self._dedup_active = True
 
         try:
             prompt_blocks = _build_prompt_blocks(effective_prompt, attachments)
@@ -672,8 +675,9 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             self._acp_events.clear()
             self._acp_text_buffer = ""
             self._recent_thinking_norm.clear()
-            self._thinking_accum = ""
-            self._message_accum = ""
+            self._thinking_raw = ""
+            self._message_raw = ""
+            self._dedup_active = True
 
         # Bridge callback → async iterator via Queue
         queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
@@ -792,44 +796,40 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
     def _should_suppress_text_output(self, text: str) -> bool:
         """Suppress text chunks that duplicate recent thinking/reasoning content.
 
-        Codex ACP sends thinking as both AgentThoughtChunk and AgentMessageChunk.
-        Text chunks arrive as small fragments that may match anywhere in the
-        accumulated thinking text.  Uses two strategies:
+        Codex ACP replays the full thinking text as AgentMessageChunk.
+        We detect this replay by tracking accumulated raw text:
+        if the growing message text is still a prefix of the thinking text,
+        it's a replay and should be suppressed.
 
-        1. Per-block match: chunk matches (prefix/contains) any single thinking block
-        2. Accumulated match: growing message text is still a prefix of thinking text
-           (catches streaming fragments that span multiple thinking blocks)
+        Once the message diverges from thinking, dedup stops permanently
+        for this turn (the real response has started).
         """
-        norm_text = _normalize_reasoning_text(text)
-        if not norm_text:
+        if not text or not text.strip():
             return False
 
         with self._acp_buffer_lock:
-            recent = list(self._recent_thinking_norm)
-            thinking_accum = self._thinking_accum
+            thinking_raw = self._thinking_raw
+            dedup_active = self._dedup_active
 
-        # Strategy 1: per-block match
-        for thought in recent:
-            if not thought:
-                continue
-            if norm_text == thought:
-                return True
-            if norm_text.startswith(thought) or thought.startswith(norm_text):
-                return True
-            # Substring containment for small chunks
-            if len(norm_text) >= 4 and norm_text in thought:
-                return True
+        # No thinking text accumulated, or dedup already stopped → pass through
+        if not thinking_raw or not dedup_active:
+            return False
 
-        # Strategy 2: accumulated text match — message text still covered by thinking
-        if thinking_accum:
+        # Check if accumulated message + this chunk is still a prefix of thinking
+        with self._acp_buffer_lock:
+            candidate = self._message_raw + text
+        thinking_norm = _normalize_reasoning_text(thinking_raw)
+        candidate_norm = _normalize_reasoning_text(candidate)
+
+        if thinking_norm.startswith(candidate_norm):
+            # Still replaying thinking text — suppress
             with self._acp_buffer_lock:
-                candidate = _normalize_reasoning_text(self._message_accum + text)
-            if thinking_accum.startswith(candidate):
-                # Still within thinking content — suppress and track
-                with self._acp_buffer_lock:
-                    self._message_accum += text
-                return True
+                self._message_raw += text
+            return True
 
+        # Diverged — real response started. Stop dedup permanently for this turn.
+        with self._acp_buffer_lock:
+            self._dedup_active = False
         return False
 
 

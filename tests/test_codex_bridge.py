@@ -1199,82 +1199,92 @@ class TestCodexAbstractMethods:
 
 
 class TestThinkingDedup:
-    """Test _should_suppress_text_output — prevents thinking text leaking into content."""
+    """Test _should_suppress_text_output — prevents thinking text leaking into content.
+
+    Codex ACP replays thinking text as AgentMessageChunk. The dedup tracks
+    accumulated raw text: while message is a prefix of thinking, suppress.
+    Once it diverges, stop dedup and let all subsequent text through.
+    """
 
     def _make_bridge(self):
-        bridge = CodexBridge()
-        return bridge
+        return CodexBridge()
 
-    def test_exact_match_suppressed(self):
-        """Text that exactly matches a thinking block is suppressed."""
+    def test_replay_suppressed(self):
+        """Full thinking replay is suppressed."""
         bridge = self._make_bridge()
-        bridge._recent_thinking_norm.append("let me analyze the code")
-        assert bridge._should_suppress_text_output("Let me analyze the code") is True
+        bridge._thinking_raw = "Let me analyze the code."
+        assert bridge._should_suppress_text_output("Let me analyze the code.") is True
 
-    def test_prefix_match_suppressed(self):
-        """Text that is a prefix of a thinking block is suppressed."""
+    def test_streaming_fragments_suppressed(self):
+        """Streaming fragments that build up thinking text are suppressed."""
         bridge = self._make_bridge()
-        bridge._recent_thinking_norm.append("let me analyze the code structure in detail")
-        assert bridge._should_suppress_text_output("Let me analyze the code") is True
-
-    def test_thought_prefix_of_text_suppressed(self):
-        """Thinking block that is a prefix of text is suppressed."""
-        bridge = self._make_bridge()
-        bridge._recent_thinking_norm.append("let me")
-        assert bridge._should_suppress_text_output("Let me analyze") is True
-
-    def test_substring_match_suppressed(self):
-        """Small text chunk contained in a thinking block is suppressed (min 4 chars)."""
-        bridge = self._make_bridge()
-        bridge._recent_thinking_norm.append("i will start by analyzing the code structure")
-        assert bridge._should_suppress_text_output("analyzing the code") is True
-
-    def test_short_substring_not_suppressed(self):
-        """Very short text (< 4 chars) is not suppressed by substring match."""
-        bridge = self._make_bridge()
-        bridge._recent_thinking_norm.append("let me analyze the code")
-        assert bridge._should_suppress_text_output("the") is False
-
-    def test_novel_text_not_suppressed(self):
-        """Text that doesn't match any thinking block passes through."""
-        bridge = self._make_bridge()
-        bridge._recent_thinking_norm.append("let me analyze the code")
-        assert bridge._should_suppress_text_output("Here is the result:") is False
-
-    def test_accumulated_dedup(self):
-        """Streaming fragments: accumulated message text matches thinking."""
-        bridge = self._make_bridge()
-        bridge._thinking_accum = "let me analyze the code structure "
-        # First chunk
+        bridge._thinking_raw = "Let me analyze the code structure."
         assert bridge._should_suppress_text_output("Let me") is True
-        # Second chunk (message_accum was updated by first call)
         assert bridge._should_suppress_text_output(" analyze") is True
+        assert bridge._should_suppress_text_output(" the code") is True
 
-    def test_accumulated_dedup_divergence_passes(self):
-        """Once accumulated message text diverges from thinking, text passes."""
+    def test_divergence_passes_through(self):
+        """Once message diverges from thinking, text passes through."""
         bridge = self._make_bridge()
-        bridge._thinking_accum = "let me analyze the code "
-        # Novel text that doesn't match thinking prefix
+        bridge._thinking_raw = "Let me analyze the code."
+        # This doesn't match thinking at all
         assert bridge._should_suppress_text_output("Here is the result:") is False
+
+    def test_dedup_stops_permanently_after_divergence(self):
+        """After divergence, ALL subsequent text passes (even if it matches thinking)."""
+        bridge = self._make_bridge()
+        bridge._thinking_raw = "Let me analyze."
+        # First: divergent text → dedup stops
+        assert bridge._should_suppress_text_output("Here is the answer.") is False
+        # Second: even text matching thinking passes through (dedup is off)
+        assert bridge._should_suppress_text_output("Let me analyze.") is False
+
+    def test_no_thinking_passes_through(self):
+        """Without thinking text, nothing is suppressed."""
+        bridge = self._make_bridge()
+        assert bridge._should_suppress_text_output("Hello world") is False
 
     def test_empty_text_not_suppressed(self):
-        """Empty or whitespace-only text is not suppressed."""
+        """Empty or whitespace text is not suppressed."""
         bridge = self._make_bridge()
-        bridge._recent_thinking_norm.append("some thinking")
+        bridge._thinking_raw = "Some thinking"
         assert bridge._should_suppress_text_output("") is False
         assert bridge._should_suppress_text_output("  ") is False
 
     def test_bold_markers_normalized(self):
-        """Bold markers (**) are stripped before comparison."""
+        """Bold **markers** are stripped during comparison."""
         bridge = self._make_bridge()
-        bridge._recent_thinking_norm.append("analyzing code")
-        assert bridge._should_suppress_text_output("**Analyzing** code") is True
+        bridge._thinking_raw = "**Analyzing** the code"
+        assert bridge._should_suppress_text_output("Analyzing the code") is True
+
+    def test_real_response_after_replay(self):
+        """Full flow: thinking replay is suppressed, then real response passes."""
+        bridge = self._make_bridge()
+        bridge._thinking_raw = "I need to check the files."
+        # Replay phase — suppressed
+        assert bridge._should_suppress_text_output("I need to") is True
+        assert bridge._should_suppress_text_output(" check the files.") is True
+        # Real response — passes through
+        assert bridge._should_suppress_text_output("Here are the files:") is False
+        assert bridge._should_suppress_text_output("\n- main.py") is False
+
+    def test_no_missing_letters(self):
+        """Real response text is never partially eaten — all or nothing."""
+        bridge = self._make_bridge()
+        bridge._thinking_raw = "Projdu repozitář"
+        # Partial match at start → suppressed
+        assert bridge._should_suppress_text_output("Projdu") is True
+        # Divergence → full chunk passes, no missing letters
+        assert bridge._should_suppress_text_output(" a ukážu kód") is False
+        # "repozitář" is NOT eaten from the real response
+        assert bridge._dedup_active is False
 
     def test_clear_on_new_prompt(self):
         """Accumulators are cleared when a new prompt starts."""
         bridge = self._make_bridge()
-        bridge._thinking_accum = "old thinking "
-        bridge._message_accum = "old message"
+        bridge._thinking_raw = "old thinking"
+        bridge._message_raw = "old message"
+        bridge._dedup_active = False
         bridge._recent_thinking_norm.append("old")
         bridge._acp_events.append({"type": "thinking"})
         bridge._acp_text_buffer = "old text"
@@ -1283,11 +1293,12 @@ class TestThinkingDedup:
             bridge._acp_events.clear()
             bridge._acp_text_buffer = ""
             bridge._recent_thinking_norm.clear()
-            bridge._thinking_accum = ""
-            bridge._message_accum = ""
-        assert len(bridge._recent_thinking_norm) == 0
-        assert bridge._thinking_accum == ""
-        assert bridge._message_accum == ""
+            bridge._thinking_raw = ""
+            bridge._message_raw = ""
+            bridge._dedup_active = True
+        assert bridge._thinking_raw == ""
+        assert bridge._message_raw == ""
+        assert bridge._dedup_active is True
 
 
 class TestCodexWithoutACP:
