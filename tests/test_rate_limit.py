@@ -2,8 +2,10 @@
 
 import asyncio
 import time
+
 import pytest
-from avatar_engine.utils.rate_limit import RateLimiter, RateLimiterSync, RateLimitConfig
+
+from avatar_engine.utils.rate_limit import RateLimitConfig, RateLimiter, RateLimiterSync
 
 
 class TestRateLimitConfig:
@@ -22,6 +24,20 @@ class TestRateLimitConfig:
         assert cfg.requests_per_minute == 30
         assert cfg.burst == 5
         assert cfg.enabled is False
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"requests_per_minute": 0, "burst": 1},
+            {"requests_per_minute": -1, "burst": 1},
+            {"requests_per_minute": 1, "burst": 0},
+            {"requests_per_minute": 1, "burst": -1},
+        ],
+    )
+    def test_invalid_values_raise_value_error(self, kwargs):
+        """Should reject non-positive numeric values."""
+        with pytest.raises(ValueError):
+            RateLimitConfig(**kwargs)
 
 
 class TestRateLimiter:
@@ -108,6 +124,20 @@ class TestRateLimiter:
         assert limiter.burst == 5
         assert limiter.is_enabled is True
 
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"requests_per_minute": 0, "burst": 1},
+            {"requests_per_minute": -1, "burst": 1},
+            {"requests_per_minute": 1, "burst": 0},
+            {"requests_per_minute": 1, "burst": -1},
+        ],
+    )
+    def test_invalid_init_values_raise_value_error(self, kwargs):
+        """Should reject non-positive numeric values."""
+        with pytest.raises(ValueError):
+            RateLimiter(**kwargs)
+
 
 class TestRateLimiterSync:
     """Tests for RateLimiterSync class."""
@@ -132,6 +162,20 @@ class TestRateLimiterSync:
         assert limiter.try_acquire() is True
         # Burst exhausted
         assert limiter.try_acquire() is False
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"requests_per_minute": 0, "burst": 1},
+            {"requests_per_minute": -1, "burst": 1},
+            {"requests_per_minute": 1, "burst": 0},
+            {"requests_per_minute": 1, "burst": -1},
+        ],
+    )
+    def test_invalid_init_values_raise_value_error(self, kwargs):
+        """Should reject non-positive numeric values."""
+        with pytest.raises(ValueError):
+            RateLimiterSync(**kwargs)
 
 
 class TestRateLimiterConcurrency:

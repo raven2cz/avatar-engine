@@ -11,6 +11,14 @@ from dataclasses import dataclass
 from typing import Optional
 
 
+def _validate_rate_limit_params(requests_per_minute: int, burst: int) -> None:
+    """Validate rate limiter numeric parameters."""
+    if requests_per_minute <= 0:
+        raise ValueError("requests_per_minute must be greater than 0")
+    if burst <= 0:
+        raise ValueError("burst must be greater than 0")
+
+
 @dataclass
 class RateLimitConfig:
     """
@@ -21,9 +29,16 @@ class RateLimitConfig:
         burst: Allow burst of requests (up to this many) before throttling
         enabled: Whether rate limiting is active
     """
+
     requests_per_minute: int = 60
     burst: int = 10
     enabled: bool = True
+
+    def __post_init__(self) -> None:
+        _validate_rate_limit_params(
+            requests_per_minute=self.requests_per_minute,
+            burst=self.burst,
+        )
 
 
 class RateLimiter:
@@ -52,6 +67,10 @@ class RateLimiter:
             burst: Max burst size (instant requests allowed)
             enabled: Whether limiting is active
         """
+        _validate_rate_limit_params(
+            requests_per_minute=requests_per_minute,
+            burst=burst,
+        )
         self._rpm = requests_per_minute
         self._burst = burst
         self._enabled = enabled
@@ -211,6 +230,10 @@ class RateLimiterSync:
             burst: Max burst size
             enabled: Whether limiting is active
         """
+        _validate_rate_limit_params(
+            requests_per_minute=requests_per_minute,
+            burst=burst,
+        )
         self._rpm = requests_per_minute
         self._burst = burst
         self._enabled = enabled
