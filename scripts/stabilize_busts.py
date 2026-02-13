@@ -538,9 +538,10 @@ loadAvatar(AVATARS[0].name);
 def process_avatar(
     name: str, threshold: float, dilate_px: int, blur_px: int,
     smooth: float = 0.0, apply: bool = False,
+    avatars_dir: Path = AVATARS_DIR, flat: bool = False,
 ) -> bool:
     """Process a single avatar. Returns True on success."""
-    sprite_path = AVATARS_DIR / name / "speaking.webp"
+    sprite_path = (avatars_dir / f"{name}.webp") if flat else (avatars_dir / name / "speaking.webp")
     if not sprite_path.exists():
         print(f"  SKIP {name}: no speaking.webp")
         return False
@@ -588,12 +589,18 @@ def main():
     parser.add_argument("--blur", type=int, default=8, help="Gaussian blur radius for mask edges (default: 8)")
     parser.add_argument("--smooth", type=float, default=0.0,
                         help="Jitter suppression gate threshold (0=off, 20-40 recommended)")
+    parser.add_argument("--input-dir", type=str, help="Custom input directory (default: avatar-engine avatars)")
+    parser.add_argument("--flat", action="store_true", help="Flat layout: {name}.webp instead of {name}/speaking.webp")
     parser.add_argument("--preview", action="store_true", help="Generate HTML viewer only (no processing)")
     parser.add_argument("--apply", action="store_true", help="Overwrite original sprite sheets with stabilized versions")
     args = parser.parse_args()
 
+    avatars_dir = Path(args.input_dir) if args.input_dir else AVATARS_DIR
+    flat = args.flat
+
     print("=== Bust Stabilization: Face-Only Delta Patch ===")
     print(f"  Params: threshold={args.threshold}, dilate={args.dilate}, blur={args.blur}, smooth={args.smooth}")
+    print(f"  Input: {avatars_dir} ({'flat' if flat else 'nested'})")
     print(f"  Output: {OUTPUT_DIR}")
     print()
 
@@ -606,9 +613,14 @@ def main():
         # Discover avatars
         if args.avatar:
             avatar_names = [args.avatar]
+        elif flat:
+            avatar_names = sorted(
+                p.stem for p in avatars_dir.glob("*.webp")
+                if p.stem not in ("default-female", "default-male")
+            )
         else:
             avatar_names = sorted(
-                d.name for d in AVATARS_DIR.iterdir()
+                d.name for d in avatars_dir.iterdir()
                 if d.is_dir() and (d / "speaking.webp").exists()
             )
 
@@ -618,7 +630,8 @@ def main():
         processed = []
         for name in avatar_names:
             if process_avatar(name, args.threshold, args.dilate, args.blur,
-                             smooth=args.smooth, apply=args.apply):
+                             smooth=args.smooth, apply=args.apply,
+                             avatars_dir=avatars_dir, flat=flat):
                 processed.append(name)
     else:
         processed = sorted(
