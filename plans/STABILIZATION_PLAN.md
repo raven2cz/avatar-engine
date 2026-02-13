@@ -1,9 +1,13 @@
 # Avatar Engine — Stabilization Plan
 
 > Created: 2026-02-05
-> Updated: 2026-02-12
+> Updated: 2026-02-13
 > Phase 1–6 (Testing): ✅ COMPLETED — **290** testů
 > Phase 7 (Bridge Observability): 🟡 IN PROGRESS — kroky 1–3 DONE, kroky 4–6 OPEN
+> Phase 8 (Slow Startup): ✅ RESOLVED — nanobanana uninstall
+> Phase 9 (Integration Test Fixes): ✅ COMPLETED
+> Phase 10 (GUI Compact Mode Round 3): ✅ COMPLETED
+> Phase 11 (Final Integration Verification): 🟡 BLOCKED — Gemini Pro kvóta vyčerpaná
 
 ---
 
@@ -736,3 +740,158 @@ Měří každou fázi ACP startupu + oneshot baseline + Node.js baseline.
 | Non-slow integrační | 33 | ✅ 33/33 passed |
 | Slow integrační (ověřeno) | ~19 | ✅ Vše prošlo individuálně |
 | Slow integrační (celkem) | 134 | Většina neověřena (30-60s per test) |
+
+---
+
+# Phase 10: GUI Compact Mode Polish — Round 3 (2026-02-13)
+
+> Added: 2026-02-13
+> Status: ✅ COMPLETED
+> Commit: `566c794`
+
+## Změny
+
+| Změna | Soubory | Detail |
+|-------|---------|--------|
+| Code block font size | index.css | `0.7rem` → `0.65rem` (pre), `0.75em` → `0.7em` (inline code), `.group` margin override |
+| SVG ikony místo U/A | CompactMessages.tsx | Import `User` (lucide) + `AvatarLogo`, `rounded-lg` → `rounded-full` |
+| Konzistentní bubliny | CompactMessages.tsx | Odstranění `rounded-tr-sm` / `rounded-tl-sm` → `rounded-xl` |
+| Landing page mode selector | LandingPage.tsx, types/avatar.ts, useWidgetMode.ts | 3 tlačítka FAB/Compact/Fullscreen, `LS_DEFAULT_MODE` v localStorage |
+| Docs odkaz | LandingPage.tsx | "Documentation & README →" link |
+| Wiring | AvatarWidget.tsx | Propojení `defaultMode` / `setDefaultMode` do LandingPage |
+
+## Nové testy (14)
+
+| Soubor | Testů | Popis |
+|--------|-------|-------|
+| useWidgetMode.test.ts | +7 | defaultMode state, persistence, loadMode fallback, priorita |
+| widget-integration.test.tsx | +7 | Mode selector UI, docs link, SVG ikony, zaoblení bublin |
+
+**Frontend testy: 111/111 pass** (z původních 97)
+
+---
+
+# Phase 11: Final Integration Verification (2026-02-13)
+
+> Added: 2026-02-13
+> Status: 🟡 BLOCKED — Gemini Pro model kvóta vyčerpaná
+> Commit: `f424b08`
+
+## Bug fixy v integračních testech
+
+| Bug | Soubor | Oprava |
+|-----|--------|--------|
+| `thinking_level: "medium"` nepodporován Pro modelem | test_real_acp.py:88 | `"medium"` → `"low"` |
+| JSON parsing s trailing log outputem | test_real_cli.py:151-155 | Přidán `rfind("}")` pro správné ohraničení JSON |
+| Zastaralá aserce na model v ACP settings | test_real_acp.py:374 | `"model" not in settings` → `settings.get("model", {}).get("name") == "gemini-3-pro-preview"` |
+
+## Celkový stav testů
+
+| Kategorie | Počet | Stav |
+|-----------|-------|------|
+| Python unit testy | 966 | ✅ 966 passed, 2 skipped |
+| Frontend testy (vitest) | 111 | ✅ 111/111 passed |
+| Non-slow integrační | 33 | ✅ 33/33 passed |
+| Gemini integrační (API) | 78 | 🟡 BLOCKED — Pro kvóta vyčerpaná |
+
+## Gemini Pro kvóta — analýza
+
+**Problém:** Všech 78 gemini-marked integračních testů selhává na `TerminalQuotaError` (HTTP 429)
+z `cloudcode-pa.googleapis.com`.
+
+**Root cause:** Denní kvóta Pro modelů (`gemini-3-pro-preview`, `gemini-2.5-pro`) na free-tier
+`cloudcode-pa` API je velmi nízká (~50-100 API callů/den). Každý ACP request generuje 2-10+
+interních API callů. Kvóta byla vyčerpaná z běžného používání, ne z testů samotných.
+
+**Flash modely fungují** — mají separátní, vyšší kvótový pool.
+
+**Reset:** ~20:33 UTC (13. 2. 2026)
+
+## Testy k ověření po resetu kvóty
+
+Spustit: `pytest tests/integration/ -m gemini -v --timeout=120`
+
+**78 testů ve 13 souborech:**
+
+### test_real_acp.py (19 testů)
+- `TestGeminiACP::test_acp_session_basic`
+- `TestGeminiACP::test_acp_multi_turn`
+- `TestGeminiACP::test_acp_with_thinking`
+- `TestGeminiACP::test_acp_fallback_to_oneshot`
+- `TestGeminiBridgeDirect::test_bridge_oneshot_mode`
+- `TestGeminiBridgeDirect::test_bridge_state_transitions`
+- `TestGeminiBridgeDirect::test_bridge_stats`
+- `TestGenerationConfig::test_temperature_setting`
+- `TestGenerationConfig::test_top_p_setting`
+- `TestACPGenerationConfig::test_acp_default_model_no_error`
+- `TestACPGenerationConfig::test_acp_with_thinking_level_low`
+- `TestACPGenerationConfig::test_acp_with_thinking_level_high`
+- `TestACPGenerationConfig::test_acp_with_temperature`
+- `TestACPGenerationConfig::test_acp_with_model_and_config`
+- `TestACPGenerationConfig::test_acp_gemini_25_flash`
+- `TestACPGenerationConfig::test_acp_multi_turn_with_config`
+- `TestACPImageGeneration::test_image_model_settings_structure`
+- `TestACPImageGeneration::test_image_model_strips_thinking_config`
+- `TestACPImageGeneration::test_default_model_image_generation`
+
+### test_acp_settings_diagnostic.py (21 testů)
+- `TestACPSettingsDiagnostic::test_A_no_settings` .. `test_T_thinking_minimal` (20 testů)
+- `TestACPSettingsAllAtOnce::test_all_experiments`
+
+### test_real_chat.py (6 testů)
+- `TestGeminiRealChat::test_simple_chat`
+- `TestGeminiRealChat::test_streaming_chat`
+- `TestGeminiRealChat::test_multi_turn_conversation`
+- `TestGeminiRealChat::test_events_fire_during_chat`
+- `TestGeminiRealChat::test_health_check`
+- `TestGeminiRealChat::test_unicode_content`
+
+### test_real_cli.py (4 testy)
+- `TestGeminiCLI::test_chat_command_basic`
+- `TestGeminiCLI::test_chat_command_json`
+- `TestGeminiCLI::test_chat_command_streaming`
+- `TestHealthCLI::test_health_gemini`
+
+### test_real_cli_display_rewrite.py (4 testy)
+- `TestGeminiThinkingIsComplete::test_thinking_complete_emitted`
+- `TestGeminiThinkingIsComplete::test_thinking_not_in_response_text`
+- `TestGeminiStreamErrorPropagation::test_stream_chat_delivers_text`
+- `TestDisplaySpinner::test_spinner_advances_during_chat`
+
+### test_real_cli_features.py (7 testů)
+- `TestWorkingDirFlag::test_working_dir_propagated_to_chat`
+- `TestBridgeGetUsage::test_gemini_get_usage_after_chat`
+- `TestBridgeGetUsageAccumulation::test_usage_accumulates`
+- `TestReplShowFunctions::test_show_usage_real_gemini`
+- `TestReplShowFunctions::test_show_tools_with_mcp`
+- `TestReplShowFunctions::test_show_mcp_status`
+- `TestReplShowFunctions::test_show_tool_detail_not_found`
+
+### test_real_display.py (6 testů)
+- `TestGeminiDisplay::test_display_receives_events_during_chat`
+- `TestGeminiDisplay::test_display_during_streaming`
+- `TestGeminiDisplay::test_status_line_renders_without_error`
+- `TestDisplayLifecycle::test_multiple_turns_with_display`
+- `TestDisplayLifecycle::test_unregister_stops_tracking`
+- `TestDisplayLifecycle::test_verbose_display_no_crash`
+
+### test_real_mcp.py (2 testy)
+- `TestMCPWithGemini::test_chat_with_mcp_tools`
+- `TestMCPWithGemini::test_mcp_tool_events`
+
+### test_real_repl_display.py (3 testy)
+- `TestReplDisplayLifecycleGemini::test_stream_with_display_events`
+- `TestReplDisplayLifecycleGemini::test_multiple_turns_display_lifecycle`
+- `TestDisplayOutputVerification::test_response_text_captured_fully`
+
+### test_real_capabilities.py (2 testy)
+- `TestGeminiCapabilities::test_capabilities_after_start`
+- `TestGeminiCapabilities::test_diagnostic_events_from_stderr`
+
+### test_real_sessions.py (2 testy)
+- `TestGeminiSessionCapabilities::test_capabilities_detected`
+- `TestGeminiSessionCapabilities::test_resume_nonexistent_falls_back`
+
+### test_real_system_prompt.py (2 testy)
+- `TestGeminiSystemPrompt::test_system_prompt_affects_response`
+- `TestGeminiSystemPrompt::test_system_prompt_only_first_message`
