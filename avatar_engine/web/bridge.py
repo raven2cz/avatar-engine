@@ -150,7 +150,11 @@ class WebSocketBridge:
         self._broadcast_engine_state()
 
     def _on_generic(self, event: AvatarEvent) -> None:
-        """Forward any event without state logic."""
+        """Forward any event; promote to RESPONDING on first text chunk."""
+        from ..events import TextEvent
+        if isinstance(event, TextEvent) and self._engine_state != EngineState.RESPONDING:
+            self._engine_state = EngineState.RESPONDING
+            self._broadcast_engine_state()
         self._broadcast_event(event)
 
     # === Broadcast ===
