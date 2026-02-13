@@ -8,6 +8,7 @@
 > Phase 9 (Integration Test Fixes): ✅ COMPLETED
 > Phase 10 (GUI Compact Mode Round 3): ✅ COMPLETED
 > Phase 11 (Final Integration Verification): 🟡 BLOCKED — Gemini Pro kvóta vyčerpaná
+> Phase 12 (Error Propagation & Version): ✅ COMPLETED
 
 ---
 
@@ -895,3 +896,47 @@ Spustit: `pytest tests/integration/ -m gemini -v --timeout=120`
 ### test_real_system_prompt.py (2 testy)
 - `TestGeminiSystemPrompt::test_system_prompt_affects_response`
 - `TestGeminiSystemPrompt::test_system_prompt_only_first_message`
+
+---
+
+# Phase 12: Error Propagation & Version Display (2026-02-13)
+
+> Added: 2026-02-13
+> Status: ✅ COMPLETED
+> Commits: `55468cc`, `ae61f5f`
+
+## Bug: Kvótová chyba se nezobrazí v GUI
+
+**Root cause:** `gemini.py:804-813` — ACP kvótová chyba (`RequestError: You have exhausted
+your capacity`) spadla do oneshot fallbacku. Oneshot vrátil `success=True, error=None, content=""`
+protože gemini CLI stdout obsahoval prázdné JSON eventy → `_send_oneshot()` nevyhodil `RuntimeError`.
+Uživatel dostal prázdnou odpověď bez jakékoliv chybové indikace.
+
+**Ověřeno reprodukcí:**
+```
+Response after 1.9s: success=True, error=None, content=(empty)  ← BUG
+```
+
+**Oprava (2 vrstvy):**
+
+| Vrstva | Soubor | Fix |
+|--------|--------|-----|
+| Bridge | `gemini.py:804` | Detekce terminálních chyb (quota/capacity/exhausted) → okamžitý `BridgeResponse(success=False)` bez oneshot fallbacku |
+| Frontend | `useAvatarWebSocket.ts:315` | `chat_response` s `error` fieldem → dispatch `ERROR` akci + error fence → červený banner |
+
+**Po opravě:**
+```
+Response after 0.1s: success=False, error="You have exhausted your capacity..."  ← FIXED
+```
+
+## Version display
+
+**Problém:** Verze knihovny zobrazena jen ve fullscreen `StatusBar`, ne v compact/FAB.
+
+**Oprava:** Prop chain `App → AvatarWidget → LandingPage/CompactChat → CompactMessages`
+
+| Místo | Zobrazení |
+|-------|-----------|
+| Landing page | `Avatar Engine v0.x.x` v hlavním titulku |
+| Compact welcome | `Avatar Engine v0.x.x` v uvítací obrazovce |
+| Fullscreen StatusBar | `Avatar Engine v0.x.x` (beze změny) |
