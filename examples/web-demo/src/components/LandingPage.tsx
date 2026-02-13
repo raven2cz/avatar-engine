@@ -14,6 +14,7 @@
  */
 
 import { useTranslation } from 'react-i18next'
+import { Play } from 'lucide-react'
 import type { WidgetMode } from '../types/avatar'
 import { AVAILABLE_LANGUAGES, changeLanguage } from '../i18n'
 
@@ -22,6 +23,7 @@ interface LandingPageProps {
   version?: string | null
   defaultMode: WidgetMode
   onDefaultModeChange: (mode: WidgetMode) => void
+  onOpenPromo: () => void
 }
 
 const FEATURE_KEYS = [
@@ -91,7 +93,7 @@ const MODE_OPTIONS: { value: WidgetMode; labelKey: string }[] = [
   { value: 'fullscreen', labelKey: 'fullscreen' },
 ]
 
-export function LandingPage({ showFabHint, version, defaultMode, onDefaultModeChange }: LandingPageProps) {
+export function LandingPage({ showFabHint, version, defaultMode, onDefaultModeChange, onOpenPromo }: LandingPageProps) {
   const { t, i18n } = useTranslation()
 
   return (
@@ -113,6 +115,20 @@ export function LandingPage({ showFabHint, version, defaultMode, onDefaultModeCh
         <p className="text-text-secondary text-lg max-w-lg mx-auto leading-relaxed">
           {t('app.tagline')}
         </p>
+      </div>
+
+      {/* Watch Demo button */}
+      <div className="mb-8 animate-fade-in">
+        <button
+          onClick={onOpenPromo}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium
+            bg-gradient-to-r from-synapse/20 to-pulse/20 text-synapse
+            border border-synapse/30 hover:from-synapse/30 hover:to-pulse/30
+            transition-all hover:shadow-lg hover:shadow-synapse/10"
+        >
+          <Play className="w-4 h-4" />
+          {t('landing.watchDemo')}
+        </button>
       </div>
 
       {/* Feature grid */}

@@ -31,6 +31,7 @@
     },
     "docs": "Dokumentace & README →",
     "openChat": "Otevřít chat",
+    "watchDemo": "Sledovat Demo",
     "language": "Jazyk"
   },
   "compact": {
@@ -177,5 +178,14 @@
     "resizeWidth": "Změnit šířku chatu",
     "stopped": "[Zastaveno]",
     "copyCode": "Kopírovat kód"
+  },
+  "promo": {
+    "title": "Avatar Engine",
+    "description1": "Open-source knihovna pro tvorbu AI asistentů s animovanými postavami a podporou více poskytovatelů. Funguje s Gemini, Claude, OpenAI a jakýmkoli OpenAI-kompatibilním endpointem.",
+    "description2": "Běží na free-tier poskytovatelích — Gemini, Claude a Codex fungují bez API klíče. Stačí spustit server a chatovat.",
+    "description3": "Zahrnuje spouštění nástrojů, nahrávání souborů, historii relací, sledování nákladů a 8 vestavěných animovaných postav. Integrace do jakékoli webové appky během minut.",
+    "showNextTime": "Zobrazit při příští návštěvě",
+    "clickToPlay": "Klikni pro přehrání se zvukem",
+    "replayVideo": "Klikni pro přehrání znovu"
   }
 }

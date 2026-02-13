@@ -71,8 +71,9 @@ describe('AvatarWidget integration', () => {
 
     it('renders landing page in all modes', () => {
       renderWidget()
-      // Landing page title should always be visible
-      expect(screen.getByText('Avatar Engine')).toBeInTheDocument()
+      // Landing page title should always be visible (promo modal may also show "Avatar Engine")
+      const elements = screen.getAllByText('Avatar Engine')
+      expect(elements.length).toBeGreaterThanOrEqual(1)
     })
 
     it('fullscreen content is in DOM but hidden in fab mode', () => {

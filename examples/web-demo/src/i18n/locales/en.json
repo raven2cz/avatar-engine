@@ -31,6 +31,7 @@
     },
     "docs": "Documentation & README →",
     "openChat": "Open chat",
+    "watchDemo": "Watch Demo",
     "language": "Language"
   },
   "compact": {
@@ -175,5 +176,14 @@
     "resizeWidth": "Resize chat width",
     "stopped": "[Stopped]",
     "copyCode": "Copy code"
+  },
+  "promo": {
+    "title": "Avatar Engine",
+    "description1": "Open-source library for building AI assistants with animated character busts and multi-provider support. Works with Gemini, Claude, OpenAI, and any OpenAI-compatible endpoint.",
+    "description2": "Runs on free-tier providers — Gemini, Claude, and Codex all work without an API key. Just start the server and chat.",
+    "description3": "Includes tool execution, file uploads, session history, cost tracking, and 8 built-in animated characters. Integrates into any web app in minutes.",
+    "showNextTime": "Show on next visit",
+    "clickToPlay": "Click to play with sound",
+    "replayVideo": "Click to replay"
   }
 }

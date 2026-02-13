@@ -29,13 +29,14 @@ import type { ChatMessage, UploadedFile } from '../api/types'
 import type { WidgetMode } from '../types/avatar'
 import { useWidgetMode } from '../hooks/useWidgetMode'
 import { useAvatarThumb } from '../hooks/useAvatarThumb'
-import { LS_SELECTED_AVATAR, LS_HINTS_SHOWN } from '../types/avatar'
+import { LS_SELECTED_AVATAR, LS_HINTS_SHOWN, LS_PROMO_DISMISSED } from '../types/avatar'
 import { AVATARS, DEFAULT_AVATAR_ID, getAvatarById } from '../config/avatars'
 import { LandingPage } from './LandingPage'
 import { AvatarFab } from './AvatarFab'
 import { AvatarBust } from './AvatarBust'
 import { AvatarPicker } from './AvatarPicker'
 import { CompactChat } from './CompactChat'
+import { PromoModal } from './PromoModal'
 
 interface AvatarWidgetProps {
   /** Fullscreen content (StatusBar + ChatPanel + CostTracker) — rendered as overlay */
@@ -246,6 +247,23 @@ export function AvatarWidget({
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // --- Promo modal (auto-open on first visit) ---
+  const [promoOpen, setPromoOpen] = useState(() =>
+    localStorage.getItem(LS_PROMO_DISMISSED) !== 'true'
+  )
+  const [promoShowNextTime, setPromoShowNextTime] = useState(true)
+
+  const handlePromoClose = useCallback(() => {
+    setPromoOpen(false)
+    if (!promoShowNextTime) {
+      localStorage.setItem(LS_PROMO_DISMISSED, 'true')
+    } else {
+      localStorage.removeItem(LS_PROMO_DISMISSED)
+    }
+  }, [promoShowNextTime])
+
+  const openPromo = useCallback(() => setPromoOpen(true), [])
+
   const showBust = bustVisible && !isNarrow
   const bustAreaWidth = showBust ? 230 : 0
 
@@ -261,7 +279,7 @@ export function AvatarWidget({
       {/* Replace LandingPage with your own app content when           */}
       {/* integrating Avatar Engine into an existing application.      */}
       {/* ============================================================ */}
-      <LandingPage showFabHint={showFabHint} version={version} defaultMode={defaultMode} onDefaultModeChange={setDefaultMode} />
+      <LandingPage showFabHint={showFabHint} version={version} defaultMode={defaultMode} onDefaultModeChange={setDefaultMode} onOpenPromo={openPromo} />
 
       {/* ============================================================ */}
       {/* FULLSCREEN OVERLAY — existing app content (StatusBar, Chat)  */}
@@ -451,6 +469,15 @@ export function AvatarWidget({
           />
         </div>
       </div>
+
+      {/* Promo modal */}
+      <PromoModal
+        open={promoOpen}
+        onClose={handlePromoClose}
+        showNextTime={promoShowNextTime}
+        onShowNextTimeChange={setPromoShowNextTime}
+        version={version}
+      />
     </>
   )
 }
