@@ -1,5 +1,13 @@
 # Plan: Safety Toggle v GUI s potvrzovacím modálem
 
+## Stav implementace
+
+| Fáze | Stav |
+|------|------|
+| **Fáze 1: Safety toggle + modál** | ✅ HOTOVO (commit 74d97c5) |
+| **Fáze 1b: Race condition fix** | ✅ HOTOVO (startup task cancellation při switchi) |
+| **Fáze 2: Dotazovací režim (Ask)** | ❌ BUDOUCÍ — popsáno níže |
+
 ## Context
 
 Backend již má `safety_instructions: bool = True` implementované (engine, config, safety.py).
@@ -109,15 +117,22 @@ Tím frontend při (re)connect ví, jestli je safety zapnuté.
 
 ## Soubory
 
-| Soubor | Akce |
-|--------|------|
-| `examples/web-demo/src/components/SafetyModal.tsx` | NOVÝ — varovný modál |
-| `examples/web-demo/src/components/ProviderModelSelector.tsx` | EDIT — safety checkbox + otevírání modálu |
-| `examples/web-demo/src/hooks/useAvatarWebSocket.ts` | EDIT — `safetyInstructions` ve stavu |
-| `examples/web-demo/src/hooks/useAvatarChat.ts` | EDIT — propagace safety stavu |
-| `avatar_engine/web/server.py` | EDIT — safety flag v `connected` message |
-| `examples/web-demo/src/i18n/locales/en.json` | EDIT — anglické překlady |
-| `examples/web-demo/src/i18n/locales/cs.json` | EDIT — české překlady |
+| Soubor | Akce | Stav |
+|--------|------|------|
+| `examples/web-demo/src/components/SafetyModal.tsx` | NOVÝ — varovný modál | ✅ |
+| `examples/web-demo/src/components/ProviderModelSelector.tsx` | EDIT — safety checkbox (fullscreen) | ✅ |
+| `examples/web-demo/src/components/CompactHeader.tsx` | EDIT — safety checkbox (compact mode) | ✅ |
+| `examples/web-demo/src/hooks/useAvatarWebSocket.ts` | EDIT — `safetyInstructions` ve stavu | ✅ |
+| `examples/web-demo/src/hooks/useAvatarChat.ts` | EDIT — propagace safety stavu | ✅ |
+| `examples/web-demo/src/api/types.ts` | EDIT — `safety_instructions` v ConnectedMessage | ✅ |
+| `avatar_engine/web/server.py` | EDIT — safety flag v `connected` message + startup race fix | ✅ |
+| `avatar_engine/engine.py` | EDIT — safety_instructions v engine + bridge guard | ✅ |
+| `avatar_engine/config.py` | EDIT — safety_instructions v AvatarConfig | ✅ |
+| `avatar_engine/safety.py` | NOVÝ — DEFAULT_SAFETY_INSTRUCTIONS konstanta | ✅ |
+| `examples/web-demo/src/i18n/locales/en.json` | EDIT — anglické překlady | ✅ |
+| `examples/web-demo/src/i18n/locales/cs.json` | EDIT — české překlady | ✅ |
+| `tests/test_safety.py` | NOVÝ — unit testy safety modulu | ✅ |
+| `tests/integration/test_real_safety.py` | NOVÝ — integrační test skeleton | ✅ |
 
 ---
 
