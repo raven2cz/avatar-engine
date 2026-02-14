@@ -177,6 +177,18 @@
     "stopped": "[Stopped]",
     "copyCode": "Copy code"
   },
+  "safety": {
+    "label": "Safety instructions",
+    "enabled": "AI will refuse destructive operations",
+    "modalTitle": "Disable Safety Instructions?",
+    "modalDescription": "Without safety instructions, the AI assistant will be able to:",
+    "modalRisk1": "Delete files and directories",
+    "modalRisk2": "Access credentials and API keys",
+    "modalRisk3": "Run sudo and escalate privileges",
+    "modalWarning": "Only disable if you understand the risks and need the AI to perform operations that safety rules block.",
+    "cancel": "Cancel",
+    "disable": "Disable Safety"
+  },
   "promo": {
     "title": "Avatar Engine",
     "description1": "Open-source library for building AI assistants with animated character busts and multi-provider support. Works with Gemini, Claude, OpenAI, and any OpenAI-compatible endpoint.",

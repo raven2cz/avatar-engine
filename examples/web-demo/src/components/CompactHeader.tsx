@@ -9,6 +9,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
+import { Shield, ShieldOff } from 'lucide-react'
 import type { EngineState } from '../api/types'
 import {
   PROVIDERS,
@@ -19,6 +20,7 @@ import {
   filterChoicesForModel,
 } from '../config/providers'
 import { OptionControl } from './OptionControl'
+import { SafetyModal } from './SafetyModal'
 
 interface CompactHeaderProps {
   provider: string
@@ -221,6 +223,8 @@ function CompactProviderMenu({
   const [selectedProvider, setSelectedProvider] = useState(currentProvider)
   const [customModel, setCustomModel] = useState('')
   const [optionValues, setOptionValues] = useState<Record<string, string | number>>(activeOptions)
+  const [safetyEnabled, setSafetyEnabled] = useState(activeOptions.safety_instructions !== 0)
+  const [safetyModalOpen, setSafetyModalOpen] = useState(false)
 
   // Close on Escape (capture phase so it doesn't also trigger widget mode shortcuts)
   useEffect(() => {
@@ -255,8 +259,9 @@ function CompactProviderMenu({
         sanitized[opt.key] = opt.defaultValue as string | number
       }
     }
+    sanitized.safety_instructions = safetyEnabled ? 1 : 0
     return Object.keys(sanitized).length > 0 ? sanitized : undefined
-  }, [selectedProvider, optionValues])
+  }, [selectedProvider, optionValues, safetyEnabled])
 
   const handleModelClick = useCallback((model: string) => {
     onSwitch(selectedProvider, model, sanitizeOptions(model))
@@ -290,6 +295,8 @@ function CompactProviderMenu({
       const local = optionValues[opt.key] ?? opt.defaultValue
       if (String(current) !== String(local)) return true
     }
+    const currentSafety = activeOptions.safety_instructions !== 0
+    if (currentSafety !== safetyEnabled) return true
     return false
   })()
 
@@ -395,19 +402,58 @@ function CompactProviderMenu({
                   />
                 ))}
             </div>
-            {optionsDirty && (
-              <div className="px-2 pb-3">
-                <button
-                  onClick={handleApplyOptions}
-                  className="w-full py-1.5 rounded-lg text-[0.65rem] font-medium bg-synapse/20 text-synapse border border-synapse/30 hover:bg-synapse/30 transition-colors"
-                >
-                  {t('compact.menu.applyOptions')}
-                </button>
-              </div>
-            )}
           </>
         )}
+
+        {/* Safety toggle (shown for all providers) */}
+        <div className="border-t border-slate-mid/30" />
+        <div className="px-2 py-2">
+          <label className="flex items-center gap-2 px-2 py-1 rounded-lg cursor-pointer hover:bg-slate-mid/20 transition-colors select-none">
+            <input
+              type="checkbox"
+              checked={safetyEnabled}
+              onChange={() => {
+                if (safetyEnabled) {
+                  setSafetyModalOpen(true)
+                } else {
+                  setSafetyEnabled(true)
+                }
+              }}
+              className="w-3 h-3 rounded border-slate-mid/50 bg-slate-dark accent-synapse cursor-pointer"
+            />
+            {safetyEnabled ? (
+              <Shield className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+            ) : (
+              <ShieldOff className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+            )}
+            <div className="flex flex-col min-w-0">
+              <span className="text-xs text-text-primary leading-tight">{t('safety.label')}</span>
+              <span className="text-[0.6rem] text-text-muted leading-tight">{t('safety.enabled')}</span>
+            </div>
+          </label>
+        </div>
+
+        {optionsDirty && (
+          <div className="px-2 pb-3">
+            <button
+              onClick={handleApplyOptions}
+              className="w-full py-1.5 rounded-lg text-[0.65rem] font-medium bg-synapse/20 text-synapse border border-synapse/30 hover:bg-synapse/30 transition-colors"
+            >
+              {t('compact.menu.applyOptions')}
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Safety confirmation modal */}
+      <SafetyModal
+        open={safetyModalOpen}
+        onConfirm={() => {
+          setSafetyEnabled(false)
+          setSafetyModalOpen(false)
+        }}
+        onCancel={() => setSafetyModalOpen(false)}
+      />
     </div>
   )
 }

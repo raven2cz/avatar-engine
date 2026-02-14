@@ -33,6 +33,9 @@ class AvatarConfig:
     claude_config: Dict[str, Any] = field(default_factory=dict)
     codex_config: Dict[str, Any] = field(default_factory=dict)
 
+    # Safety
+    safety_instructions: bool = True
+
     # Engine settings
     max_history: int = 100
     auto_restart: bool = True
@@ -124,6 +127,7 @@ class AvatarConfig:
             gemini_config=gemini_cfg,
             claude_config=claude_cfg,
             codex_config=codex_cfg,
+            safety_instructions=engine_cfg.get("safety_instructions", True),
             max_history=engine_cfg.get("max_history", 100),
             auto_restart=engine_cfg.get("auto_restart", True),
             max_restarts=engine_cfg.get("max_restarts", 3),
@@ -179,6 +183,7 @@ class AvatarConfig:
             "codex": self.codex_config,
             "engine": {
                 "working_dir": self.working_dir,
+                "safety_instructions": self.safety_instructions,
                 "max_history": self.max_history,
                 "auto_restart": self.auto_restart,
                 "max_restarts": self.max_restarts,

@@ -43,6 +43,7 @@ export interface ConnectedMessage {
     engine_state: EngineState
     cwd?: string
     session_title?: string
+    safety_instructions?: boolean
   }
 }
 

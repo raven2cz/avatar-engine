@@ -25,6 +25,7 @@ export interface UseAvatarChatReturn {
   uploadFile: (file: File) => Promise<UploadedFile | null>
   removeFile: (fileId: string) => void
   isStreaming: boolean
+  safetyInstructions: boolean
   switching: boolean
   connected: boolean
   wasConnected: boolean
@@ -265,10 +266,20 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
     setIsStreaming(false)
     setActiveOptions(flatOptions && Object.keys(flatOptions).length > 0 ? flatOptions : {})
 
+    // Extract safety_instructions before building provider-specific options
+    const safetyValue = flatOptions?.safety_instructions
+    const providerFlatOptions = flatOptions ? { ...flatOptions } : undefined
+    if (providerFlatOptions) delete providerFlatOptions.safety_instructions
+
     let builtOptions: Record<string, unknown> | undefined =
-      flatOptions && Object.keys(flatOptions).length > 0
-        ? buildOptionsDict(provider, flatOptions)
+      providerFlatOptions && Object.keys(providerFlatOptions).length > 0
+        ? buildOptionsDict(provider, providerFlatOptions)
         : undefined
+
+    // Re-inject safety_instructions as top-level option (engine pops it from kwargs)
+    if (safetyValue !== undefined) {
+      builtOptions = { ...(builtOptions ?? {}), safety_instructions: !!safetyValue }
+    }
 
     // Auto-inject response_modalities for image generation models.
     // Must be nested under generation_config for proper routing to bridge.
@@ -351,6 +362,7 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
     uploadFile,
     removeFile,
     isStreaming,
+    safetyInstructions: state.safetyInstructions,
     switching: state.switching,
     connected: state.connected,
     wasConnected: state.wasConnected,

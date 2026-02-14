@@ -23,6 +23,7 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
 from .activity import ActivityTracker
 from .bridges import BaseBridge, ClaudeBridge, CodexBridge, GeminiBridge
 from .config import AvatarConfig
+from .safety import DEFAULT_SAFETY_INSTRUCTIONS
 from .utils.logging import setup_logging
 from .utils.rate_limit import RateLimiter
 from .events import (
@@ -110,6 +111,7 @@ class AvatarEngine(EventEmitter):
             self._working_dir = config.get_working_dir()
             self._timeout = config.timeout
             self._system_prompt = config.system_prompt
+            self._safety_instructions = config.safety_instructions
             self._kwargs = config.provider_kwargs
         else:
             self._config = None
@@ -118,6 +120,7 @@ class AvatarEngine(EventEmitter):
             self._working_dir = working_dir or str(Path.cwd())
             self._timeout = timeout
             self._system_prompt = system_prompt
+            self._safety_instructions = kwargs.pop("safety_instructions", True)
             self._kwargs = kwargs
 
         self._bridge: Optional[BaseBridge] = None
@@ -184,6 +187,13 @@ class AvatarEngine(EventEmitter):
 
         try:
             await self._bridge.start()
+
+            # Guard: bridge may have been torn down by a concurrent stop()
+            # (e.g. user switched provider while startup was still in progress)
+            if self._bridge is None or self._shutting_down:
+                logger.warning("Engine start aborted: bridge torn down during startup")
+                return
+
             self._started = True
             self._start_time = time.time()
             logger.info(
@@ -201,6 +211,9 @@ class AvatarEngine(EventEmitter):
                 logger.debug(f"Started health check task (interval: {interval}s)")
 
         except Exception as e:
+            if self._shutting_down:
+                logger.info("Engine start aborted during shutdown")
+                return
             self.emit(ErrorEvent(
                 provider=self._provider.value,
                 error=str(e),
@@ -519,10 +532,18 @@ class AvatarEngine(EventEmitter):
 
     def _create_bridge(self) -> BaseBridge:
         """Create the appropriate bridge for the provider."""
+        effective_prompt = self._system_prompt
+        if self._safety_instructions:
+            effective_prompt = (
+                DEFAULT_SAFETY_INSTRUCTIONS + "\n\n" + effective_prompt
+                if effective_prompt
+                else DEFAULT_SAFETY_INSTRUCTIONS
+            )
+
         common = dict(
             working_dir=self._working_dir,
             timeout=self._timeout,
-            system_prompt=self._system_prompt,
+            system_prompt=effective_prompt,
         )
 
         if self._config:

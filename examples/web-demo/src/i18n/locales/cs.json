@@ -179,6 +179,18 @@
     "stopped": "[Zastaveno]",
     "copyCode": "Kopírovat kód"
   },
+  "safety": {
+    "label": "Bezpečnostní instrukce",
+    "enabled": "AI odmítne destruktivní operace",
+    "modalTitle": "Vypnout bezpečnostní instrukce?",
+    "modalDescription": "Bez bezpečnostních instrukcí bude AI asistent moci:",
+    "modalRisk1": "Mazat soubory a adresáře",
+    "modalRisk2": "Přistupovat k přihlašovacím údajům a API klíčům",
+    "modalRisk3": "Spouštět sudo a eskalovat oprávnění",
+    "modalWarning": "Vypněte pouze pokud rozumíte rizikům a potřebujete, aby AI provedla operace blokované bezpečnostními pravidly.",
+    "cancel": "Zrušit",
+    "disable": "Vypnout ochranu"
+  },
   "promo": {
     "title": "Avatar Engine",
     "description1": "Open-source knihovna pro tvorbu AI asistentů s animovanými postavami a podporou více poskytovatelů. Funguje s Gemini, Claude, OpenAI a jakýmkoli OpenAI-kompatibilním endpointem.",

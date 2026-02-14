@@ -81,11 +81,16 @@ def create_app(
         **kwargs,
     )
 
+    # Track background startup task so it can be cancelled on early switch
+    _startup_task: Optional[asyncio.Task] = None
+
     async def _run_startup(mgr: EngineSessionManager) -> None:
         """Background task: start engine and broadcast connected."""
         try:
             await mgr.start_engine()
             _broadcast_connected(mgr)
+        except asyncio.CancelledError:
+            logger.info("Engine startup cancelled (provider switch during init)")
         except Exception as exc:
             logger.error(f"Engine startup failed: {exc}")
             if mgr.ws_bridge:
@@ -102,6 +107,7 @@ def create_app(
         then start_engine() runs in background so WS clients can connect
         and see granular init status events in real time.
         """
+        nonlocal _startup_task
         logger.info("Starting Avatar Engine web server...")
         await manager.prepare()
         if manager.ws_bridge:
@@ -425,6 +431,7 @@ def create_app(
                 "engine_state": brg.engine_state.value,
                 "cwd": mgr._working_dir,
                 "session_title": _get_session_title(mgr, sid),
+                "safety_instructions": getattr(eng, '_safety_instructions', True) if eng else True,
             },
         })
 
@@ -476,6 +483,7 @@ def create_app(
                     "engine_state": bridge.engine_state.value,
                     "cwd": manager._working_dir,
                     "session_title": _get_session_title(manager, sid),
+                    "safety_instructions": getattr(engine, '_safety_instructions', True),
                 },
             })
         else:
@@ -653,6 +661,16 @@ def create_app(
                             "data": {"error": "Missing provider for switch"},
                         })
                         continue
+
+                    # Cancel pending startup task to avoid race condition
+                    nonlocal _startup_task
+                    if _startup_task and not _startup_task.done():
+                        _startup_task.cancel()
+                        try:
+                            await _startup_task
+                        except asyncio.CancelledError:
+                            pass
+                        _startup_task = None
 
                     try:
                         await manager.switch(switch_provider, switch_model, options=switch_options)

@@ -20,6 +20,7 @@ interface AvatarWSState {
   engineState: EngineState
   initDetail: string
   switching: boolean
+  safetyInstructions: boolean
   thinking: {
     active: boolean
     phase: ThinkingPhase
@@ -63,6 +64,7 @@ const initialState: AvatarWSState = {
   engineState: 'idle',
   initDetail: '',
   switching: false,
+  safetyInstructions: true,
   thinking: { active: false, phase: 'general', subject: '', startedAt: 0 },
   toolName: '',
   cost: { totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0 },
@@ -87,6 +89,7 @@ function reducer(state: AvatarWSState, action: Action): AvatarWSState {
         cwd: action.payload.data.cwd || '',
         capabilities: action.payload.data.capabilities,
         engineState: action.payload.data.engine_state,
+        safetyInstructions: action.payload.data.safety_instructions ?? true,
         error: null,
       }
     case 'INITIALIZING':
