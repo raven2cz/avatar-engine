@@ -87,6 +87,7 @@ class TestClaudeBridgeInit:
         assert bridge.model == "claude-sonnet-4-5"
         assert bridge.timeout == 600
         assert bridge.state == BridgeState.DISCONNECTED
+        assert bridge.debug is False
 
     def test_custom_values(self):
         """Should accept custom values."""
@@ -95,11 +96,13 @@ class TestClaudeBridgeInit:
             model="claude-opus-4",
             timeout=60,
             permission_mode="plan",
+            debug=True,
         )
         assert bridge.executable == "/usr/bin/claude"
         assert bridge.model == "claude-opus-4"
         assert bridge.timeout == 60
         assert bridge.permission_mode == "plan"
+        assert bridge.debug is True
 
     def test_provider_name(self):
         """Should return correct provider name."""
@@ -143,6 +146,30 @@ class TestClaudeBridgeCommands:
         # Zero Footprint: permissions are in --settings file, not --allowedTools
         assert "--settings" in cmd
         bridge._sandbox.cleanup()
+
+    def test_persistent_command_with_debug(self):
+        """Should include --debug flag in persistent command when debug=True."""
+        bridge = ClaudeBridge(model="claude-sonnet-4-5", debug=True)
+        cmd = bridge._build_persistent_command()
+        assert "--debug" in cmd
+
+    def test_persistent_command_without_debug(self):
+        """Should not include --debug flag when debug=False (default)."""
+        bridge = ClaudeBridge(model="claude-sonnet-4-5")
+        cmd = bridge._build_persistent_command()
+        assert "--debug" not in cmd
+
+    def test_oneshot_command_with_debug(self):
+        """Should include --debug flag in oneshot command when debug=True."""
+        bridge = ClaudeBridge(model="claude-sonnet-4-5", debug=True)
+        cmd = bridge._build_oneshot_command("Hello")
+        assert "--debug" in cmd
+
+    def test_oneshot_command_without_debug(self):
+        """Should not include --debug flag in oneshot command when debug=False."""
+        bridge = ClaudeBridge(model="claude-sonnet-4-5")
+        cmd = bridge._build_oneshot_command("Hello")
+        assert "--debug" not in cmd
 
 
 class TestClaudeBridgeParsing:
@@ -220,6 +247,7 @@ class TestGeminiBridgeInit:
         assert bridge.timeout == 600
         assert bridge.approval_mode == "yolo"
         assert bridge.state == BridgeState.DISCONNECTED
+        assert bridge.debug is False
 
     def test_custom_values(self):
         """Should accept custom values."""
@@ -228,11 +256,13 @@ class TestGeminiBridgeInit:
             timeout=60,
             approval_mode="default",
             acp_enabled=False,
+            debug=True,
         )
         assert bridge.model == "gemini-2.0-flash"
         assert bridge.timeout == 60
         assert bridge.approval_mode == "default"
         assert bridge.acp_enabled is False
+        assert bridge.debug is True
 
     def test_provider_name(self):
         """Should return correct provider name."""
@@ -262,6 +292,18 @@ class TestGeminiBridgeCommands:
 
         assert "gemini" in cmd
         assert "--model" not in cmd
+
+    def test_oneshot_command_with_debug(self):
+        """Should include --debug flag in oneshot command when debug=True."""
+        bridge = GeminiBridge(model="gemini-2.0-flash", debug=True)
+        cmd = bridge._build_oneshot_command("Hello")
+        assert "--debug" in cmd
+
+    def test_oneshot_command_without_debug(self):
+        """Should not include --debug flag in oneshot command when debug=False."""
+        bridge = GeminiBridge(model="gemini-2.0-flash")
+        cmd = bridge._build_oneshot_command("Hello")
+        assert "--debug" not in cmd
 
     def test_effective_prompt_with_history(self):
         """Should inject history context."""

@@ -149,6 +149,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         mcp_servers: Optional[Dict[str, Any]] = None,
         resume_session_id: Optional[str] = None,
         continue_last: bool = False,
+        debug: bool = False,
     ):
         """
         Args:
@@ -174,6 +175,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             system_prompt=system_prompt,
             env=env,
             mcp_servers=mcp_servers,
+            debug=debug,
         )
         self.approval_mode = approval_mode
         self.auth_method = auth_method
@@ -350,6 +352,8 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         cmd_args = [gemini_bin, "--experimental-acp"]
         if self.approval_mode == "yolo":
             cmd_args.append("--yolo")
+        if self.debug:
+            cmd_args.append("--debug")
 
         env = self._build_subprocess_env()
 
@@ -1139,6 +1143,8 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             cmd.extend(["--model", self.model])
         if self.approval_mode == "yolo":
             cmd.append("--yolo")
+        if self.debug:
+            cmd.append("--debug")
         cmd.extend(["--output-format", "stream-json"])
         effective = self._build_effective_prompt(prompt)
         cmd.extend(["-p", effective])

@@ -70,7 +70,7 @@ class ClaudeBridge(BaseBridge):
         super().__init__(
             executable=executable, model=model, working_dir=working_dir,
             timeout=timeout, system_prompt=system_prompt, env=env,
-            mcp_servers=mcp_servers,
+            mcp_servers=mcp_servers, debug=debug,
         )
         self.allowed_tools = allowed_tools or []
         self.permission_mode = permission_mode
@@ -81,7 +81,6 @@ class ClaudeBridge(BaseBridge):
         self.continue_session = continue_session
         self.resume_session_id = resume_session_id
         self.fallback_model = fallback_model
-        self.debug = debug
 
         # Track whether we're in persistent mode (can fall back to oneshot)
         self._persistent_mode = True

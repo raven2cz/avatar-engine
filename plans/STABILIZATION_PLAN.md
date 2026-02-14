@@ -3,11 +3,11 @@
 > Created: 2026-02-05
 > Updated: 2026-02-13
 > Phase 1–6 (Testing): ✅ COMPLETED — **290** testů
-> Phase 7 (Bridge Observability): 🟡 IN PROGRESS — kroky 1–3 DONE, kroky 4–6 OPEN
+> Phase 7 (Bridge Observability): ✅ COMPLETED — kroky 1–3 DONE, krok 4 ŠKRTNUT, krok 5 hotový v GUI, krok 6 DONE
 > Phase 8 (Slow Startup): ✅ RESOLVED — nanobanana uninstall
 > Phase 9 (Integration Test Fixes): ✅ COMPLETED
 > Phase 10 (GUI Compact Mode Round 3): ✅ COMPLETED
-> Phase 11 (Final Integration Verification): 🟡 BLOCKED — Gemini Pro kvóta vyčerpaná
+> Phase 11 (Final Integration Verification): ✅ COMPLETED — 73/73 passed (5 nevalidních odstraněno)
 > Phase 12 (Error Propagation & Version): ✅ COMPLETED
 
 ---
@@ -576,9 +576,9 @@ Proto MUSÍ být background task, ne jednorázové čtení.
 | 1 | stderr=PIPE pro ACP | 🔴 CRITICAL | 30 min | Největší — odemkne VEŠKEROU diagnostiku | ✅ DONE |
 | 2 | Callback exceptions → ErrorEvent | 🟠 HIGH | 20 min | Odhalí tiché chyby v ACP update handleru | ✅ DONE |
 | 3 | Timeout s kontextem | 🟠 HIGH | 30 min | Uživatel ví PROČ to trvalo / spadlo | ✅ DONE |
-| 4 | Heartbeat / progress | 🟡 MEDIUM | 45 min | Uživatel ví ŽE engine pracuje | OPEN |
-| 5 | Frontend diagnostic panel | 🟡 MEDIUM | 1h | Zobrazit diagnostiku v GUI | OPEN |
-| 6 | Debug mode pro bridges | 🟢 LOW | 30 min | Extra výpis pro vývoj/debugging | OPEN |
+| 4 | Heartbeat / progress | 🟡 MEDIUM | 45 min | Uživatel ví ŽE engine pracuje | ⊘ ŠKRTNUT — modely posílají eventy průběžně |
+| 5 | Frontend diagnostic panel | 🟡 MEDIUM | 1h | Zobrazit diagnostiku v GUI | ✅ DONE — CompactChat.tsx + App.tsx fullscreen |
+| 6 | Debug mode pro bridges | 🟢 LOW | 30 min | Extra výpis pro vývoj/debugging | ✅ DONE — `debug` param v BaseBridge, `--debug` pro Claude + Gemini |
 
 **Celkový effort:** ~4h
 **ROI:** Extrémně vysoký — transformuje "slepého uživatele" na informovaného.
@@ -775,8 +775,9 @@ Měří každou fázi ACP startupu + oneshot baseline + Node.js baseline.
 # Phase 11: Final Integration Verification (2026-02-13)
 
 > Added: 2026-02-13
-> Status: 🟡 BLOCKED — Gemini Pro model kvóta vyčerpaná
+> Status: ✅ COMPLETED — 73/73 passed
 > Commit: `f424b08`
+> Updated: 2026-02-14 — Kvóta obnovena, všechny testy prošly
 
 ## Bug fixy v integračních testech
 

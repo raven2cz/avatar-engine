@@ -92,9 +92,11 @@ class BaseBridge(ABC):
         system_prompt: str = "",
         env: Optional[Dict[str, str]] = None,
         mcp_servers: Optional[Dict[str, Any]] = None,
+        debug: bool = False,
     ):
         self.executable = executable
         self.model = model
+        self.debug = debug
         self.working_dir = working_dir or os.getcwd()
         self.timeout = timeout
         self.system_prompt = system_prompt
