@@ -6,7 +6,7 @@
 |------|------|
 | **Fáze 1: Safety toggle + modál** | ✅ HOTOVO (commit 74d97c5) |
 | **Fáze 1b: Race condition fix** | ✅ HOTOVO (startup task cancellation při switchi) |
-| **Fáze 2: Dotazovací režim (Ask)** | ✅ HOTOVO (branch feature/safety-ask-mode) |
+| **Fáze 2: Dotazovací režim (Ask)** | ✅ HOTOVO (commit 8f43259, merged to main) |
 
 ## Context
 
