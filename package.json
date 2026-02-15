@@ -1,0 +1,12 @@
+{
+  "name": "avatar-engine-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/core && npm run build -w packages/react && npm run build -w examples/web-demo",
+    "test": "npm test -w packages/core && npm test -w packages/react"
+  }
+}

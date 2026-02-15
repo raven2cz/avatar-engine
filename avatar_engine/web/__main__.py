@@ -65,6 +65,11 @@ def main() -> None:
         help="Don't serve static web-demo files",
     )
     parser.add_argument(
+        "--static-dir",
+        default=None,
+        help="Directory with built frontend assets (overrides default)",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -98,6 +103,7 @@ def main() -> None:
         system_prompt=args.system_prompt,
         cors_origins=args.cors_origins,
         serve_static=not args.no_static,
+        static_dir=args.static_dir,
     )
 
     print(f"\n  Avatar Engine Web Server")

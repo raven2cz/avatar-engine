@@ -36,6 +36,18 @@ logger = logging.getLogger(__name__)
 title_registry = SessionTitleRegistry()
 
 
+def create_api_app(**kwargs: Any) -> Any:
+    """Create avatar API without static serving. For embedding in host FastAPI.
+
+    Args:
+        **kwargs: Same as create_app() except serve_static is forced off.
+
+    Returns:
+        FastAPI application instance (API-only, no static files)
+    """
+    return create_app(serve_static=False, **kwargs)
+
+
 def create_app(
     provider: str = "gemini",
     model: Optional[str] = None,
@@ -44,6 +56,7 @@ def create_app(
     system_prompt: str = "",
     cors_origins: Optional[List[str]] = None,
     serve_static: bool = True,
+    static_dir: Optional[str] = None,
     **kwargs: Any,
 ) -> Any:
     """Create a FastAPI application for Avatar Engine web bridge.
@@ -750,12 +763,14 @@ def create_app(
     # === Optional: Serve static web-demo build ===
 
     if serve_static:
-        static_dir = Path(__file__).parent.parent.parent / "examples" / "web-demo" / "dist"
-        if static_dir.exists():
+        sd = Path(static_dir) if static_dir else (
+            Path(__file__).parent.parent.parent / "examples" / "web-demo" / "dist"
+        )
+        if sd.exists():
             try:
                 from fastapi.staticfiles import StaticFiles
-                app.mount("/", StaticFiles(directory=str(static_dir), html=True))
-                logger.info(f"Serving static files from {static_dir}")
+                app.mount("/", StaticFiles(directory=str(sd), html=True))
+                logger.info(f"Serving static files from {sd}")
             except Exception:
                 pass
 

@@ -1,0 +1,220 @@
+/* Avatar Engine — component styles
+ * Import as: import '@avatar-engine/react/styles.css'
+ *
+ * These styles complement the Tailwind preset and provide
+ * non-utility CSS that components depend on.
+ */
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #12121a;
+}
+::-webkit-scrollbar-thumb {
+  background: #1a1a2e;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a2a42;
+}
+
+/* Smooth scroll for chat */
+.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(18, 18, 26, 0.8);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+.glass-panel {
+  background: rgba(12, 12, 20, 0.92);
+  backdrop-filter: blur(32px) saturate(120%);
+  -webkit-backdrop-filter: blur(32px) saturate(120%);
+}
+
+.glass-light {
+  background: rgba(26, 26, 46, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #6366f1, #a78bfa, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Breathing orb glow */
+.orb-glow {
+  box-shadow:
+    0 0 30px rgba(139, 92, 246, 0.4),
+    0 0 60px rgba(236, 72, 153, 0.2),
+    inset 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+/* Code block styling */
+.prose pre {
+  background: #0f0f17;
+  border: 1px solid #1a1a2e;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.prose code {
+  color: #a78bfa;
+  font-size: 0.875em;
+}
+
+/* Markdown body */
+.markdown-body {
+  line-height: 1.65;
+  word-wrap: break-word;
+}
+
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Task list checkboxes (GFM) */
+.markdown-body input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid #6366f1;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 6px;
+  position: relative;
+  top: -1px;
+}
+
+.markdown-body input[type="checkbox"]:checked {
+  background: #6366f1;
+}
+
+.markdown-body input[type="checkbox"]:checked::after {
+  content: '\2713';
+  color: white;
+  font-size: 10px;
+  position: absolute;
+  top: -1px;
+  left: 2px;
+}
+
+/* Strikethrough (GFM) */
+.markdown-body del {
+  color: #64748b;
+  text-decoration: line-through;
+}
+
+/* ===========================
+   COMPACT MODE — scrollbar & markdown overrides
+   =========================== */
+
+.compact-messages {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(58, 58, 90, 0.5) transparent;
+}
+.compact-messages::-webkit-scrollbar { width: 8px; }
+.compact-messages::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px 0;
+}
+.compact-messages::-webkit-scrollbar-thumb {
+  background: rgba(58, 58, 90, 0.5);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.compact-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.45);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Compact markdown — smaller fonts, tighter spacing */
+.compact-markdown .markdown-body {
+  line-height: 1.5;
+}
+.compact-markdown .markdown-body [class*="language-"] {
+  padding: 0.5rem !important;
+  font-size: 0.65rem !important;
+  line-height: 1.45 !important;
+}
+.compact-markdown .markdown-body pre {
+  padding: 0.5rem !important;
+  font-size: 0.65rem !important;
+  border-radius: 0.5rem;
+  line-height: 1.45 !important;
+}
+.compact-markdown .markdown-body code {
+  font-size: 0.85em !important;
+}
+.compact-markdown .markdown-body .group {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+.compact-markdown .markdown-body .group > div:first-child {
+  padding: 0.2rem 0.6rem !important;
+}
+.compact-markdown .markdown-body .group > div:first-child span {
+  font-size: 9px !important;
+}
+.compact-markdown .markdown-body p {
+  margin-bottom: 0.4em;
+}
+.compact-markdown .markdown-body h1,
+.compact-markdown .markdown-body h2,
+.compact-markdown .markdown-body h3 {
+  margin-top: 0.6em;
+  margin-bottom: 0.3em;
+}
+.compact-markdown .markdown-body ul,
+.compact-markdown .markdown-body ol {
+  padding-left: 1.2em;
+  margin-bottom: 0.4em;
+}
+
+/* ===========================
+   BUST ANIMATION STATES (CSS keyframes)
+   =========================== */
+
+@keyframes bust-breathe {
+  0%, 100% { transform: translateY(2.8%) scale(1); }
+  50% { transform: translateY(calc(2.8% - 4px)) scale(1.006); }
+}
+@keyframes bust-thinking {
+  0%, 100% { transform: translateY(2.8%) rotate(0deg); }
+  30% { transform: translateY(calc(2.8% - 7px)) rotate(-1.2deg); }
+  70% { transform: translateY(calc(2.8% - 3px)) rotate(0.8deg); }
+}
+@keyframes bust-speaking {
+  0%, 100% { transform: translateY(2.8%) scale(1); }
+  50% { transform: translateY(2.8%) scale(1.015); }
+}
+@keyframes bust-shake {
+  0%, 100% { transform: translateY(2.8%) translateX(0); }
+  15% { transform: translateY(2.8%) translateX(-8px); }
+  30% { transform: translateY(2.8%) translateX(8px); }
+  45% { transform: translateY(2.8%) translateX(-6px); }
+  60% { transform: translateY(2.8%) translateX(6px); }
+  75% { transform: translateY(2.8%) translateX(-3px); }
+  90% { transform: translateY(2.8%) translateX(3px); }
+}
+
+[data-state="idle"] { animation: bust-breathe 3.5s ease-in-out infinite; }
+[data-state="thinking"] { animation: bust-thinking 3s ease-in-out infinite; }
+[data-state="speaking"] { animation: bust-speaking 2s ease-in-out infinite; }
+[data-state="error"] { animation: bust-shake 0.6s ease-in-out; }

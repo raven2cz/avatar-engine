@@ -1,5 +1,10 @@
 /// <reference types="vitest/globals" />
 import '@testing-library/jest-dom'
+import { initAvatarI18n } from '@avatar-engine/react'
+import { initReactI18next } from 'react-i18next'
+
+// Initialize i18n for tests
+initAvatarI18n([initReactI18next])
 
 // Mock localStorage
 const store: Record<string, string> = {}

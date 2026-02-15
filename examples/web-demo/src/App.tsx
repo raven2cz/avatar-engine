@@ -1,26 +1,23 @@
 /**
  * Avatar Engine Web Demo — Main application.
  *
- * Architecture:
- *   useAvatarChat is called ONCE here. Its state is shared between
- *   compact mode (via AvatarWidget props) and fullscreen mode (via
- *   children rendered as overlay). Mode transitions never reconnect
- *   the WebSocket or reinitialize any state.
- *
- * Integration guide:
- *   AvatarWidget wraps your app. Pass chat data as props for compact
- *   mode, and render your fullscreen UI as children. Replace the
- *   <LandingPage> (inside AvatarWidget) with your own background.
+ * Imports all UI from @avatar-engine/react package.
+ * Only demo-specific components (LandingPage, PromoModal) remain local.
  */
 
-import { useCallback, useRef } from 'react'
-import { StatusBar } from './components/StatusBar'
-import { ChatPanel } from './components/ChatPanel'
-import { CostTracker } from './components/CostTracker'
-import { AvatarWidget } from './components/AvatarWidget'
-import { PermissionDialog } from './components/PermissionDialog'
-import { useAvatarChat } from './hooks/useAvatarChat'
-import { useAvailableProviders } from './hooks/useAvailableProviders'
+import { useCallback, useRef, useState } from 'react'
+import {
+  StatusBar,
+  ChatPanel,
+  CostTracker,
+  AvatarWidget,
+  PermissionDialog,
+  useAvatarChat,
+  useAvailableProviders,
+  LS_PROMO_DISMISSED,
+} from '@avatar-engine/react'
+import { LandingPage } from './components/LandingPage'
+import { PromoModal } from './components/PromoModal'
 
 // WebSocket URL — uses Vite proxy in dev, direct in production
 const WS_URL =
@@ -68,11 +65,25 @@ export default function App() {
     sendPermissionResponse,
   } = useAvatarChat(WS_URL)
 
+  // --- Promo modal state (demo-specific) ---
+  const [promoOpen, setPromoOpen] = useState(() =>
+    localStorage.getItem(LS_PROMO_DISMISSED) !== 'true'
+  )
+  const [promoShowNextTime, setPromoShowNextTime] = useState(true)
+
+  const handlePromoClose = useCallback(() => {
+    setPromoOpen(false)
+    if (!promoShowNextTime) {
+      localStorage.setItem(LS_PROMO_DISMISSED, 'true')
+    } else {
+      localStorage.removeItem(LS_PROMO_DISMISSED)
+    }
+  }, [promoShowNextTime])
+
   return (
     <>
     <PermissionDialog request={permissionRequest} onRespond={sendPermissionResponse} />
     <AvatarWidget
-      // Shared chat data — used by compact mode components
       messages={messages}
       sendMessage={sendMessage}
       stopResponse={stopResponse}
@@ -92,18 +103,21 @@ export default function App() {
       uploading={uploading}
       uploadFile={uploadFile}
       removeFile={removeFile}
-      // Provider switching — enables ⋯ dropdown in compact header
       switching={switching}
       activeOptions={activeOptions}
       availableProviders={availableProviders}
       switchProvider={switchProvider}
       onCompactModeRef={compactModeRef}
+      renderBackground={({ showFabHint, version: v, defaultMode, onDefaultModeChange }) => (
+        <LandingPage
+          showFabHint={showFabHint}
+          version={v}
+          defaultMode={defaultMode}
+          onDefaultModeChange={onDefaultModeChange}
+          onOpenPromo={() => setPromoOpen(true)}
+        />
+      )}
     >
-      {/* ============================================================ */}
-      {/* FULLSCREEN CONTENT — rendered as overlay by AvatarWidget     */}
-      {/* This is the existing full app UI (StatusBar + ChatPanel).    */}
-      {/* It stays in the DOM at all times to avoid remounting.        */}
-      {/* ============================================================ */}
       <div className="h-full bg-obsidian flex flex-col overflow-hidden">
         <StatusBar
           connected={connected}
@@ -125,7 +139,6 @@ export default function App() {
           onCompactMode={handleCompactMode}
         />
 
-        {/* Status banner — initialization or error */}
         {!connected && !wasConnected && (
           <div className="mx-6 mt-2 px-4 py-2 rounded-xl bg-synapse/10 border border-synapse/30 text-synapse text-sm animate-slide-up flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-synapse animate-pulse" />
@@ -149,7 +162,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Main chat area */}
         <main className="flex-1 flex flex-col min-h-0">
           <ChatPanel
             messages={messages}
@@ -165,7 +177,6 @@ export default function App() {
           />
         </main>
 
-        {/* Footer: Cost tracker */}
         {capabilities?.cost_tracking && (
           <footer className="px-6 pb-2">
             <div className="max-w-4xl mx-auto">
@@ -175,6 +186,13 @@ export default function App() {
         )}
       </div>
     </AvatarWidget>
+    <PromoModal
+      open={promoOpen}
+      onClose={handlePromoClose}
+      showNextTime={promoShowNextTime}
+      onShowNextTimeChange={setPromoShowNextTime}
+      version={version}
+    />
     </>
   )
 }

@@ -1,0 +1,57 @@
+{
+  "name": "@avatar-engine/react",
+  "version": "1.0.0",
+  "description": "React components and hooks for Avatar Engine — chat UI, avatar bust, provider selector",
+  "type": "module",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.es.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.es.js",
+      "require": "./dist/index.cjs.js"
+    },
+    "./styles.css": "./dist/style.css",
+    "./tailwind-preset": "./tailwind-preset.js"
+  },
+  "files": [
+    "dist",
+    "tailwind-preset.js"
+  ],
+  "scripts": {
+    "build": "vite build && tsc --emitDeclarationOnly",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "dependencies": {
+    "@avatar-engine/core": "*",
+    "lucide-react": "^0.300.0",
+    "react-markdown": "^9.0.0",
+    "react-syntax-highlighter": "^15.6.0",
+    "remark-gfm": "^4.0.0",
+    "react-i18next": "^16.5.4"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/react-syntax-highlighter": "^15.5.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "vite-plugin-dts": "^4.0.0",
+    "vitest": "^4.0.18"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/raven2cz/avatar-engine",
+    "directory": "packages/react"
+  }
+}

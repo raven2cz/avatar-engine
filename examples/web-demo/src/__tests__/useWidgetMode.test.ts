@@ -8,8 +8,8 @@
 /// <reference types="vitest/globals" />
 import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useWidgetMode } from '../hooks/useWidgetMode'
-import { LS_WIDGET_MODE, LS_COMPACT_HEIGHT, LS_COMPACT_WIDTH, LS_BUST_VISIBLE, LS_DEFAULT_MODE } from '../types/avatar'
+import { useWidgetMode } from '@avatar-engine/react'
+import { LS_WIDGET_MODE, LS_COMPACT_HEIGHT, LS_COMPACT_WIDTH, LS_BUST_VISIBLE, LS_DEFAULT_MODE } from '@avatar-engine/core'
 
 describe('useWidgetMode', () => {
   beforeEach(() => {
