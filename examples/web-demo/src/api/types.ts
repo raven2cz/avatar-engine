@@ -32,6 +32,9 @@ export interface ProviderCapabilities {
 
 // === Server → Client messages ===
 
+// Safety mode (mirrors SafetyMode in safety.py)
+export type SafetyMode = 'safe' | 'ask' | 'unrestricted'
+
 export interface ConnectedMessage {
   type: 'connected'
   data: {
@@ -43,7 +46,7 @@ export interface ConnectedMessage {
     engine_state: EngineState
     cwd?: string
     session_title?: string
-    safety_instructions?: boolean
+    safety_mode?: SafetyMode
   }
 }
 
@@ -202,6 +205,18 @@ export interface SessionTitleUpdatedMessage {
   }
 }
 
+export interface PermissionRequestMessage {
+  type: 'permission_request'
+  data: {
+    request_id: string
+    tool_name: string
+    tool_input: string
+    options: Array<{ option_id: string; kind: string }>
+    timestamp: number
+    provider: string
+  }
+}
+
 export type ServerMessage =
   | ConnectedMessage
   | TextMessage
@@ -218,6 +233,7 @@ export type ServerMessage =
   | HistoryClearedMessage
   | InitializingMessage
   | SessionTitleUpdatedMessage
+  | PermissionRequestMessage
 
 // === Client → Server messages ===
 
@@ -272,7 +288,16 @@ export interface NewSessionRequest {
   data: Record<string, never>
 }
 
-export type ClientMessage = ChatRequest | StopRequest | PingRequest | ClearHistoryRequest | SwitchRequest | ResumeSessionRequest | NewSessionRequest
+export interface PermissionResponseRequest {
+  type: 'permission_response'
+  data: {
+    request_id: string
+    option_id: string
+    cancelled: boolean
+  }
+}
+
+export type ClientMessage = ChatRequest | StopRequest | PingRequest | ClearHistoryRequest | SwitchRequest | ResumeSessionRequest | NewSessionRequest | PermissionResponseRequest
 
 // === Session info (from GET /api/avatar/sessions) ===
 

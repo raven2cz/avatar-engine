@@ -66,14 +66,16 @@ class WebSocketBridge:
         self._emitter.add_handler(DiagnosticEvent, self._on_diagnostic)
         self._emitter.add_handler(ErrorEvent, self._on_error)
         self._emitter.add_handler(StateEvent, self._on_state)
-        # TextEvent is forwarded directly (no state logic needed)
-        from ..events import TextEvent, CostEvent
+        # TextEvent, CostEvent, PermissionRequestEvent are forwarded directly
+        # (no state logic needed — just serialize and broadcast)
+        from ..events import TextEvent, CostEvent, PermissionRequestEvent
         self._emitter.add_handler(TextEvent, self._on_generic)
         self._emitter.add_handler(CostEvent, self._on_generic)
+        self._emitter.add_handler(PermissionRequestEvent, self._on_generic)
 
     def unregister(self) -> None:
         """Remove all handlers from the emitter."""
-        from ..events import TextEvent, CostEvent
+        from ..events import TextEvent, CostEvent, PermissionRequestEvent
         self._emitter.remove_handler(ThinkingEvent, self._on_thinking)
         self._emitter.remove_handler(ToolEvent, self._on_tool)
         self._emitter.remove_handler(ActivityEvent, self._on_activity)
@@ -82,6 +84,7 @@ class WebSocketBridge:
         self._emitter.remove_handler(StateEvent, self._on_state)
         self._emitter.remove_handler(TextEvent, self._on_generic)
         self._emitter.remove_handler(CostEvent, self._on_generic)
+        self._emitter.remove_handler(PermissionRequestEvent, self._on_generic)
 
     # === Client management ===
 

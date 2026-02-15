@@ -150,10 +150,12 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         resume_session_id: Optional[str] = None,
         continue_last: bool = False,
         debug: bool = False,
+        permission_handler: Optional[Any] = None,
     ):
         """
         Args:
             approval_mode: "yolo" auto-approves all tool calls.
+                "ask" routes permission requests to GUI via permission_handler.
             auth_method: ACP auth method ("oauth-personal", "gemini-api-key", "vertex-ai").
             context_messages: Max history messages for oneshot context injection.
             context_max_chars: Max chars per message in oneshot context.
@@ -166,6 +168,8 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 - max_output_tokens: int (max response length)
             resume_session_id: Resume a specific session by ID (via ACP load_session).
             continue_last: Continue the most recent session (via ACP list+load).
+            permission_handler: Async callback for Ask mode permission routing.
+                Signature: async (request_id, tool_name, tool_input, options) -> dict
         """
         super().__init__(
             executable=executable,
@@ -178,6 +182,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             debug=debug,
         )
         self.approval_mode = approval_mode
+        self._acp_session_mode = approval_mode  # Used by ACPSessionMixin._apply_session_mode
         self.auth_method = auth_method
         self.context_messages = context_messages
         self.context_max_chars = context_max_chars
@@ -185,6 +190,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         self.generation_config = generation_config or {}
         self.resume_session_id = resume_session_id
         self.continue_last = continue_last
+        self._permission_handler = permission_handler
 
         # ACP state
         self._acp_conn = None
@@ -380,6 +386,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         client = _AvatarACPClient(
             auto_approve=(self.approval_mode == "yolo"),
             on_update=self._handle_acp_update,
+            permission_handler=self._permission_handler,
         )
 
         # Connect to agent via official SDK API
@@ -1235,15 +1242,22 @@ if _ACP_AVAILABLE:
         """
         ACP client that handles Gemini CLI's permission requests and
         session update notifications for the Avatar Engine.
+
+        Modes:
+        - auto_approve=True: silently approve all tool calls (yolo/unrestricted)
+        - auto_approve=False + permission_handler: route to GUI (ask mode)
+        - auto_approve=False + no handler: deny all (safe fallback)
         """
 
         def __init__(
             self,
             auto_approve: bool = True,
             on_update: Optional[Callable] = None,
+            permission_handler: Optional[Any] = None,
         ):
             self._auto_approve = auto_approve
             self._on_update = on_update
+            self._permission_handler = permission_handler
 
         async def request_permission(
             self,
@@ -1253,6 +1267,24 @@ if _ACP_AVAILABLE:
             **kwargs,
         ) -> "RequestPermissionResponse":
             """Handle tool permission requests from Gemini CLI."""
+            tool_id = getattr(tool_call, "tool_call_id", "?")
+            logger.info(
+                f"ACP request_permission called: tool_call_id={tool_id}, "
+                f"auto_approve={self._auto_approve}, "
+                f"has_handler={self._permission_handler is not None}, "
+                f"options_count={len(options)}"
+            )
+            # Debug dump: full tool_call and options structure
+            logger.debug(
+                f"ACP request_permission tool_call attrs: "
+                f"{vars(tool_call) if hasattr(tool_call, '__dict__') else repr(tool_call)}"
+            )
+            for i, opt in enumerate(options):
+                logger.debug(
+                    f"ACP request_permission option[{i}]: "
+                    f"{vars(opt) if hasattr(opt, '__dict__') else repr(opt)}"
+                )
+            logger.debug(f"ACP request_permission kwargs: {kwargs}")
             if self._auto_approve:
                 logger.debug(
                     f"Auto-approving tool call in session {session_id}"
@@ -1274,13 +1306,100 @@ if _ACP_AVAILABLE:
                 return RequestPermissionResponse(
                     outcome=DeniedOutcome(outcome="cancelled")
                 )
-            else:
-                logger.warning(
-                    f"Tool call denied (auto_approve=False): {tool_call}"
+
+            # Gemini ACP tool_call has tool_call_id ("bash-123456") and title
+            raw_id = getattr(tool_call, "tool_call_id", "") or ""
+            tool_name = (
+                getattr(tool_call, "function_name", "")
+                or raw_id.rsplit("-", 1)[0]  # "ask_user-123" → "ask_user"
+                or str(tool_call)
+            )
+
+            # Auto-approve non-destructive interactive tools (ask_user, etc.)
+            # These tools need user text input which ACP permission flow can't carry.
+            # The interaction happens through normal chat messages instead.
+            _AUTO_APPROVE_TOOLS = {"ask_user"}
+            if tool_name in _AUTO_APPROVE_TOOLS:
+                logger.info(
+                    f"Auto-approving non-destructive tool '{tool_name}'"
+                )
+                for opt in options:
+                    if getattr(opt, "kind", "") in {"allow_once", "allow_always"}:
+                        return RequestPermissionResponse(
+                            outcome=AllowedOutcome(
+                                option_id=opt.option_id, outcome="selected"
+                            )
+                        )
+                if options:
+                    return RequestPermissionResponse(
+                        outcome=AllowedOutcome(
+                            option_id=options[0].option_id, outcome="selected"
+                        )
+                    )
+
+            # Ask mode: route to GUI via permission_handler
+            if self._permission_handler:
+                import uuid
+                request_id = str(uuid.uuid4())
+                tool_input = str(
+                    getattr(tool_call, "title", "")
+                    or getattr(tool_call, "arguments", "")
+                    or ""
+                )[:500]
+
+                # Build options list for GUI
+                gui_options = []
+                for opt in options:
+                    gui_options.append({
+                        "option_id": getattr(opt, "option_id", ""),
+                        "kind": getattr(opt, "kind", ""),
+                    })
+
+                logger.info(
+                    f"Permission request for {tool_name}: "
+                    f"{len(gui_options)} options, waiting for user..."
+                )
+
+                try:
+                    result = await self._permission_handler(
+                        request_id, tool_name, tool_input, gui_options,
+                    )
+                except Exception as exc:
+                    logger.error(f"Permission handler error: {exc}")
+                    return RequestPermissionResponse(
+                        outcome=DeniedOutcome(outcome="cancelled")
+                    )
+
+                if result.get("cancelled"):
+                    logger.info(f"Permission denied by user for {tool_name}")
+                    return RequestPermissionResponse(
+                        outcome=DeniedOutcome(outcome="cancelled")
+                    )
+
+                selected_id = result.get("option_id", "")
+                logger.info(
+                    f"Permission granted by user for {tool_name}: {selected_id}"
                 )
                 return RequestPermissionResponse(
-                    outcome=DeniedOutcome(outcome="cancelled")
+                    outcome=AllowedOutcome(
+                        option_id=selected_id, outcome="selected"
+                    )
                 )
+
+            # No handler — deny (ask mode without GUI connected)
+            raw_id = getattr(tool_call, "tool_call_id", "") or ""
+            tool_name = (
+                getattr(tool_call, "function_name", "")
+                or raw_id.rsplit("-", 1)[0]
+                or str(tool_call)
+            )
+            logger.warning(
+                f"Permission denied for '{tool_name}': no permission_handler "
+                f"configured (auto_approve=False, ask mode without GUI?)"
+            )
+            return RequestPermissionResponse(
+                outcome=DeniedOutcome(outcome="cancelled")
+            )
 
         async def session_update(self, session_id, update, **kwargs):
             """Handle streaming session updates from Gemini CLI."""

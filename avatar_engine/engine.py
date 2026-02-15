@@ -23,7 +23,12 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
 from .activity import ActivityTracker
 from .bridges import BaseBridge, ClaudeBridge, CodexBridge, GeminiBridge
 from .config import AvatarConfig
-from .safety import DEFAULT_SAFETY_INSTRUCTIONS
+from .safety import (
+    DEFAULT_SAFETY_INSTRUCTIONS,
+    ASK_MODE_SAFETY_INSTRUCTIONS,
+    SafetyMode,
+    normalize_safety_mode,
+)
 from .utils.logging import setup_logging
 from .utils.rate_limit import RateLimiter
 from .events import (
@@ -111,7 +116,9 @@ class AvatarEngine(EventEmitter):
             self._working_dir = config.get_working_dir()
             self._timeout = config.timeout
             self._system_prompt = config.system_prompt
-            self._safety_instructions = config.safety_instructions
+            self._safety_mode: SafetyMode = normalize_safety_mode(
+                config.safety_instructions
+            )
             self._kwargs = config.provider_kwargs
         else:
             self._config = None
@@ -120,7 +127,8 @@ class AvatarEngine(EventEmitter):
             self._working_dir = working_dir or str(Path.cwd())
             self._timeout = timeout
             self._system_prompt = system_prompt
-            self._safety_instructions = kwargs.pop("safety_instructions", True)
+            raw_safety = kwargs.pop("safety_instructions", kwargs.pop("safety_mode", "safe"))
+            self._safety_mode: SafetyMode = normalize_safety_mode(raw_safety)
             self._kwargs = kwargs
 
         self._bridge: Optional[BaseBridge] = None
@@ -129,6 +137,7 @@ class AvatarEngine(EventEmitter):
         self._restart_count = 0
         self._health_check_task: Optional[asyncio.Task] = None
         self._shutting_down = False
+        self._pending_permissions: Dict[str, asyncio.Future] = {}
         self._signal_handlers_installed = False
         self._original_sigterm = None
         self._original_sigint = None
@@ -224,6 +233,9 @@ class AvatarEngine(EventEmitter):
     async def stop(self) -> None:
         """Stop the engine (async)."""
         self._shutting_down = True
+
+        # Cancel pending permission dialogs (Ask mode)
+        self.cancel_all_permissions()
 
         # Cancel health check task
         if self._health_check_task and not self._health_check_task.done():
@@ -530,15 +542,105 @@ class AvatarEngine(EventEmitter):
 
     # === Internal ===
 
+    @property
+    def safety_mode(self) -> SafetyMode:
+        """Current safety mode."""
+        return self._safety_mode
+
+    # --- Permission handling (Ask mode) ---
+
+    async def handle_permission_request(
+        self,
+        request_id: str,
+        tool_name: str,
+        tool_input: str,
+        options: List[Dict[str, str]],
+    ) -> Dict[str, Any]:
+        """Route permission request to GUI via events. Returns user's choice.
+
+        Called by ACP bridge clients in Ask mode. Emits PermissionRequestEvent,
+        then awaits an asyncio.Future that is resolved by resolve_permission().
+        Logged for debugging permission flow.
+
+        Defensive timeout: auto-deny after 10 minutes if GUI doesn't respond
+        (e.g. browser tab closed, WS disconnected).
+        """
+        from .events import PermissionRequestEvent
+
+        logger.info(
+            f"[PERM] handle_permission_request: id={request_id} "
+            f"tool={tool_name} options={len(options)}"
+        )
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[Dict[str, Any]] = loop.create_future()
+        if request_id in self._pending_permissions:
+            logger.warning(
+                f"Duplicate permission request_id '{request_id}', "
+                f"cancelling previous request"
+            )
+            old = self._pending_permissions.pop(request_id)
+            if not old.done():
+                old.set_result({"option_id": "", "cancelled": True})
+        self._pending_permissions[request_id] = future
+
+        self.emit(PermissionRequestEvent(
+            provider=self._provider.value,
+            request_id=request_id,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            options=options,
+        ))
+
+        try:
+            return await asyncio.wait_for(future, timeout=600)
+        except asyncio.TimeoutError:
+            self._pending_permissions.pop(request_id, None)
+            logger.warning(f"Permission request {request_id} timed out after 600s, auto-denying")
+            return {"option_id": "", "cancelled": True}
+
+    def resolve_permission(
+        self,
+        request_id: str,
+        option_id: str = "",
+        cancelled: bool = False,
+    ) -> None:
+        """Resolve a pending permission request (called from WS handler)."""
+        logger.info(
+            f"[PERM] resolve_permission: id={request_id} "
+            f"option_id={option_id} cancelled={cancelled}"
+        )
+        future = self._pending_permissions.pop(request_id, None)
+        if future and not future.done():
+            future.set_result({"option_id": option_id, "cancelled": cancelled})
+
+    def cancel_all_permissions(self) -> None:
+        """Cancel all pending permission requests (e.g. on provider switch)."""
+        for rid, future in list(self._pending_permissions.items()):
+            if not future.done():
+                future.set_result({"option_id": "", "cancelled": True})
+        self._pending_permissions.clear()
+
     def _create_bridge(self) -> BaseBridge:
         """Create the appropriate bridge for the provider."""
+        logger.info(
+            f"[SAFETY] Creating bridge: provider={self._provider.value} "
+            f"safety_mode={self._safety_mode}"
+        )
         effective_prompt = self._system_prompt
-        if self._safety_instructions:
+        if self._safety_mode == "safe":
             effective_prompt = (
                 DEFAULT_SAFETY_INSTRUCTIONS + "\n\n" + effective_prompt
                 if effective_prompt
                 else DEFAULT_SAFETY_INSTRUCTIONS
             )
+        elif self._safety_mode == "ask":
+            effective_prompt = (
+                ASK_MODE_SAFETY_INSTRUCTIONS + "\n\n" + effective_prompt
+                if effective_prompt
+                else ASK_MODE_SAFETY_INSTRUCTIONS
+            )
+        # "unrestricted" — no safety prefix
 
         common = dict(
             working_dir=self._working_dir,
@@ -584,24 +686,37 @@ class AvatarEngine(EventEmitter):
         elif self._provider == ProviderType.CODEX:
             pcfg = self._config.codex_config if self._config else self._kwargs
             session_cfg = pcfg.get("session", {})
+            # Ask mode: override approval_mode and inject permission handler
+            codex_approval = pcfg.get("approval_mode", "auto")
+            codex_perm_handler = None
+            if self._safety_mode == "ask":
+                codex_approval = "ask"
+                codex_perm_handler = self.handle_permission_request
             return CodexBridge(
                 executable=pcfg.get("executable", "npx"),
                 executable_args=pcfg.get("executable_args", ["@zed-industries/codex-acp"]),
                 model=self._model or pcfg.get("model", ""),
                 auth_method=pcfg.get("auth_method", "chatgpt"),
-                approval_mode=pcfg.get("approval_mode", "auto"),
+                approval_mode=codex_approval,
                 sandbox_mode=pcfg.get("sandbox_mode", "workspace-write"),
                 resume_session_id=session_cfg.get("resume_id") or self._kwargs.get("resume_session_id"),
                 continue_last=session_cfg.get("continue_last", False) or self._kwargs.get("continue_last", False),
+                permission_handler=codex_perm_handler,
                 **common,
             )
         else:
             pcfg = self._config.gemini_config if self._config else self._kwargs
             session_cfg = pcfg.get("session", {})
+            # Ask mode: override approval_mode and inject permission handler
+            gemini_approval = pcfg.get("approval_mode", "yolo")
+            gemini_perm_handler = None
+            if self._safety_mode == "ask":
+                gemini_approval = "ask"
+                gemini_perm_handler = self.handle_permission_request
             return GeminiBridge(
                 executable=pcfg.get("executable", "gemini"),
                 model=self._model or pcfg.get("model", ""),  # Empty = Gemini CLI default
-                approval_mode=pcfg.get("approval_mode", "yolo"),
+                approval_mode=gemini_approval,
                 auth_method=pcfg.get("auth_method", "oauth-personal"),
                 acp_enabled=pcfg.get("acp_enabled", True),
                 context_messages=pcfg.get("context_messages", 20),
@@ -609,6 +724,7 @@ class AvatarEngine(EventEmitter):
                 generation_config=pcfg.get("generation_config", {}),
                 resume_session_id=session_cfg.get("resume_id") or self._kwargs.get("resume_session_id"),
                 continue_last=session_cfg.get("continue_last", False) or self._kwargs.get("continue_last", False),
+                permission_handler=gemini_perm_handler,
                 **common,
             )
 

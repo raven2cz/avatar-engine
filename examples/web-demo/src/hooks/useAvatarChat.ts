@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ChatAttachment, ChatMessage, ServerMessage, ToolInfo, UploadedFile } from '../api/types'
+import type { ChatAttachment, ChatMessage, SafetyMode, ServerMessage, ToolInfo, UploadedFile } from '../api/types'
+import type { PermissionRequest } from '../components/PermissionDialog'
 import { useAvatarWebSocket } from './useAvatarWebSocket'
 import { useFileUpload } from './useFileUpload'
 import { buildOptionsDict, isImageModel } from '../config/providers'
@@ -25,7 +26,9 @@ export interface UseAvatarChatReturn {
   uploadFile: (file: File) => Promise<UploadedFile | null>
   removeFile: (fileId: string) => void
   isStreaming: boolean
-  safetyInstructions: boolean
+  safetyMode: SafetyMode
+  permissionRequest: PermissionRequest | null
+  sendPermissionResponse: (requestId: string, optionId: string, cancelled: boolean) => void
   switching: boolean
   connected: boolean
   wasConnected: boolean
@@ -68,13 +71,14 @@ function summarizeParams(params: Record<string, unknown>): string {
 
 export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
   const { t } = useTranslation()
-  const { state, sendMessage: wsSend, clearHistory: wsClear, switchProvider: wsSwitch, resumeSession: wsResume, newSession: wsNew, onServerMessage, stopResponse: wsStop } =
+  const { state, sendMessage: wsSend, clearHistory: wsClear, switchProvider: wsSwitch, resumeSession: wsResume, newSession: wsNew, sendPermissionResponse: wsPermission, onServerMessage, stopResponse: wsStop } =
     useAvatarWebSocket(wsUrl)
   const { pending: pendingFiles, uploading, upload: uploadFile, remove: removeFile, clear: clearFiles } =
     useFileUpload()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [activeOptions, setActiveOptions] = useState<Record<string, string | number>>({})
+  const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null)
   const currentAssistantIdRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -160,6 +164,7 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
           const responseId = currentAssistantIdRef.current
           currentAssistantIdRef.current = null
           setIsStreaming(false)
+          setPermissionRequest(null)  // response done, clear any stale dialog
           if (!responseId) break
           setMessages((prev) =>
             prev.map((m) =>
@@ -199,6 +204,16 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
           setMessages([])
           currentAssistantIdRef.current = null
           setIsStreaming(false)
+          break
+        }
+
+        case 'permission_request': {
+          setPermissionRequest({
+            requestId: msg.data.request_id,
+            toolName: msg.data.tool_name,
+            toolInput: msg.data.tool_input,
+            options: msg.data.options,
+          })
           break
         }
 
@@ -264,21 +279,22 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
     setMessages([])
     currentAssistantIdRef.current = null
     setIsStreaming(false)
+    setPermissionRequest(null)  // backend cancel_all_permissions() on switch
     setActiveOptions(flatOptions && Object.keys(flatOptions).length > 0 ? flatOptions : {})
 
-    // Extract safety_instructions before building provider-specific options
-    const safetyValue = flatOptions?.safety_instructions
+    // Extract safety_mode before building provider-specific options
+    const safetyValue = flatOptions?.safety_mode
     const providerFlatOptions = flatOptions ? { ...flatOptions } : undefined
-    if (providerFlatOptions) delete providerFlatOptions.safety_instructions
+    if (providerFlatOptions) delete providerFlatOptions.safety_mode
 
     let builtOptions: Record<string, unknown> | undefined =
       providerFlatOptions && Object.keys(providerFlatOptions).length > 0
         ? buildOptionsDict(provider, providerFlatOptions)
         : undefined
 
-    // Re-inject safety_instructions as top-level option (engine pops it from kwargs)
+    // Re-inject safety_mode as top-level option (engine pops it from kwargs)
     if (safetyValue !== undefined) {
-      builtOptions = { ...(builtOptions ?? {}), safety_instructions: !!safetyValue }
+      builtOptions = { ...(builtOptions ?? {}), safety_mode: safetyValue }
     }
 
     // Auto-inject response_modalities for image generation models.
@@ -332,8 +348,15 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
     wsNew()
   }, [wsNew])
 
+  const sendPermissionResponse = useCallback((requestId: string, optionId: string, cancelled: boolean) => {
+    wsPermission(requestId, optionId, cancelled)
+    setPermissionRequest(null)
+  }, [wsPermission])
+
   const stopResponse = useCallback(() => {
     wsStop()
+    // Clear any pending permission dialog — backend auto-denies on stop
+    setPermissionRequest(null)
         // Immediately mark streaming as done in UI
     if (currentAssistantIdRef.current) {
       setMessages((prev) =>
@@ -362,7 +385,9 @@ export function useAvatarChat(wsUrl: string): UseAvatarChatReturn {
     uploadFile,
     removeFile,
     isStreaming,
-    safetyInstructions: state.safetyInstructions,
+    safetyMode: state.safetyMode,
+    permissionRequest,
+    sendPermissionResponse,
     switching: state.switching,
     connected: state.connected,
     wasConnected: state.wasConnected,

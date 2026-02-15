@@ -7,6 +7,7 @@ from avatar_engine.events import (
     EngineState,
     ErrorEvent,
     EventEmitter,
+    PermissionRequestEvent,
     StateEvent,
     TextEvent,
     ThinkingEvent,
@@ -45,7 +46,7 @@ class TestWebSocketBridgeRegistration:
     def test_registers_handlers(self):
         emitter = EventEmitter()
         bridge = WebSocketBridge(emitter)
-        assert emitter.handler_count() >= 8
+        assert emitter.handler_count() >= 9
         bridge.unregister()
 
     def test_unregister_cleans_up(self):
@@ -201,3 +202,18 @@ class TestWebSocketBridgeBroadcast:
         assert len(ws.sent) == 1
         assert ws.sent[0]["type"] == "chat_response"
         bridge.unregister()
+
+    def test_permission_request_event_registered(self):
+        """PermissionRequestEvent handler is registered on bridge."""
+        emitter = EventEmitter()
+        bridge = WebSocketBridge(emitter)
+
+        # Verify handler is registered by checking it has a handler for PermissionRequestEvent
+        handlers = emitter._handlers.get(PermissionRequestEvent, [])
+        assert len(handlers) == 1, "PermissionRequestEvent handler not registered"
+        assert handlers[0] == bridge._on_generic
+
+        bridge.unregister()
+        # After unregister, handler should be gone
+        handlers_after = emitter._handlers.get(PermissionRequestEvent, [])
+        assert len(handlers_after) == 0, "Handler not cleaned up"

@@ -9,10 +9,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, Loader2, Shield, ShieldOff } from 'lucide-react'
+import { ChevronDown, Loader2 } from 'lucide-react'
 import { PROVIDERS, getProvider, getModelsForProvider, getOptionsForProvider, getModelDisplayName, filterChoicesForModel } from '../config/providers'
 import { OptionControl } from './OptionControl'
-import { SafetyModal } from './SafetyModal'
+import { SafetyModeSelector } from './SafetyModeSelector'
+import type { SafetyMode } from '../api/types'
 
 interface ProviderModelSelectorProps {
   currentProvider: string
@@ -36,8 +37,8 @@ export function ProviderModelSelector({
   const [selectedProvider, setSelectedProvider] = useState(currentProvider)
   const [customModel, setCustomModel] = useState('')
   const [optionValues, setOptionValues] = useState<Record<string, string | number>>({})
-  const [safetyEnabled, setSafetyEnabled] = useState(activeOptions.safety_instructions !== 0)
-  const [safetyModalOpen, setSafetyModalOpen] = useState(false)
+  const safetyFromOptions = (activeOptions.safety_mode as SafetyMode | undefined) ?? 'safe'
+  const [safetyMode, setSafetyMode] = useState<SafetyMode>(safetyFromOptions)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -45,7 +46,7 @@ export function ProviderModelSelector({
   useEffect(() => {
     setSelectedProvider(currentProvider)
     setOptionValues(activeOptions)
-    setSafetyEnabled(activeOptions.safety_instructions !== 0)
+    setSafetyMode((activeOptions.safety_mode as SafetyMode | undefined) ?? 'safe')
   }, [currentProvider, activeOptions])
 
   // Close on Escape
@@ -93,10 +94,10 @@ export function ProviderModelSelector({
         sanitized[opt.key] = opt.defaultValue as string | number
       }
     }
-    // Always include safety_instructions (1 = on, 0 = off)
-    sanitized.safety_instructions = safetyEnabled ? 1 : 0
+    // Always include safety_mode
+    sanitized.safety_mode = safetyMode as unknown as string | number
     return Object.keys(sanitized).length > 0 ? sanitized : undefined
-  }, [selectedProvider, optionValues, safetyEnabled])
+  }, [selectedProvider, optionValues, safetyMode])
 
   const handleModelClick = useCallback((model: string) => {
     onSwitch(selectedProvider, model, sanitizeOptions(model))
@@ -151,9 +152,9 @@ export function ProviderModelSelector({
       const local = optionValues[opt.key] ?? opt.defaultValue
       if (String(current) !== String(local)) return true
     }
-    // Check safety toggle change
-    const currentSafety = activeOptions.safety_instructions !== 0
-    if (currentSafety !== safetyEnabled) return true
+    // Check safety mode change
+    const currentSafety = (activeOptions.safety_mode as SafetyMode | undefined) ?? 'safe'
+    if (currentSafety !== safetyMode) return true
     return false
   })()
 
@@ -293,35 +294,13 @@ export function ProviderModelSelector({
             </>
           )}
 
-          {/* Safety toggle (shown for all providers) */}
+          {/* Safety mode selector (shown for all providers) */}
           <div className="border-t border-slate-mid/30" />
-          <div className="px-2 py-2">
-            <label className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-slate-mid/20 transition-colors select-none">
-              <input
-                type="checkbox"
-                checked={safetyEnabled}
-                onChange={() => {
-                  if (safetyEnabled) {
-                    // Disabling → show confirmation modal
-                    setSafetyModalOpen(true)
-                  } else {
-                    // Enabling → immediate, no modal
-                    setSafetyEnabled(true)
-                  }
-                }}
-                className="w-3.5 h-3.5 rounded border-slate-mid/50 bg-slate-dark accent-synapse cursor-pointer"
-              />
-              {safetyEnabled ? (
-                <Shield className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              ) : (
-                <ShieldOff className="w-4 h-4 text-red-400 flex-shrink-0" />
-              )}
-              <div className="flex flex-col min-w-0">
-                <span className="text-sm text-text-primary leading-tight">{t('safety.label')}</span>
-                <span className="text-[0.65rem] text-text-muted leading-tight">{t('safety.enabled')}</span>
-              </div>
-            </label>
-          </div>
+          <SafetyModeSelector
+            value={safetyMode}
+            onChange={setSafetyMode}
+            provider={selectedProvider}
+          />
 
           {optionsDirty && (
             <div className="px-2 pb-3">
@@ -336,15 +315,6 @@ export function ProviderModelSelector({
         </div>
       )}
 
-      {/* Safety confirmation modal */}
-      <SafetyModal
-        open={safetyModalOpen}
-        onConfirm={() => {
-          setSafetyEnabled(false)
-          setSafetyModalOpen(false)
-        }}
-        onCancel={() => setSafetyModalOpen(false)}
-      />
     </div>
   )
 }

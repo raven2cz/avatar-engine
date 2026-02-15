@@ -6,7 +6,7 @@
 |------|------|
 | **Fáze 1: Safety toggle + modál** | ✅ HOTOVO (commit 74d97c5) |
 | **Fáze 1b: Race condition fix** | ✅ HOTOVO (startup task cancellation při switchi) |
-| **Fáze 2: Dotazovací režim (Ask)** | ❌ BUDOUCÍ — popsáno níže |
+| **Fáze 2: Dotazovací režim (Ask)** | ✅ HOTOVO (branch feature/safety-ask-mode) |
 
 ## Context
 
@@ -150,9 +150,7 @@ Tím frontend při (re)connect ví, jestli je safety zapnuté.
 
 ---
 
-## BUDOUCÍ FÁZE: Dotazovací režim (Permission Dialog)
-
-> Tato sekce popisuje budoucí rozšíření. Implementace proběhne v samostatné branch.
+## FÁZE 2: Dotazovací režim — Ask mode (branch `feature/safety-ask-mode`)
 
 ### Motivace
 
@@ -215,127 +213,180 @@ Avatar Engine je ale zatím vždy auto-approvuje.
 - **Vrstva 2** (TATO FÁZE): Permission dialog — GUI se zeptá uživatele
 - **Vrstva 3** (BUDOUCÍ): OS-level sandbox (mimo scope)
 
-### Ask režim — architektura
+### Ask režim — detailní architektura
 
-#### 1. Safety instrukce pro "ask" režim (`safety.py`)
+#### Princip: nezávislá feature
 
-Nová konstanta `ASK_MODE_SAFETY_INSTRUCTIONS`:
-```
-Before executing any potentially destructive operation, you MUST ask the user
-for explicit permission. Destructive operations include:
-- Deleting, removing, or overwriting files/directories
-- Dropping databases or tables
-- Killing system processes
-- Modifying system configuration
-- Accessing credentials or sensitive data
-- Running sudo/su commands
+Ask mode je **nezávislá feature**. ACP permission infrastruktura existuje odděleně,
+ale aktivuje se **pouze** když `safety_mode == "ask"`. V režimech Safe a Unrestricted
+se ACP permission dialog vůbec nepoužívá.
 
-Format your request as:
-⚠️ PERMISSION REQUEST: [description of what you want to do and why]
-
-Wait for the user to explicitly approve before proceeding.
-```
-
-#### 2. ACP `request_permission` protokol
-
-Pro Gemini ACP bridge — Gemini CLI podporuje `request_permission` event:
+#### 1. Typ `safety_mode` — z bool na string enum
 
 ```python
-# bridges/gemini.py — v ACP event loop
-if event.type == "request_permission":
-    # Emitovat PermissionEvent do GUI
-    self._emit_event({
-        "type": "permission_request",
-        "tool_name": event.tool_name,
-        "description": event.description,
-        "request_id": event.id,
-    })
-    # Čekat na odpověď z frontendu
-    approved = await self._permission_future
-    await event.respond(approved=approved)
+# safety.py
+SafetyMode = Literal["safe", "ask", "unrestricted"]
 ```
 
-#### 3. Frontend permission dialog
+Zpětná kompatibilita: `True` → `"safe"`, `False` → `"unrestricted"`.
+V engine.py, config.py, WS protokolu: `safety_instructions: bool` → `safety_mode: str`.
 
-Nový komponent `PermissionDialog.tsx`:
-- Zobrazí se uprostřed obrazovky (jako modál)
-- Ikona štítu + popis operace
-- Tři tlačítka: **Allow Once**, **Allow All** (pro tuto session), **Deny**
-- Auto-deny po 30s timeoutu (bezpečnostní fallback)
-- WebSocket message: `{ type: "permission_response", data: { request_id, approved, allow_all } }`
+#### 2. ACP request_permission — přesná API (z reálného SDK)
 
-#### 4. WebSocket protokol
+```python
+# ACP SDK - metoda na ACPClient:
+async def request_permission(
+    self,
+    options: list,              # List[PermissionOption]
+    session_id: str,
+    tool_call: "ToolCall",      # tool_call.function_name, tool_call.arguments
+    **kwargs,
+) -> RequestPermissionResponse:
+```
 
-Nové message typy:
+**PermissionOption** (z ACP SDK):
+- `option_id: str` — unikátní ID volby
+- `kind: str` — `"allow_once"`, `"allow_always"`, `"reject_once"`, `"reject_always"`
+- (+ popis, metadata dle verze SDK)
 
-**Server → Client:**
+**RequestPermissionResponse** — vrací se:
+- `AllowedOutcome(option_id=..., outcome="selected")` — schváleno
+- `DeniedOutcome(outcome="cancelled")` — zamítnuto
+
+#### 3. Ask mode flow (async Future pattern)
+
+```
+Gemini/Codex CLI tool call
+  → ACP request_permission(options, session_id, tool_call)
+    → [Ask mode] bridge emituje PermissionRequestEvent
+      → Engine.emit() → WebSocketBridge → WS client
+        → Frontend zobrazí PermissionDialog s options
+          → Uživatel vybere option (nebo Esc = cancel)
+            → WS "permission_response" → server → engine.resolve_permission()
+              → asyncio.Future.set_result(selected_option)
+                → request_permission() vrátí AllowedOutcome / DeniedOutcome
+                  → CLI provede / odmítne tool call
+```
+
+Klíčové: `request_permission()` je async → čekáme na `asyncio.Future` bez timeoutu.
+Uživatel může kdykoli Esc = `DeniedOutcome(outcome="cancelled")`.
+
+#### 4. Bridge changes
+
+**Gemini bridge** (`gemini.py`):
+- Ask mode: `approval_mode = "ask"` → nepřidá `--yolo` do CLI args
+- `_AvatarACPClient.__init__` dostane `permission_handler: Callable` callback
+- `request_permission()`: pokud handler existuje, zavolá ho a čeká na výsledek
+
+**Codex bridge** (`codex.py`):
+- Ask mode: `approval_mode = "ask"` → nenastaví `auto_approve=True`
+- Stejný pattern s `permission_handler` callbackem
+
+**Claude bridge** (`claude.py`):
+- Nemá ACP protokol → Ask mode pro Claude = system prompt instrukce
+- `ASK_MODE_SAFETY_INSTRUCTIONS` v system promptu (soft enforcement)
+
+#### 5. PermissionRequestEvent — nový event typ
+
+```python
+# events.py
+@dataclass
+class PermissionRequestEvent(AvatarEvent):
+    request_id: str         # UUID pro párování request/response
+    tool_name: str          # "bash", "write_file", etc.
+    tool_input: str         # argumenty tool callu (truncated)
+    options: List[Dict]     # [{option_id, kind, description}, ...]
+    provider: str           # "gemini" / "codex"
+```
+
+#### 6. WebSocket protokol
+
+**Server → Client** (nový typ v protocol.py):
 ```json
 {
   "type": "permission_request",
   "data": {
-    "request_id": "abc123",
-    "tool_name": "bash",
-    "description": "rm -rf /tmp/test_dir",
-    "risk_level": "high"
+    "request_id": "uuid-123",
+    "tool_name": "run_shell_command",
+    "tool_input": "rm -rf /tmp/test",
+    "options": [
+      {"option_id": "opt-1", "kind": "allow_once", "label": "Allow Once"},
+      {"option_id": "opt-2", "kind": "allow_always", "label": "Allow Always"},
+      {"option_id": "opt-3", "kind": "reject_once", "label": "Deny"}
+    ]
   }
 }
 ```
 
-**Client → Server:**
+**Client → Server** (nový typ v parse_client_message):
 ```json
 {
   "type": "permission_response",
   "data": {
-    "request_id": "abc123",
-    "approved": true,
-    "allow_all": false
+    "request_id": "uuid-123",
+    "option_id": "opt-1",
+    "cancelled": false
   }
 }
 ```
 
-#### 5. Engine-level permission handler
+Cancel (Esc): `{ "cancelled": true }` → `DeniedOutcome`.
+
+#### 7. Engine permission handler
 
 ```python
 # engine.py
-class AvatarEngine:
-    async def _handle_permission_request(self, request):
-        """Route permission request to GUI via events."""
-        future = asyncio.Future()
-        self._pending_permissions[request["request_id"]] = future
-        self.emit(PermissionRequestEvent(...))
-        return await asyncio.wait_for(future, timeout=30)
+self._pending_permissions: Dict[str, asyncio.Future] = {}
 
-    def approve_permission(self, request_id: str, approved: bool):
-        """Called by GUI/WebSocket when user responds."""
-        future = self._pending_permissions.pop(request_id, None)
-        if future and not future.done():
-            future.set_result(approved)
+async def _handle_permission_request(self, request_id, options, tool_call):
+    future = asyncio.get_running_loop().create_future()
+    self._pending_permissions[request_id] = future
+    self.emit(PermissionRequestEvent(...))
+    return await future  # čeká bez timeoutu
+
+def resolve_permission(self, request_id: str, option_id: str = "", cancelled: bool = False):
+    future = self._pending_permissions.pop(request_id, None)
+    if future and not future.done():
+        future.set_result({"option_id": option_id, "cancelled": cancelled})
 ```
 
-#### 6. GUI selector — 3 režimy místo checkboxu
+#### 8. GUI — trojitý selektor + PermissionDialog
 
-V `ProviderModelSelector.tsx` nahradit checkbox trojitým selektorem:
+**Trojitý selektor** (nahrazuje checkbox v ProviderModelSelector + CompactHeader):
 ```tsx
-<div className="flex gap-0.5 rounded-lg bg-obsidian/50 p-0.5 border border-slate-mid/30">
-  <button className={mode === 'safe' ? active : inactive}>🛡️ Safe</button>
-  <button className={mode === 'ask' ? active : inactive}>❓ Ask</button>
-  <button className={mode === 'unrestricted' ? active : inactive}>⚡ Unrestricted</button>
-</div>
+<SafetyModeSelector mode={safetyMode} onChange={handleModeChange} />
+// Safe | Ask | Unrestricted — s ikonami Shield, HelpCircle, Zap
+// Přechod na Unrestricted vyžaduje SafetyModal potvrzení
+// Přechod na Ask / Safe je okamžitý
 ```
 
-Přechod do `unrestricted` stále vyžaduje potvrzovací modál.
-Přechod do `ask` nevyžaduje modál (je to bezpečný režim).
+**PermissionDialog** — modální dialog při Ask mode:
+- Zobrazí tool name + argumenty
+- Dynamicky renderuje tlačítka dle `options` z ACP
+- Esc = cancel (vždy dostupný)
+- Nezávislý na SafetyModal (ten je jen pro Unrestricted přepnutí)
 
-### Soubory budoucí fáze
+### Soubory fáze 2
 
 | Soubor | Akce |
 |--------|------|
-| `avatar_engine/safety.py` | EDIT — přidat `ASK_MODE_SAFETY_INSTRUCTIONS` |
-| `avatar_engine/config.py` | EDIT — `safety_instructions: str = "safe"` |
-| `avatar_engine/engine.py` | EDIT — permission handler, 3 režimy |
-| `avatar_engine/types.py` | EDIT — `PermissionRequestEvent` |
+| `avatar_engine/safety.py` | EDIT — `SafetyMode` type, `ASK_MODE_SAFETY_INSTRUCTIONS` |
+| `avatar_engine/events.py` | EDIT — `PermissionRequestEvent` |
+| `avatar_engine/config.py` | EDIT — `safety_mode: str = "safe"` (z bool) |
+| `avatar_engine/engine.py` | EDIT — permission handler, resolve, 3 režimy |
+| `avatar_engine/bridges/gemini.py` | EDIT — `permission_handler` v ACPClient |
+| `avatar_engine/bridges/codex.py` | EDIT — `permission_handler` v ACPClient |
+| `avatar_engine/web/protocol.py` | EDIT — `PermissionRequestEvent` mapping, parse |
 | `avatar_engine/web/server.py` | EDIT — WS permission routing |
+| `avatar_engine/web/bridge.py` | EDIT — permission event broadcasting |
 | `examples/web-demo/src/components/PermissionDialog.tsx` | NOVÝ |
-| `examples/web-demo/src/components/ProviderModelSelector.tsx` | EDIT — trojitý selektor |
+| `examples/web-demo/src/components/SafetyModeSelector.tsx` | NOVÝ — trojitý selektor |
+| `examples/web-demo/src/components/ProviderModelSelector.tsx` | EDIT — use SafetyModeSelector |
+| `examples/web-demo/src/components/CompactHeader.tsx` | EDIT — use SafetyModeSelector |
 | `examples/web-demo/src/hooks/useAvatarWebSocket.ts` | EDIT — permission messages |
-| `examples/web-demo/src/i18n/locales/*.json` | EDIT — překlady pro 3 režimy |
+| `examples/web-demo/src/hooks/useAvatarChat.ts` | EDIT — safetyMode typ |
+| `examples/web-demo/src/api/types.ts` | EDIT — permission typy |
+| `examples/web-demo/src/i18n/locales/en.json` | EDIT — překlady pro 3 režimy |
+| `examples/web-demo/src/i18n/locales/cs.json` | EDIT — překlady pro 3 režimy |
+| `tests/test_safety.py` | EDIT — testy 3 režimů |
+| `tests/test_permission_flow.py` | NOVÝ — testy permission flow |

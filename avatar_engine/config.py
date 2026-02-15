@@ -7,7 +7,7 @@ Provides YAML configuration loading and validation.
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
@@ -33,8 +33,9 @@ class AvatarConfig:
     claude_config: Dict[str, Any] = field(default_factory=dict)
     codex_config: Dict[str, Any] = field(default_factory=dict)
 
-    # Safety
-    safety_instructions: bool = True
+    # Safety — bool for backwards compat (True="safe", False="unrestricted"),
+    # string for three modes ("safe", "ask", "unrestricted")
+    safety_instructions: Union[bool, str] = True
 
     # Engine settings
     max_history: int = 100

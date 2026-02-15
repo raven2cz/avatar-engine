@@ -5,6 +5,7 @@ import type {
   ProviderCapabilities,
   CostInfo,
   ThinkingPhase,
+  SafetyMode,
 } from '../api/types'
 
 interface AvatarWSState {
@@ -20,7 +21,7 @@ interface AvatarWSState {
   engineState: EngineState
   initDetail: string
   switching: boolean
-  safetyInstructions: boolean
+  safetyMode: SafetyMode
   thinking: {
     active: boolean
     phase: ThinkingPhase
@@ -64,7 +65,7 @@ const initialState: AvatarWSState = {
   engineState: 'idle',
   initDetail: '',
   switching: false,
-  safetyInstructions: true,
+  safetyMode: 'safe',
   thinking: { active: false, phase: 'general', subject: '', startedAt: 0 },
   toolName: '',
   cost: { totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0 },
@@ -89,7 +90,7 @@ function reducer(state: AvatarWSState, action: Action): AvatarWSState {
         cwd: action.payload.data.cwd || '',
         capabilities: action.payload.data.capabilities,
         engineState: action.payload.data.engine_state,
-        safetyInstructions: action.payload.data.safety_instructions ?? true,
+        safetyMode: action.payload.data.safety_mode ?? 'safe',
         error: null,
       }
     case 'INITIALIZING':
@@ -180,6 +181,7 @@ export interface UseAvatarWebSocketReturn {
   switchProvider: (provider: string, model?: string, options?: Record<string, unknown>) => void
   resumeSession: (sessionId: string) => void
   newSession: () => void
+  sendPermissionResponse: (requestId: string, optionId: string, cancelled: boolean) => void
   onServerMessage: (handler: (msg: ServerMessage) => void) => () => void
 }
 
@@ -424,10 +426,19 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
     }
   }, [])
 
+  const sendPermissionResponse = useCallback((requestId: string, optionId: string, cancelled: boolean) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'permission_response',
+        data: { request_id: requestId, option_id: optionId, cancelled },
+      }))
+    }
+  }, [])
+
   const onServerMessage = useCallback((handler: (msg: ServerMessage) => void) => {
     handlerRef.current = handler
     return () => { handlerRef.current = null }
   }, [])
 
-  return { state, sendMessage, stopResponse, clearHistory, switchProvider, resumeSession, newSession, onServerMessage }
+  return { state, sendMessage, stopResponse, clearHistory, switchProvider, resumeSession, newSession, sendPermissionResponse, onServerMessage }
 }

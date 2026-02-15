@@ -18,6 +18,7 @@ import { StatusBar } from './components/StatusBar'
 import { ChatPanel } from './components/ChatPanel'
 import { CostTracker } from './components/CostTracker'
 import { AvatarWidget } from './components/AvatarWidget'
+import { PermissionDialog } from './components/PermissionDialog'
 import { useAvatarChat } from './hooks/useAvatarChat'
 import { useAvailableProviders } from './hooks/useAvailableProviders'
 
@@ -63,9 +64,13 @@ export default function App() {
     capabilities,
     error,
     diagnostic,
+    permissionRequest,
+    sendPermissionResponse,
   } = useAvatarChat(WS_URL)
 
   return (
+    <>
+    <PermissionDialog request={permissionRequest} onRespond={sendPermissionResponse} />
     <AvatarWidget
       // Shared chat data — used by compact mode components
       messages={messages}
@@ -170,5 +175,6 @@ export default function App() {
         )}
       </div>
     </AvatarWidget>
+    </>
   )
 }

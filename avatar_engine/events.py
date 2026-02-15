@@ -167,6 +167,21 @@ class DiagnosticEvent(AvatarEvent):
 
 
 @dataclass
+class PermissionRequestEvent(AvatarEvent):
+    """
+    Permission request from ACP bridge — Ask mode.
+
+    Emitted when a tool call requires user approval.
+    GUI should display a dialog with the provided options and send
+    back a permission_response with the selected option_id.
+    """
+    request_id: str = ""
+    tool_name: str = ""
+    tool_input: str = ""
+    options: List[Dict[str, str]] = field(default_factory=list)
+
+
+@dataclass
 class ActivityEvent(AvatarEvent):
     """
     Tracks concurrent activities — tool executions, background tasks, agents.

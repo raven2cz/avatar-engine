@@ -79,6 +79,7 @@ class ACPSessionMixin:
                 )
                 self._acp_session_id = self.resume_session_id
                 self.session_id = self._acp_session_id
+                await self._apply_session_mode()
                 self._set_state(BridgeState.READY)
                 logger.info(f"Loaded session: {self._acp_session_id}")
                 return
@@ -108,6 +109,7 @@ class ACPSessionMixin:
                     )
                     self._acp_session_id = sid
                     self.session_id = self._acp_session_id
+                    await self._apply_session_mode()
                     self._set_state(BridgeState.READY)
                     logger.info(f"Continued most recent session: {sid}")
                     return
@@ -128,7 +130,38 @@ class ACPSessionMixin:
         )
         self._acp_session_id = session_resp.session_id
         self.session_id = self._acp_session_id
+
+        # Set session mode (e.g. "ask" for permission routing)
+        await self._apply_session_mode()
+
         self._set_state(BridgeState.READY)
+
+    async def _apply_session_mode(self) -> None:
+        """Set session mode via ACP set_session_mode if applicable.
+
+        Called after session creation/load. The host class should set
+        self._acp_session_mode to the desired mode (e.g. "ask").
+        Modes "auto"/"yolo" are the default — no call needed.
+        """
+        mode = getattr(self, "_acp_session_mode", None)
+        if not mode or mode in ("auto", "yolo"):
+            return
+        if not self._acp_session_id:
+            return
+        try:
+            await asyncio.wait_for(
+                self._acp_conn.set_session_mode(
+                    mode_id=mode,
+                    session_id=self._acp_session_id,
+                ),
+                timeout=self.timeout,
+            )
+            logger.info(f"ACP session mode set to '{mode}'")
+        except Exception as exc:
+            logger.warning(
+                f"set_session_mode('{mode}') failed: {exc} — "
+                f"permission dialog may not work"
+            )
 
     async def list_sessions(self) -> List[SessionInfo]:
         """List sessions via ACP list_sessions (if supported)."""

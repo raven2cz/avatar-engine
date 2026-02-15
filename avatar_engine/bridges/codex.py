@@ -106,6 +106,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         mcp_servers: Optional[Dict[str, Any]] = None,
         resume_session_id: Optional[str] = None,
         continue_last: bool = False,
+        permission_handler: Optional[Any] = None,
     ):
         """
         Args:
@@ -121,6 +122,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 - "openai-api-key" — OPENAI_API_KEY env var
             approval_mode: Tool approval mode:
                 - "auto" — Auto-approve all tool calls (non-interactive)
+                - "ask" — Route to GUI via permission_handler
                 - "manual" — Require explicit approval (interactive only)
             sandbox_mode: Filesystem sandbox mode:
                 - "read-only" — Can read files, no writes
@@ -130,6 +132,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             mcp_servers: MCP server configurations (passed per-session).
             resume_session_id: Resume a specific session by ID (via ACP load_session).
             continue_last: Continue the most recent session (via ACP list+load).
+            permission_handler: Async callback for Ask mode permission routing.
         """
         super().__init__(
             executable=executable,
@@ -143,9 +146,11 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         self.executable_args = executable_args if executable_args is not None else ["@zed-industries/codex-acp"]
         self.auth_method = auth_method
         self.approval_mode = approval_mode
+        self._acp_session_mode = approval_mode  # Used by ACPSessionMixin._apply_session_mode
         self.sandbox_mode = sandbox_mode
         self.resume_session_id = resume_session_id
         self.continue_last = continue_last
+        self._permission_handler = permission_handler
 
         # ACP state
         self._acp_conn = None
@@ -257,6 +262,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         client = _CodexACPClient(
             auto_approve=(self.approval_mode == "auto"),
             on_update=self._handle_acp_update,
+            permission_handler=self._permission_handler,
         )
 
         # Connect via official SDK API
@@ -838,15 +844,22 @@ if _ACP_AVAILABLE:
         """
         ACP client that handles codex-acp's permission requests and
         session update notifications for the Avatar Engine.
+
+        Modes:
+        - auto_approve=True: silently approve all tool calls (auto/unrestricted)
+        - auto_approve=False + permission_handler: route to GUI (ask mode)
+        - auto_approve=False + no handler: deny all (safe fallback)
         """
 
         def __init__(
             self,
             auto_approve: bool = True,
             on_update: Optional[Callable] = None,
+            permission_handler: Optional[Any] = None,
         ):
             self._auto_approve = auto_approve
             self._on_update = on_update
+            self._permission_handler = permission_handler
 
         async def request_permission(
             self, options, session_id, tool_call, **kwargs
@@ -872,13 +885,88 @@ if _ACP_AVAILABLE:
                         option_id="approved", outcome="selected"
                     )
                 )
-            else:
-                logger.warning(
-                    f"Tool call denied (auto_approve=False): {tool_call}"
+
+            # Extract tool name
+            tool_name = getattr(tool_call, "function_name", str(tool_call))
+
+            # Auto-approve non-destructive interactive tools (ask_user, etc.)
+            _AUTO_APPROVE_TOOLS = {"ask_user"}
+            if tool_name in _AUTO_APPROVE_TOOLS:
+                logger.info(
+                    f"Auto-approving non-destructive tool '{tool_name}'"
+                )
+                if hasattr(options, "options") and options.options:
+                    for opt in options.options:
+                        if getattr(opt, "kind", "") in {"allow_once", "allow_always"}:
+                            return RequestPermissionResponse(
+                                outcome=AllowedOutcome(
+                                    option_id=opt.option_id, outcome="selected"
+                                )
+                            )
+                    return RequestPermissionResponse(
+                        outcome=AllowedOutcome(
+                            option_id=options.options[0].option_id, outcome="selected"
+                        )
+                    )
+                return RequestPermissionResponse(
+                    outcome=AllowedOutcome(
+                        option_id="approved", outcome="selected"
+                    )
+                )
+
+            # Ask mode: route to GUI via permission_handler
+            if self._permission_handler:
+                import uuid
+                request_id = str(uuid.uuid4())
+                tool_input = str(getattr(tool_call, "arguments", ""))[:500]
+
+                gui_options = []
+                if hasattr(options, "options") and options.options:
+                    for opt in options.options:
+                        gui_options.append({
+                            "option_id": getattr(opt, "option_id", ""),
+                            "kind": getattr(opt, "kind", ""),
+                        })
+
+                logger.info(
+                    f"Permission request for {tool_name}: "
+                    f"{len(gui_options)} options, waiting for user..."
+                )
+
+                try:
+                    result = await self._permission_handler(
+                        request_id, tool_name, tool_input, gui_options,
+                    )
+                except Exception as exc:
+                    logger.error(f"Permission handler error: {exc}")
+                    return RequestPermissionResponse(
+                        outcome=DeniedOutcome(outcome="cancelled")
+                    )
+
+                if result.get("cancelled"):
+                    logger.info(f"Permission denied by user for {tool_name}")
+                    return RequestPermissionResponse(
+                        outcome=DeniedOutcome(outcome="cancelled")
+                    )
+
+                selected_id = result.get("option_id", "")
+                logger.info(
+                    f"Permission granted by user for {tool_name}: {selected_id}"
                 )
                 return RequestPermissionResponse(
-                    outcome=DeniedOutcome(outcome="cancelled")
+                    outcome=AllowedOutcome(
+                        option_id=selected_id, outcome="selected"
+                    )
                 )
+
+            # No handler — deny (ask mode without GUI connected)
+            logger.warning(
+                f"Permission denied for '{tool_name}': no permission_handler "
+                f"configured (auto_approve=False, ask mode without GUI?)"
+            )
+            return RequestPermissionResponse(
+                outcome=DeniedOutcome(outcome="cancelled")
+            )
 
         async def session_update(self, session_id, update, **kwargs):
             """Handle streaming session updates from codex-acp."""

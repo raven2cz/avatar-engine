@@ -431,7 +431,7 @@ def create_app(
                 "engine_state": brg.engine_state.value,
                 "cwd": mgr._working_dir,
                 "session_title": _get_session_title(mgr, sid),
-                "safety_instructions": getattr(eng, '_safety_instructions', True) if eng else True,
+                "safety_mode": getattr(eng, '_safety_mode', 'safe') if eng else 'safe',
             },
         })
 
@@ -483,7 +483,7 @@ def create_app(
                     "engine_state": bridge.engine_state.value,
                     "cwd": manager._working_dir,
                     "session_title": _get_session_title(manager, sid),
-                    "safety_instructions": getattr(engine, '_safety_instructions', True),
+                    "safety_mode": getattr(engine, '_safety_mode', 'safe'),
                 },
             })
         else:
@@ -672,6 +672,10 @@ def create_app(
                             pass
                         _startup_task = None
 
+                    # Cancel pending permission dialogs before switching
+                    if manager.engine:
+                        manager.engine.cancel_all_permissions()
+
                     try:
                         await manager.switch(switch_provider, switch_model, options=switch_options)
                         engine = manager.engine
@@ -719,6 +723,14 @@ def create_app(
                         engine = manager.engine
                         bridge = manager.ws_bridge
                         _broadcast_error_and_connected(manager, f"New session failed: {e}", provider_fallback=provider)
+
+                elif msg_type == "permission_response":
+                    request_id = msg_data.get("request_id", "")
+                    option_id = msg_data.get("option_id", "")
+                    cancelled = msg_data.get("cancelled", False)
+                    eng = manager.engine
+                    if eng and request_id:
+                        eng.resolve_permission(request_id, option_id=option_id, cancelled=cancelled)
 
                 elif msg_type == "clear_history":
                     if manager.engine:

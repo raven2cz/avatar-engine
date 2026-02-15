@@ -178,8 +178,13 @@
     "copyCode": "Copy code"
   },
   "safety": {
-    "label": "Safety instructions",
-    "enabled": "AI will refuse destructive operations",
+    "label": "Safety mode",
+    "safe": "Safe",
+    "safeDesc": "AI refuses destructive operations",
+    "ask": "Ask",
+    "askDesc": "AI asks before destructive operations",
+    "unrestricted": "Off",
+    "unrestrictedDesc": "No safety restrictions",
     "modalTitle": "Disable Safety Instructions?",
     "modalDescription": "Without safety instructions, the AI assistant will be able to:",
     "modalRisk1": "Delete files and directories",
@@ -187,7 +192,14 @@
     "modalRisk3": "Run sudo and escalate privileges",
     "modalWarning": "Only disable if you understand the risks and need the AI to perform operations that safety rules block.",
     "cancel": "Cancel",
-    "disable": "Disable Safety"
+    "disable": "Disable Safety",
+    "permissionTitle": "Permission Request",
+    "permissionDesc": "The AI wants to perform a potentially destructive operation:",
+    "permissionTool": "Tool",
+    "permissionInput": "Input",
+    "permissionAllow": "Allow",
+    "permissionDeny": "Deny",
+    "permissionCancel": "Cancel"
   },
   "promo": {
     "title": "Avatar Engine",

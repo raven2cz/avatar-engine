@@ -7,6 +7,7 @@ from avatar_engine.events import (
     CostEvent,
     DiagnosticEvent,
     ErrorEvent,
+    PermissionRequestEvent,
     StateEvent,
     TextEvent,
     ThinkingEvent,
@@ -30,10 +31,10 @@ from avatar_engine.web.protocol import (
 
 
 class TestEventTypeMap:
-    """EVENT_TYPE_MAP covers all 8 event types."""
+    """EVENT_TYPE_MAP covers all 9 event types."""
 
     def test_has_all_event_types(self):
-        assert len(EVENT_TYPE_MAP) == 8
+        assert len(EVENT_TYPE_MAP) == 9
 
     def test_text_event(self):
         assert EVENT_TYPE_MAP[TextEvent] == "text"
@@ -239,3 +240,41 @@ class TestParseClientMessage:
     def test_missing_data_defaults_to_empty(self):
         result = parse_client_message({"type": "ping"})
         assert result["data"] == {}
+
+    def test_permission_response_message(self):
+        result = parse_client_message({
+            "type": "permission_response",
+            "data": {"request_id": "abc", "option_id": "allow_once", "cancelled": False},
+        })
+        assert result is not None
+        assert result["type"] == "permission_response"
+        assert result["data"]["request_id"] == "abc"
+        assert result["data"]["option_id"] == "allow_once"
+
+
+class TestPermissionRequestEvent:
+    """PermissionRequestEvent serialization via event_to_dict."""
+
+    def test_serialization(self):
+        event = PermissionRequestEvent(
+            provider="gemini",
+            request_id="req-123",
+            tool_name="bash",
+            tool_input="rm -rf /tmp/test",
+            options=[
+                {"option_id": "opt1", "kind": "allow_once"},
+                {"option_id": "opt2", "kind": "reject_once"},
+            ],
+        )
+        result = event_to_dict(event)
+        assert result is not None
+        assert result["type"] == "permission_request"
+        assert result["data"]["request_id"] == "req-123"
+        assert result["data"]["tool_name"] == "bash"
+        assert result["data"]["tool_input"] == "rm -rf /tmp/test"
+        assert len(result["data"]["options"]) == 2
+        assert result["data"]["options"][0]["kind"] == "allow_once"
+
+    def test_event_type_in_map(self):
+        assert PermissionRequestEvent in EVENT_TYPE_MAP
+        assert EVENT_TYPE_MAP[PermissionRequestEvent] == "permission_request"

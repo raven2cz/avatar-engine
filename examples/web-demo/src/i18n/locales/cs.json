@@ -180,8 +180,13 @@
     "copyCode": "Kopírovat kód"
   },
   "safety": {
-    "label": "Bezpečnostní instrukce",
-    "enabled": "AI odmítne destruktivní operace",
+    "label": "Bezpečnostní režim",
+    "safe": "Bezpečný",
+    "safeDesc": "AI odmítne destruktivní operace",
+    "ask": "Dotaz",
+    "askDesc": "AI se zeptá před destruktivní operací",
+    "unrestricted": "Vyp",
+    "unrestrictedDesc": "Žádná bezpečnostní omezení",
     "modalTitle": "Vypnout bezpečnostní instrukce?",
     "modalDescription": "Bez bezpečnostních instrukcí bude AI asistent moci:",
     "modalRisk1": "Mazat soubory a adresáře",
@@ -189,7 +194,14 @@
     "modalRisk3": "Spouštět sudo a eskalovat oprávnění",
     "modalWarning": "Vypněte pouze pokud rozumíte rizikům a potřebujete, aby AI provedla operace blokované bezpečnostními pravidly.",
     "cancel": "Zrušit",
-    "disable": "Vypnout ochranu"
+    "disable": "Vypnout ochranu",
+    "permissionTitle": "Žádost o povolení",
+    "permissionDesc": "AI chce provést potenciálně destruktivní operaci:",
+    "permissionTool": "Nástroj",
+    "permissionInput": "Vstup",
+    "permissionAllow": "Povolit",
+    "permissionDeny": "Zamítnout",
+    "permissionCancel": "Zrušit"
   },
   "promo": {
     "title": "Avatar Engine",
