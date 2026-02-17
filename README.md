@@ -3,7 +3,7 @@
     <source media="(prefers-color-scheme: dark)" srcset="assets/banner.svg">
     <source media="(prefers-color-scheme: light)" srcset="assets/banner-light.svg">
     <img alt="Avatar Engine" src="assets/banner.svg" width="840">
-  </picture>
+  </picture> 
 </p>
 
 <p align="center">
