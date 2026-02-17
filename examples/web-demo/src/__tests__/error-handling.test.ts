@@ -15,14 +15,17 @@
 
 /// <reference types="vitest/globals" />
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'fs'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
 import {
   avatarReducer,
   initialAvatarState,
 } from '@avatar-engine/core'
 import type { AvatarState, AvatarAction } from '@avatar-engine/core'
 
-// Node fs used for source-level assertions in test environment
-declare function require(id: string): { readFileSync(path: string, enc: string): string }
+// Project root relative to this test file (examples/web-demo/src/__tests__)
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
 
 // Helper: dispatch action through the real reducer
 function dispatch(state: AvatarState, action: AvatarAction): AvatarState {
@@ -170,19 +173,17 @@ describe('engineStateToBustState mapping', () => {
 })
 
 describe('no client-side auto-timeout', () => {
-  const basePath = '/home/box/git/github/avatar-engine/packages/react/src/hooks'
+  const hooksPath = resolve(projectRoot, 'packages/react/src/hooks')
 
   it('useAvatarChat should not contain chatTimeoutRef or resetChatTimeout', () => {
-    const fs = require('fs')
-    const source = fs.readFileSync(`${basePath}/useAvatarChat.ts`, 'utf-8')
+    const source = readFileSync(`${hooksPath}/useAvatarChat.ts`, 'utf-8')
     expect(source).not.toContain('chatTimeoutRef')
     expect(source).not.toContain('resetChatTimeout')
     expect(source).not.toContain('timed out')
   })
 
   it('useAvatarWebSocket stopResponse dispatches ENGINE_STATE:idle', () => {
-    const fs = require('fs')
-    const source = fs.readFileSync(`${basePath}/useAvatarWebSocket.ts`, 'utf-8')
+    const source = readFileSync(`${hooksPath}/useAvatarWebSocket.ts`, 'utf-8')
     const stopBlock = source.slice(
       source.indexOf('const stopResponse'),
       source.indexOf('}, [])', source.indexOf('const stopResponse')) + 6
@@ -192,8 +193,7 @@ describe('no client-side auto-timeout', () => {
   })
 
   it('useAvatarWebSocket dispatches idle on chat_response and error', () => {
-    const fs = require('fs')
-    const source = fs.readFileSync(`${basePath}/useAvatarWebSocket.ts`, 'utf-8')
+    const source = readFileSync(`${hooksPath}/useAvatarWebSocket.ts`, 'utf-8')
     const chatResponseIdx = source.indexOf("case 'chat_response':")
     const chatResponseBlock = source.slice(chatResponseIdx, source.indexOf('break', chatResponseIdx) + 5)
     expect(chatResponseBlock).toContain("dispatch({ type: 'ENGINE_STATE', state: 'idle' })")
@@ -204,8 +204,7 @@ describe('no client-side auto-timeout', () => {
   })
 
   it('useAvatarWebSocket has error fence to block ghost events after timeout', () => {
-    const fs = require('fs')
-    const source = fs.readFileSync(`${basePath}/useAvatarWebSocket.ts`, 'utf-8')
+    const source = readFileSync(`${hooksPath}/useAvatarWebSocket.ts`, 'utf-8')
     expect(source).toContain('errorFenceRef')
     expect(source).toContain('errorFenceRef.current = true')
     const sendBlock = source.slice(
@@ -217,9 +216,8 @@ describe('no client-side auto-timeout', () => {
   })
 
   it('server timeout is at least 600 seconds', () => {
-    const fs = require('fs')
-    const source = fs.readFileSync(
-      '/home/box/git/github/avatar-engine/avatar_engine/web/server.py',
+    const source = readFileSync(
+      resolve(projectRoot, 'avatar_engine/web/server.py'),
       'utf-8'
     )
     const match = source.match(/chat_timeout\s*=\s*(\d+)/)
