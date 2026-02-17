@@ -41,6 +41,8 @@ export interface CompactChatProps {
   activeOptions?: Record<string, string | number>
   availableProviders?: Set<string> | null
   onSwitchProvider?: (provider: string, model?: string, options?: Record<string, string | number>) => void
+  /** Custom provider list — overrides built-in PROVIDERS (order = priority) */
+  customProviders?: import('@avatar-engine/core').ProviderConfig[]
   // First-time hint on expand button
   showExpandHint?: boolean
 }
@@ -71,6 +73,7 @@ export function CompactChat({
   activeOptions,
   availableProviders,
   onSwitchProvider,
+  customProviders,
   showExpandHint,
 }: CompactChatProps) {
   const { t } = useTranslation()
@@ -93,6 +96,7 @@ export function CompactChat({
         activeOptions={activeOptions}
         availableProviders={availableProviders}
         onSwitchProvider={onSwitchProvider}
+        customProviders={customProviders}
         showExpandHint={showExpandHint}
       />
 

@@ -6,7 +6,7 @@ import './styles/avatar.css'
 
 // React hooks
 export { useAvatarChat } from './hooks/useAvatarChat'
-export type { UseAvatarChatReturn } from './hooks/useAvatarChat'
+export type { UseAvatarChatReturn, AvatarChatOptions } from './hooks/useAvatarChat'
 export { useAvatarWebSocket } from './hooks/useAvatarWebSocket'
 export type { UseAvatarWebSocketReturn } from './hooks/useAvatarWebSocket'
 export { useWidgetMode } from './hooks/useWidgetMode'

@@ -58,6 +58,8 @@ export interface AvatarWidgetProps {
   activeOptions?: Record<string, string | number>
   availableProviders?: Set<string> | null
   switchProvider?: (provider: string, model?: string, options?: Record<string, string | number>) => void
+  /** Custom provider list — overrides built-in PROVIDERS (order = priority) */
+  customProviders?: import('@avatar-engine/core').ProviderConfig[]
   /** Ref to receive the openCompact callback — allows parent to wire it into StatusBar */
   onCompactModeRef?: React.MutableRefObject<(() => void) | null>
   /** Custom avatar list (default: built-in AVATARS) */
@@ -100,6 +102,7 @@ export function AvatarWidget({
   switchProvider,
   avatars: customAvatars,
   avatarBasePath,
+  customProviders,
   onCompactModeRef,
   renderBackground,
 }: AvatarWidgetProps) {
@@ -442,6 +445,7 @@ export function AvatarWidget({
             activeOptions={activeOptions}
             availableProviders={availableProviders}
             onSwitchProvider={switchProvider}
+            customProviders={customProviders}
             showExpandHint={showExpandHint}
           />
         </div>

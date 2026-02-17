@@ -9,12 +9,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
-import type { EngineState, SafetyMode } from '@avatar-engine/core'
+import type { EngineState, SafetyMode, ProviderConfig, ProviderOption } from '@avatar-engine/core'
 import {
   PROVIDERS,
-  getProvider,
-  getModelsForProvider,
-  getOptionsForProvider,
   getModelDisplayName,
   filterChoicesForModel,
 } from '@avatar-engine/core'
@@ -37,6 +34,8 @@ export interface CompactHeaderProps {
   activeOptions?: Record<string, string | number>
   availableProviders?: Set<string> | null
   onSwitchProvider?: (provider: string, model?: string, options?: Record<string, string | number>) => void
+  /** Custom provider list — overrides built-in PROVIDERS (order = priority) */
+  customProviders?: import('@avatar-engine/core').ProviderConfig[]
   // First-time hint on the fullscreen button
   showExpandHint?: boolean
 }
@@ -62,12 +61,15 @@ export function CompactHeader({
   activeOptions = {},
   availableProviders,
   onSwitchProvider,
+  customProviders,
   showExpandHint,
 }: CompactHeaderProps) {
   const { t } = useTranslation()
+  const headerProviderList = customProviders ?? PROVIDERS
   const stateInfo = STATE_LABELS[engineState]
+  const headerProviderConfig = headerProviderList.find((p) => p.id === provider)
   const { modelName, featuredLabel } = getModelDisplayName(
-    provider, model, getProvider(provider)?.defaultModel, activeOptions,
+    provider, model, headerProviderConfig?.defaultModel, activeOptions,
   )
   const [menuOpen, setMenuOpen] = useState(false)
   const menuBtnRef = useRef<HTMLButtonElement>(null)
@@ -182,6 +184,7 @@ export function CompactHeader({
           switching={switching || false}
           activeOptions={activeOptions}
           availableProviders={availableProviders}
+          customProviders={customProviders}
           onSwitch={(p, m, o) => { onSwitchProvider(p, m, o); setMenuOpen(false) }}
           onClose={() => setMenuOpen(false)}
           position={menuPosRef.current}
@@ -203,6 +206,7 @@ interface CompactProviderMenuProps {
   switching: boolean
   activeOptions: Record<string, string | number>
   availableProviders?: Set<string> | null
+  customProviders?: import('@avatar-engine/core').ProviderConfig[]
   onSwitch: (provider: string, model?: string, options?: Record<string, string | number>) => void
   onClose: () => void
   position: { bottom: number; right: number }
@@ -214,6 +218,7 @@ function CompactProviderMenu({
   switching,
   activeOptions,
   availableProviders,
+  customProviders,
   onSwitch,
   onClose,
   position,
@@ -234,18 +239,25 @@ function CompactProviderMenu({
     return () => document.removeEventListener('keydown', handler, true)
   }, [onClose])
 
+  const providerList = customProviders ?? PROVIDERS
   const visibleProviders = availableProviders
-    ? PROVIDERS.filter((p) => availableProviders.has(p.id))
-    : PROVIDERS
+    ? providerList.filter((p) => availableProviders.has(p.id))
+    : providerList
 
-  const selectedConfig = getProvider(selectedProvider)
-  const models = getModelsForProvider(selectedProvider)
-  const providerOptions = getOptionsForProvider(selectedProvider)
+  // Local lookup helpers — search providerList, not global PROVIDERS
+  const findProvider = (id: string): ProviderConfig | undefined =>
+    providerList.find((p) => p.id === id)
+  const findOptions = (id: string): ProviderOption[] =>
+    findProvider(id)?.options ?? []
+
+  const selectedConfig = findProvider(selectedProvider)
+  const models = findProvider(selectedProvider)?.models ?? []
+  const providerOptions = findOptions(selectedProvider)
   const effectiveModel = (selectedProvider === currentProvider ? currentModel : null)
     || selectedConfig?.defaultModel || null
 
   const sanitizeOptions = useCallback((model: string) => {
-    const opts = getOptionsForProvider(selectedProvider)
+    const opts = findOptions(selectedProvider)
     const sanitized = { ...optionValues }
     for (const opt of opts) {
       if (opt.hideForModelPattern && new RegExp(opt.hideForModelPattern, 'i').test(model)) {
@@ -288,7 +300,7 @@ function CompactProviderMenu({
 
   // Detect if options differ from currently active ones
   const optionsDirty = selectedProvider === currentProvider && (() => {
-    const opts = getOptionsForProvider(selectedProvider)
+    const opts = findOptions(selectedProvider)
     for (const opt of opts) {
       const current = activeOptions[opt.key] ?? opt.defaultValue
       const local = optionValues[opt.key] ?? opt.defaultValue

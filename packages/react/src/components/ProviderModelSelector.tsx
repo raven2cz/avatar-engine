@@ -10,7 +10,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, Loader2 } from 'lucide-react'
-import { PROVIDERS, getProvider, getModelsForProvider, getOptionsForProvider, getModelDisplayName, filterChoicesForModel } from '@avatar-engine/core'
+import { PROVIDERS, getModelDisplayName, filterChoicesForModel } from '@avatar-engine/core'
+import type { ProviderConfig, ProviderOption } from '@avatar-engine/core'
 import { OptionControl } from './OptionControl'
 import { SafetyModeSelector } from './SafetyModeSelector'
 import type { SafetyMode } from '@avatar-engine/core'
@@ -22,6 +23,8 @@ export interface ProviderModelSelectorProps {
   activeOptions?: Record<string, string | number>
   availableProviders?: Set<string> | null
   onSwitch: (provider: string, model?: string, options?: Record<string, string | number>) => void
+  /** Custom provider list — overrides built-in PROVIDERS (order = priority) */
+  customProviders?: import('@avatar-engine/core').ProviderConfig[]
 }
 
 export function ProviderModelSelector({
@@ -31,6 +34,7 @@ export function ProviderModelSelector({
   activeOptions = {},
   availableProviders,
   onSwitch,
+  customProviders,
 }: ProviderModelSelectorProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -71,6 +75,20 @@ export function ProviderModelSelector({
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  // Provider list — custom or built-in (must be before lookup helpers)
+  const providerList = customProviders ?? PROVIDERS
+  const visibleProviders = availableProviders
+    ? providerList.filter((p) => availableProviders.has(p.id))
+    : providerList
+
+  // Local lookup helpers — search providerList, not global PROVIDERS
+  const findProvider = (id: string): ProviderConfig | undefined =>
+    providerList.find((p) => p.id === id)
+  const findModels = (id: string): string[] =>
+    findProvider(id)?.models ?? []
+  const findOptions = (id: string): ProviderOption[] =>
+    findProvider(id)?.options ?? []
+
   const handleProviderClick = useCallback((providerId: string) => {
     setSelectedProvider(providerId)
     setCustomModel('')
@@ -80,7 +98,7 @@ export function ProviderModelSelector({
 
   /** Sanitize option values for a target model: reset choices invalid for that model. */
   const sanitizeOptions = useCallback((model: string) => {
-    const opts = getOptionsForProvider(selectedProvider)
+    const opts = findOptions(selectedProvider)
     const sanitized = { ...optionValues }
     for (const opt of opts) {
       // Remove hidden options entirely (e.g. thinking_level for image models)
@@ -119,15 +137,10 @@ export function ProviderModelSelector({
     setOptionValues((prev) => ({ ...prev, [key]: value }))
   }, [])
 
-  // Filter providers to only those available on this machine (null = show all)
-  const visibleProviders = availableProviders
-    ? PROVIDERS.filter((p) => availableProviders.has(p.id))
-    : PROVIDERS
-
-  const providerConfig = getProvider(currentProvider)
-  const selectedConfig = getProvider(selectedProvider)
-  const models = getModelsForProvider(selectedProvider)
-  const providerOptions = getOptionsForProvider(selectedProvider)
+  const providerConfig = findProvider(currentProvider)
+  const selectedConfig = findProvider(selectedProvider)
+  const models = findModels(selectedProvider)
+  const providerOptions = findOptions(selectedProvider)
   const { modelName: displayModel, featuredLabel } = getModelDisplayName(
     currentProvider, currentModel, providerConfig?.defaultModel, activeOptions,
   )
@@ -146,7 +159,7 @@ export function ProviderModelSelector({
 
   // Detect if options differ from currently active ones
   const optionsDirty = selectedProvider === currentProvider && (() => {
-    const opts = getOptionsForProvider(selectedProvider)
+    const opts = findOptions(selectedProvider)
     for (const opt of opts) {
       const current = activeOptions[opt.key] ?? opt.defaultValue
       const local = optionValues[opt.key] ?? opt.defaultValue

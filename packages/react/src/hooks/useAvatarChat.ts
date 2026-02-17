@@ -13,6 +13,19 @@ import { buildOptionsDict, isImageModel, nextId, summarizeParams } from '@avatar
 import { useAvatarWebSocket } from './useAvatarWebSocket'
 import { useFileUpload } from './useFileUpload'
 
+export interface AvatarChatOptions {
+  /** REST API base URL (default: '/api/avatar') */
+  apiBase?: string
+  /** Auto-switch to this provider on first connect */
+  initialProvider?: string
+  /** Auto-switch to this model on first connect (requires initialProvider) */
+  initialModel?: string
+  /** Provider options to apply on initial switch */
+  initialOptions?: Record<string, string | number>
+  /** Called when an assistant response completes (chat_response message) */
+  onResponse?: (message: ChatMessage) => void
+}
+
 export interface UseAvatarChatReturn {
   messages: ChatMessage[]
   sendMessage: (text: string, attachments?: UploadedFile[]) => void
@@ -49,11 +62,17 @@ export interface UseAvatarChatReturn {
   diagnostic: string | null
 }
 
-export function useAvatarChat(wsUrl: string, apiBase?: string): UseAvatarChatReturn {
+export function useAvatarChat(wsUrl: string, optionsOrApiBase?: AvatarChatOptions | string): UseAvatarChatReturn {
   const { t } = useTranslation()
 
-  // Derive REST API base — relative URL works with Vite proxy and production
-  const resolvedApiBase = apiBase ?? '/api/avatar'
+  // Backwards-compatible: accept string (apiBase) or options object
+  const options: AvatarChatOptions = typeof optionsOrApiBase === 'string'
+    ? { apiBase: optionsOrApiBase }
+    : optionsOrApiBase ?? {}
+
+  const resolvedApiBase = options.apiBase ?? '/api/avatar'
+  const onResponseRef = useRef(options.onResponse)
+  onResponseRef.current = options.onResponse
 
   const { state, sendMessage: wsSend, clearHistory: wsClear, switchProvider: wsSwitch, resumeSession: wsResume, newSession: wsNew, sendPermissionResponse: wsPermission, onServerMessage, stopResponse: wsStop } =
     useAvatarWebSocket(wsUrl)
@@ -65,6 +84,26 @@ export function useAvatarChat(wsUrl: string, apiBase?: string): UseAvatarChatRet
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null)
   const currentAssistantIdRef = useRef<string | null>(null)
   const resumeAbortRef = useRef<AbortController | null>(null)
+  const initialSwitchDoneRef = useRef(false)
+
+  // Auto-switch provider/model on first connect
+  useEffect(() => {
+    if (!state.connected || initialSwitchDoneRef.current) return
+    if (!options.initialProvider) return
+    initialSwitchDoneRef.current = true
+    // Switch if provider differs, or specific model/options requested
+    if (options.initialProvider !== state.provider || options.initialModel || options.initialOptions) {
+      const flatOpts = options.initialOptions
+      if (flatOpts && Object.keys(flatOpts).length > 0) {
+        setActiveOptions(flatOpts)
+      }
+      const builtOptions = flatOpts && Object.keys(flatOpts).length > 0
+        ? buildOptionsDict(options.initialProvider, flatOpts)
+        : undefined
+      wsSwitch(options.initialProvider, options.initialModel, builtOptions)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.connected])
 
   useEffect(() => {
     const cleanup = onServerMessage((msg: ServerMessage) => {
@@ -148,8 +187,8 @@ export function useAvatarChat(wsUrl: string, apiBase?: string): UseAvatarChatRet
           setIsStreaming(false)
           setPermissionRequest(null)
           if (!responseId) break
-          setMessages((prev) =>
-            prev.map((m) =>
+          setMessages((prev) => {
+            const updated = prev.map((m) =>
               m.id === responseId
                 ? {
                     ...m,
@@ -162,7 +201,15 @@ export function useAvatarChat(wsUrl: string, apiBase?: string): UseAvatarChatRet
                   }
                 : m
             )
-          )
+            const finalMsg = updated.find((m) => m.id === responseId)
+            if (finalMsg && onResponseRef.current) {
+              // Defer callback to avoid state update during render
+              queueMicrotask(() => {
+                try { onResponseRef.current?.(finalMsg) } catch { /* consumer callback error */ }
+              })
+            }
+            return updated
+          })
           break
         }
 
