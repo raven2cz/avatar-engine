@@ -3,6 +3,7 @@
 import asyncio
 import json
 import time
+
 import click
 from rich.console import Console
 from rich.table import Table

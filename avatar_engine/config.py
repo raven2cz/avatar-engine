@@ -7,7 +7,7 @@ Provides YAML configuration loading and validation.
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import yaml
 
@@ -22,20 +22,20 @@ class AvatarConfig:
     Can be loaded from a YAML file or created programmatically.
     """
     provider: ProviderType = ProviderType.GEMINI
-    model: Optional[str] = None
+    model: str | None = None
     working_dir: str = ""
     timeout: int = 120
     system_prompt: str = ""
-    provider_kwargs: Dict[str, Any] = field(default_factory=dict)
+    provider_kwargs: dict[str, Any] = field(default_factory=dict)
 
     # Provider-specific configs
-    gemini_config: Dict[str, Any] = field(default_factory=dict)
-    claude_config: Dict[str, Any] = field(default_factory=dict)
-    codex_config: Dict[str, Any] = field(default_factory=dict)
+    gemini_config: dict[str, Any] = field(default_factory=dict)
+    claude_config: dict[str, Any] = field(default_factory=dict)
+    codex_config: dict[str, Any] = field(default_factory=dict)
 
     # Safety — bool for backwards compat (True="safe", False="unrestricted"),
     # string for three modes ("safe", "ask", "unrestricted")
-    safety_instructions: Union[bool, str] = True
+    safety_instructions: bool | str = True
 
     # Engine settings
     max_history: int = 100
@@ -81,7 +81,7 @@ class AvatarConfig:
         return cls.from_dict(data)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "AvatarConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "AvatarConfig":
         """
         Create configuration from a dictionary.
 
@@ -146,7 +146,7 @@ class AvatarConfig:
             metrics_port=metrics_cfg.get("port", 9090),
         )
 
-    def get_provider_config(self) -> Dict[str, Any]:
+    def get_provider_config(self) -> dict[str, Any]:
         """
         Get the configuration for the active provider.
 
@@ -170,7 +170,7 @@ class AvatarConfig:
             return str(Path(self.working_dir).expanduser().resolve())
         return os.getcwd()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert configuration to dictionary.
 

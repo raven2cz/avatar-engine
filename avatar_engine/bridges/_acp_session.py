@@ -19,7 +19,6 @@ The host class must provide:
 
 import asyncio
 import logging
-from typing import List
 
 from ..types import SessionInfo
 
@@ -69,7 +68,7 @@ class ACPSessionMixin:
         # Resume specific session
         if self.resume_session_id and self._session_capabilities.can_load:
             try:
-                load_resp = await asyncio.wait_for(
+                await asyncio.wait_for(
                     self._acp_conn.load_session(
                         cwd=self.working_dir,
                         mcp_servers=mcp_servers_acp,
@@ -99,7 +98,7 @@ class ACPSessionMixin:
                 if list_resp.sessions:
                     most_recent = list_resp.sessions[0]
                     sid = most_recent.session_id
-                    load_resp = await asyncio.wait_for(
+                    await asyncio.wait_for(
                         self._acp_conn.load_session(
                             cwd=self.working_dir,
                             mcp_servers=mcp_servers_acp,
@@ -163,7 +162,7 @@ class ACPSessionMixin:
                 f"permission dialog may not work"
             )
 
-    async def list_sessions(self) -> List[SessionInfo]:
+    async def list_sessions(self) -> list[SessionInfo]:
         """List sessions via ACP list_sessions (if supported)."""
         if not self._acp_conn or not self._session_capabilities.can_list:
             return []
@@ -198,7 +197,7 @@ class ACPSessionMixin:
             )
 
         mcp_servers_acp = self._build_mcp_servers_acp()
-        load_resp = await asyncio.wait_for(
+        await asyncio.wait_for(
             self._acp_conn.load_session(
                 cwd=self.working_dir,
                 mcp_servers=mcp_servers_acp,

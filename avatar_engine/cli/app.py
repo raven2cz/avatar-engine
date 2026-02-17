@@ -100,7 +100,7 @@ def cli(ctx: click.Context, config: str, no_config: bool, working_dir: str, verb
 
 
 # Import and register commands
-from .commands import chat, repl, health, version, mcp, session
+from .commands import chat, health, mcp, repl, session, version  # noqa: E402
 
 cli.add_command(chat.chat)
 cli.add_command(repl.repl)

@@ -7,7 +7,6 @@ Emits ActivityEvents for GUI visualization (tree of operations with progress).
 
 import threading
 import time
-from typing import Dict, List, Optional
 
 from .events import (
     ActivityEvent,
@@ -29,7 +28,7 @@ class ActivityTracker:
     """
 
     def __init__(self, emitter: EventEmitter, provider: str = "") -> None:
-        self._activities: Dict[str, ActivityEvent] = {}
+        self._activities: dict[str, ActivityEvent] = {}
         self._emitter = emitter
         self._provider = provider
         self._lock = threading.Lock()
@@ -69,8 +68,8 @@ class ActivityTracker:
         self,
         activity_id: str,
         *,
-        progress: Optional[float] = None,
-        detail: Optional[str] = None,
+        progress: float | None = None,
+        detail: str | None = None,
     ) -> None:
         """Update progress or detail of a running activity."""
         with self._lock:
@@ -132,12 +131,12 @@ class ActivityTracker:
             return len(self._activities)
 
     @property
-    def active_activities(self) -> List[ActivityEvent]:
+    def active_activities(self) -> list[ActivityEvent]:
         """Snapshot of all currently active activities."""
         with self._lock:
             return list(self._activities.values())
 
-    def get_activity(self, activity_id: str) -> Optional[ActivityEvent]:
+    def get_activity(self, activity_id: str) -> ActivityEvent | None:
         """Get a specific activity by ID."""
         with self._lock:
             return self._activities.get(activity_id)

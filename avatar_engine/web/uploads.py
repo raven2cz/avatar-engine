@@ -12,7 +12,6 @@ import tempfile
 import time
 from pathlib import Path
 from uuid import uuid4
-from typing import Optional
 
 from ..types import Attachment
 
@@ -38,7 +37,7 @@ def _sanitize_filename(name: str, max_length: int = 200) -> str:
 class UploadStorage:
     """Manages uploaded file storage on disk."""
 
-    def __init__(self, base_dir: Optional[Path] = None):
+    def __init__(self, base_dir: Path | None = None):
         env_dir = os.environ.get("AVATAR_UPLOAD_DIR")
         if base_dir:
             self._base = base_dir

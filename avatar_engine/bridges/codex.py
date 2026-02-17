@@ -27,16 +27,17 @@ Requirements:
 """
 
 import asyncio
-from collections import deque
 import logging
 import shutil
 import threading
 import time
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from collections import deque
+from collections.abc import AsyncIterator, Callable
+from typing import Any
 
+from ..types import Attachment
 from .base import BaseBridge, BridgeResponse, BridgeState, Message
 from .gemini import _build_prompt_blocks
-from ..types import Attachment
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _ACP_AVAILABLE = False
 try:
-    from acp import PROTOCOL_VERSION, connect_to_agent, text_block
+    from acp import PROTOCOL_VERSION, connect_to_agent
     from acp.interfaces import Client as ACPClient
     from acp.schema import (
         AgentMessageChunk,
@@ -54,12 +55,10 @@ try:
         ClientCapabilities,
         DeniedOutcome,
         FileSystemCapability,
-        PermissionOption,
         RequestPermissionResponse,
         TextContentBlock,
-        ToolCall,
-        ToolCallStart,
         ToolCallProgress,
+        ToolCallStart,
     )
 
     _ACP_AVAILABLE = True
@@ -70,7 +69,7 @@ except ImportError:
     )
 
 
-from ._acp_session import ACPSessionMixin
+from ._acp_session import ACPSessionMixin  # noqa: E402
 
 
 class CodexBridge(ACPSessionMixin, BaseBridge):
@@ -94,7 +93,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
     def __init__(
         self,
         executable: str = "npx",
-        executable_args: Optional[List[str]] = None,
+        executable_args: list[str] | None = None,
         model: str = "",  # Empty = Codex default (gpt-5.3-codex)
         working_dir: str = "",
         timeout: int = 600,
@@ -102,11 +101,11 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         auth_method: str = "chatgpt",  # chatgpt | codex-api-key | openai-api-key
         approval_mode: str = "auto",   # auto-approve tool calls
         sandbox_mode: str = "workspace-write",  # read-only | workspace-write | danger-full-access
-        env: Optional[Dict[str, str]] = None,
-        mcp_servers: Optional[Dict[str, Any]] = None,
-        resume_session_id: Optional[str] = None,
+        env: dict[str, str] | None = None,
+        mcp_servers: dict[str, Any] | None = None,
+        resume_session_id: str | None = None,
         continue_last: bool = False,
-        permission_handler: Optional[Any] = None,
+        permission_handler: Any | None = None,
     ):
         """
         Args:
@@ -155,11 +154,11 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
         # ACP state
         self._acp_conn = None
         self._acp_proc = None
-        self._acp_session_id: Optional[str] = None
-        self._acp_stderr_task: Optional[asyncio.Task] = None
+        self._acp_session_id: str | None = None
+        self._acp_stderr_task: asyncio.Task | None = None
 
         # Collected events from ACP session_update notifications
-        self._acp_events: List[Dict[str, Any]] = []
+        self._acp_events: list[dict[str, Any]] = []
         self._acp_text_buffer: str = ""
         self._recent_thinking_norm = deque(maxlen=8)
         self._thinking_raw = ""      # Raw accumulated thinking text (for replay dedup)
@@ -574,7 +573,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
     # send() / send_stream() — ACP only
     # ======================================================================
 
-    async def send(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> BridgeResponse:
+    async def send(self, prompt: str, attachments: list[Attachment] | None = None) -> BridgeResponse:
         """Send prompt through the ACP warm session."""
         if self.state == BridgeState.DISCONNECTED:
             await self.start()
@@ -642,7 +641,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 content="",
                 duration_ms=int((time.time() - t0) * 1000),
                 success=False,
-                error=f"Codex ACP timeout ({int((time.time() - t0))}s) — cancelled by outer timeout",
+                error=f"Codex ACP timeout ({int(time.time() - t0)}s) — cancelled by outer timeout",
             )
             self._update_stats(response)
             return response
@@ -679,7 +678,7 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
             self._dedup_active = True
 
         # Bridge callback → async iterator via Queue
-        queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
         original_callback = self._on_output
 
         def _stream_callback(text: str) -> None:
@@ -747,30 +746,30 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
     # (Not used — ACP handles everything, but required by ABC)
     # ======================================================================
 
-    def _build_persistent_command(self) -> List[str]:
+    def _build_persistent_command(self) -> list[str]:
         raise NotImplementedError("Codex uses ACP, not raw subprocess")
 
-    def _format_user_message(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> str:
+    def _format_user_message(self, prompt: str, attachments: list[Attachment] | None = None) -> str:
         raise NotImplementedError("Codex uses ACP, not raw subprocess")
 
-    def _build_oneshot_command(self, prompt: str) -> List[str]:
+    def _build_oneshot_command(self, prompt: str) -> list[str]:
         raise NotImplementedError("Codex is ACP-only, no oneshot mode")
 
-    def _is_turn_complete(self, event: Dict[str, Any]) -> bool:
+    def _is_turn_complete(self, event: dict[str, Any]) -> bool:
         return event.get("type") == "result"
 
-    def _parse_session_id(self, events: List[Dict[str, Any]]) -> Optional[str]:
+    def _parse_session_id(self, events: list[dict[str, Any]]) -> str | None:
         # Session ID comes from new_session(), not from events
         return self._acp_session_id
 
-    def _parse_content(self, events: List[Dict[str, Any]]) -> str:
+    def _parse_content(self, events: list[dict[str, Any]]) -> str:
         parts = []
         for ev in events:
             if ev.get("type") == "acp_update" and "text" in ev:
                 parts.append(ev["text"])
         return "".join(parts)
 
-    def _parse_tool_calls(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _parse_tool_calls(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         calls = []
         for ev in events:
             if ev.get("type") == "tool_call":
@@ -782,14 +781,14 @@ class CodexBridge(ACPSessionMixin, BaseBridge):
                 })
         return calls
 
-    def _parse_usage(self, events: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _parse_usage(self, events: list[dict[str, Any]]) -> dict[str, Any] | None:
         # Token usage may come from ACP notifications
         for ev in events:
             if ev.get("type") == "token_usage":
                 return ev.get("usage", {})
         return None
 
-    def _extract_text_delta(self, event: Dict[str, Any]) -> Optional[str]:
+    def _extract_text_delta(self, event: dict[str, Any]) -> str | None:
         if event.get("type") == "acp_update":
             return event.get("text")
         return None
@@ -854,8 +853,8 @@ if _ACP_AVAILABLE:
         def __init__(
             self,
             auto_approve: bool = True,
-            on_update: Optional[Callable] = None,
-            permission_handler: Optional[Any] = None,
+            on_update: Callable | None = None,
+            permission_handler: Any | None = None,
         ):
             self._auto_approve = auto_approve
             self._on_update = on_update
@@ -890,8 +889,8 @@ if _ACP_AVAILABLE:
             tool_name = getattr(tool_call, "function_name", str(tool_call))
 
             # Auto-approve non-destructive interactive tools (ask_user, etc.)
-            _AUTO_APPROVE_TOOLS = {"ask_user"}
-            if tool_name in _AUTO_APPROVE_TOOLS:
+            auto_approve_tools = {"ask_user"}
+            if tool_name in auto_approve_tools:
                 logger.info(
                     f"Auto-approving non-destructive tool '{tool_name}'"
                 )
@@ -986,7 +985,7 @@ else:
 # ==========================================================================
 
 
-def _extract_thinking_from_update(update: Any) -> Optional[str]:
+def _extract_thinking_from_update(update: Any) -> str | None:
     """Extract thinking content from a codex-acp AgentThoughtChunk."""
     try:
         # AgentThoughtChunk with content.text
@@ -1030,7 +1029,7 @@ def _extract_thinking_from_update(update: Any) -> Optional[str]:
     return None
 
 
-def _extract_text_from_update(update: Any) -> Optional[str]:
+def _extract_text_from_update(update: Any) -> str | None:
     """Extract text from a codex-acp AgentMessageChunk."""
     try:
         def _is_reasoning_block(block_type: Any) -> bool:
@@ -1103,7 +1102,7 @@ def _extract_text_from_update(update: Any) -> Optional[str]:
     return None
 
 
-def _extract_tool_event_from_update(update: Any) -> Optional[Dict[str, Any]]:
+def _extract_tool_event_from_update(update: Any) -> dict[str, Any] | None:
     """Extract tool call events from codex-acp ToolCall/ToolCallUpdate."""
     try:
         type_name = type(update).__name__
@@ -1203,7 +1202,7 @@ def _extract_text_from_result(result: Any) -> str:
     return ""
 
 
-def _text_from_content(content: Any) -> Optional[str]:
+def _text_from_content(content: Any) -> str | None:
     """Extract text from a typed ACP content block (SDK 0.8+).
 
     Handles TextContentBlock and plain strings.

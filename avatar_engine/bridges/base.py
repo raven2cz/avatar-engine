@@ -19,12 +19,19 @@ import re
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from typing import Any
 
-from ..types import Attachment, SessionInfo, SessionCapabilitiesInfo, ProviderCapabilities
+from ..types import (
+    Attachment,
+    ProviderCapabilities,
+    SessionCapabilitiesInfo,
+    SessionInfo,
+    ToolPolicy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,22 +49,22 @@ class Message:
     role: str
     content: str
     timestamp: float = field(default_factory=time.time)
-    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
-    attachments: List[Attachment] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    attachments: list[Attachment] = field(default_factory=list)
 
 
 @dataclass
 class BridgeResponse:
     content: str
-    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
-    raw_events: List[Dict[str, Any]] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    raw_events: list[dict[str, Any]] = field(default_factory=list)
     duration_ms: int = 0
-    session_id: Optional[str] = None
-    cost_usd: Optional[float] = None
-    token_usage: Optional[Dict[str, Any]] = None
+    session_id: str | None = None
+    cost_usd: float | None = None
+    token_usage: dict[str, Any] | None = None
     success: bool = True
-    error: Optional[str] = None
-    generated_images: List[Path] = field(default_factory=list)
+    error: str | None = None
+    generated_images: list[Path] = field(default_factory=list)
 
 
 def _classify_stderr_level(text: str) -> str:
@@ -90,8 +97,8 @@ class BaseBridge(ABC):
         working_dir: str = "",
         timeout: int = 600,
         system_prompt: str = "",
-        env: Optional[Dict[str, str]] = None,
-        mcp_servers: Optional[Dict[str, Any]] = None,
+        env: dict[str, str] | None = None,
+        mcp_servers: dict[str, Any] | None = None,
         debug: bool = False,
     ):
         self.executable = executable
@@ -102,24 +109,24 @@ class BaseBridge(ABC):
         self.system_prompt = system_prompt
         self.env = env or {}
         self.mcp_servers = mcp_servers or {}
-        self.tool_policy: Optional[ToolPolicy] = None  # GAP-8: Engine-level tool policy
+        self.tool_policy: ToolPolicy | None = None  # GAP-8: Engine-level tool policy
 
         self.state = BridgeState.DISCONNECTED
-        self.history: List[Message] = []
-        self.session_id: Optional[str] = None
+        self.history: list[Message] = []
+        self.session_id: str | None = None
 
-        self._proc: Optional[asyncio.subprocess.Process] = None
+        self._proc: asyncio.subprocess.Process | None = None
         self._read_lock = asyncio.Lock()
         self._stdin_lock = asyncio.Lock()  # RC-7: protect concurrent stdin writes
-        self._stderr_task: Optional[asyncio.Task] = None
-        self._stderr_buffer: List[str] = []
+        self._stderr_task: asyncio.Task | None = None
+        self._stderr_buffer: list[str] = []
         self._stderr_lock = threading.Lock()  # RC-8: protect stderr buffer
 
-        self._on_output: Optional[Callable[[str], None]] = None
-        self._on_state_change: Optional[Callable[[BridgeState, str], None]] = None
+        self._on_output: Callable[[str], None] | None = None
+        self._on_state_change: Callable[[BridgeState, str], None] | None = None
         self._state_detail: str = ""
-        self._on_event: Optional[Callable[[Dict[str, Any]], None]] = None
-        self._on_stderr: Optional[Callable[[str], None]] = None
+        self._on_event: Callable[[dict[str, Any]], None] | None = None
+        self._on_stderr: Callable[[str], None] | None = None
 
         # Session capabilities (populated during start by subclasses)
         self._session_capabilities = SessionCapabilitiesInfo()
@@ -158,39 +165,39 @@ class BaseBridge(ABC):
     def _setup_config_files(self) -> None: ...
 
     @abstractmethod
-    def _parse_session_id(self, events: List[Dict[str, Any]]) -> Optional[str]: ...
+    def _parse_session_id(self, events: list[dict[str, Any]]) -> str | None: ...
 
     @abstractmethod
-    def _parse_content(self, events: List[Dict[str, Any]]) -> str: ...
+    def _parse_content(self, events: list[dict[str, Any]]) -> str: ...
 
     @abstractmethod
-    def _parse_tool_calls(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]: ...
+    def _parse_tool_calls(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]: ...
 
     @abstractmethod
-    def _parse_usage(self, events: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]: ...
+    def _parse_usage(self, events: list[dict[str, Any]]) -> dict[str, Any] | None: ...
 
     @abstractmethod
-    def _extract_text_delta(self, event: Dict[str, Any]) -> Optional[str]: ...
+    def _extract_text_delta(self, event: dict[str, Any]) -> str | None: ...
 
     @abstractmethod
-    def _is_turn_complete(self, event: Dict[str, Any]) -> bool:
+    def _is_turn_complete(self, event: dict[str, Any]) -> bool:
         """Return True when event signals the model finished its response."""
         ...
 
     # Persistent mode
     @abstractmethod
-    def _build_persistent_command(self) -> List[str]: ...
+    def _build_persistent_command(self) -> list[str]: ...
 
     @abstractmethod
-    def _format_user_message(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> str:
+    def _format_user_message(self, prompt: str, attachments: list[Attachment] | None = None) -> str:
         """Encode user prompt as a single JSONL line for stdin."""
         ...
 
     # Oneshot mode
     @abstractmethod
-    def _build_oneshot_command(self, prompt: str) -> List[str]: ...
+    def _build_oneshot_command(self, prompt: str) -> list[str]: ...
 
-    def _build_subprocess_env(self) -> Dict[str, str]:
+    def _build_subprocess_env(self) -> dict[str, str]:
         """Build environment for subprocesses. Override to add sandbox env vars."""
         return {**os.environ, **self.env}
 
@@ -226,14 +233,14 @@ class BaseBridge(ABC):
     def on_state_change(self, cb: Callable[[BridgeState, str], None]) -> None:
         self._on_state_change = cb
 
-    def on_event(self, cb: Callable[[Dict[str, Any]], None]) -> None:
+    def on_event(self, cb: Callable[[dict[str, Any]], None]) -> None:
         self._on_event = cb
 
     def on_stderr(self, cb: Callable[[str], None]) -> None:
         """Register callback for stderr output."""
         self._on_stderr = cb
 
-    def get_stderr_buffer(self) -> List[str]:
+    def get_stderr_buffer(self) -> list[str]:
         """Get accumulated stderr output."""
         with self._stderr_lock:  # RC-8: safe concurrent access
             return list(self._stderr_buffer)
@@ -255,7 +262,7 @@ class BaseBridge(ABC):
         """Full provider capability declaration for GUI adaptation."""
         return self._provider_capabilities
 
-    async def list_sessions(self) -> List[SessionInfo]:
+    async def list_sessions(self) -> list[SessionInfo]:
         """List available sessions. Override in subclass if supported."""
         return []
 
@@ -382,7 +389,7 @@ class BaseBridge(ABC):
 
     # === Core API =======================================================
 
-    async def send(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> BridgeResponse:
+    async def send(self, prompt: str, attachments: list[Attachment] | None = None) -> BridgeResponse:
         """Send prompt with optional file attachments, get complete response."""
         if self.state == BridgeState.DISCONNECTED:
             await self.start()
@@ -443,7 +450,7 @@ class BaseBridge(ABC):
 
         self._set_state(BridgeState.BUSY)
         full = ""
-        all_events: List[Dict[str, Any]] = []
+        all_events: list[dict[str, Any]] = []
 
         try:
             if self.is_persistent:
@@ -475,7 +482,7 @@ class BaseBridge(ABC):
 
     # === PERSISTENT internals ===========================================
 
-    async def _send_persistent(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> List[Dict[str, Any]]:
+    async def _send_persistent(self, prompt: str, attachments: list[Attachment] | None = None) -> list[dict[str, Any]]:
         if not self._proc or self._proc.returncode is not None:
             raise RuntimeError("Persistent process not running")
         line = self._format_user_message(prompt, attachments=attachments)
@@ -485,7 +492,7 @@ class BaseBridge(ABC):
             await self._proc.stdin.drain()
         return await self._read_until_turn_complete()
 
-    async def _stream_persistent(self, prompt: str) -> AsyncIterator[Dict[str, Any]]:
+    async def _stream_persistent(self, prompt: str) -> AsyncIterator[dict[str, Any]]:
         if not self._proc or self._proc.returncode is not None:
             raise RuntimeError("Persistent process not running")
         line = self._format_user_message(prompt)
@@ -497,8 +504,8 @@ class BaseBridge(ABC):
             if self._is_turn_complete(event):
                 break
 
-    async def _read_until_turn_complete(self) -> List[Dict[str, Any]]:
-        events: List[Dict[str, Any]] = []
+    async def _read_until_turn_complete(self) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
         async with self._read_lock:
             while True:
                 raw = await asyncio.wait_for(
@@ -526,7 +533,7 @@ class BaseBridge(ABC):
                     break
         return events
 
-    async def _read_events(self) -> AsyncIterator[Dict[str, Any]]:
+    async def _read_events(self) -> AsyncIterator[dict[str, Any]]:
         async with self._read_lock:
             while True:
                 raw = await asyncio.wait_for(
@@ -544,7 +551,7 @@ class BaseBridge(ABC):
 
     # === ONESHOT internals ==============================================
 
-    async def _send_oneshot(self, prompt: str) -> List[Dict[str, Any]]:
+    async def _send_oneshot(self, prompt: str) -> list[dict[str, Any]]:
         cmd = self._build_oneshot_command(prompt)
         env = self._build_subprocess_env()
         proc = await asyncio.create_subprocess_exec(
@@ -563,7 +570,7 @@ class BaseBridge(ABC):
         if stderr:
             logger.debug(f"stderr: {stderr.decode(errors='replace')[:500]}")
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for line in stdout.decode(errors="replace").splitlines():
             line = line.strip()
             if not line:
@@ -583,7 +590,7 @@ class BaseBridge(ABC):
                                f"{stderr.decode(errors='replace')[:500]}")
         return events
 
-    async def _stream_oneshot(self, prompt: str) -> AsyncIterator[Dict[str, Any]]:
+    async def _stream_oneshot(self, prompt: str) -> AsyncIterator[dict[str, Any]]:
         cmd = self._build_oneshot_command(prompt)
         env = self._build_subprocess_env()
         proc = await asyncio.create_subprocess_exec(
@@ -637,7 +644,7 @@ class BaseBridge(ABC):
 
     # === History ========================================================
 
-    def get_history(self) -> List[Message]:
+    def get_history(self) -> list[Message]:
         with self._history_lock:  # RC-9
             return list(self.history)
 
@@ -659,11 +666,11 @@ class BaseBridge(ABC):
                 return False  # Process died
         return True
 
-    def check_health(self) -> Dict[str, Any]:
+    def check_health(self) -> dict[str, Any]:
         """Detailed health check with diagnostics."""
         with self._history_lock:  # RC-9
             history_len = len(self.history)
-        health: Dict[str, Any] = {
+        health: dict[str, Any] = {
             "healthy": self.is_healthy(),
             "state": self.state.value,
             "provider": self.provider_name,
@@ -713,7 +720,7 @@ class BaseBridge(ABC):
 
     # === Usage Stats ====================================================
 
-    def get_usage(self) -> Dict[str, Any]:
+    def get_usage(self) -> dict[str, Any]:
         """Get usage summary for display (e.g. /usage REPL command)."""
         with self._stats_lock:  # RC-10
             stats = dict(self._stats)
@@ -721,7 +728,7 @@ class BaseBridge(ABC):
         stats["session_id"] = self.session_id
         return stats
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get usage statistics."""
         with self._stats_lock:  # RC-10
             return dict(self._stats)

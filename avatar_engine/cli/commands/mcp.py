@@ -3,12 +3,12 @@
 import asyncio
 import json
 import os
-import click
 from pathlib import Path
+
+import click
+import yaml
 from rich.console import Console
 from rich.table import Table
-
-import yaml
 
 console = Console()
 

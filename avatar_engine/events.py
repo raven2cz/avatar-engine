@@ -13,11 +13,12 @@ Events are emitted during AI interactions for:
 import logging
 import re
 import threading
+import time
 from abc import ABC
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
-import time
+from typing import Any, TypeVar
 
 from .types import BridgeState
 
@@ -92,10 +93,10 @@ class ToolEvent(AvatarEvent):
     """
     tool_name: str = ""
     tool_id: str = ""
-    parameters: Dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=dict)
     status: str = "started"  # started, completed, failed
-    result: Optional[str] = None
-    error: Optional[str] = None
+    result: str | None = None
+    error: str | None = None
 
 
 @dataclass
@@ -105,8 +106,8 @@ class StateEvent(AvatarEvent):
 
     Use this to update status indicators in GUI.
     """
-    old_state: Optional[BridgeState] = None
-    new_state: Optional[BridgeState] = None
+    old_state: BridgeState | None = None
+    new_state: BridgeState | None = None
     detail: str = ""  # Human-readable description of current init step
 
 
@@ -178,7 +179,7 @@ class PermissionRequestEvent(AvatarEvent):
     request_id: str = ""
     tool_name: str = ""
     tool_input: str = ""
-    options: List[Dict[str, str]] = field(default_factory=list)
+    options: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -222,11 +223,11 @@ class EventEmitter:
     """
 
     def __init__(self) -> None:
-        self._handlers: Dict[Type[AvatarEvent], List[Callable[..., None]]] = {}
-        self._global_handlers: List[Callable[[AvatarEvent], None]] = []
+        self._handlers: dict[type[AvatarEvent], list[Callable[..., None]]] = {}
+        self._global_handlers: list[Callable[[AvatarEvent], None]] = []
         self._lock = threading.Lock()  # Thread-safe for GUI integration (RC-2)
 
-    def on(self, event_type: Type[E]) -> Callable[[Callable[[E], None]], Callable[[E], None]]:
+    def on(self, event_type: type[E]) -> Callable[[Callable[[E], None]], Callable[[E], None]]:
         """
         Decorator to register an event handler.
 
@@ -265,7 +266,7 @@ class EventEmitter:
 
     def add_handler(
         self,
-        event_type: Type[E],
+        event_type: type[E],
         handler: Callable[[E], None],
     ) -> None:
         """
@@ -310,7 +311,7 @@ class EventEmitter:
 
     def remove_handler(
         self,
-        event_type: Type[E],
+        event_type: type[E],
         handler: Callable[[E], None],
     ) -> None:
         """
@@ -326,7 +327,7 @@ class EventEmitter:
                     h for h in self._handlers[event_type] if h != handler
                 ]
 
-    def clear_handlers(self, event_type: Optional[Type[E]] = None) -> None:
+    def clear_handlers(self, event_type: type[E] | None = None) -> None:
         """
         Clear handlers.
 
@@ -341,7 +342,7 @@ class EventEmitter:
                 self._handlers.clear()
                 self._global_handlers.clear()
 
-    def handler_count(self, event_type: Optional[Type[E]] = None) -> int:
+    def handler_count(self, event_type: type[E] | None = None) -> int:
         """
         Get the number of registered handlers.
 
@@ -375,7 +376,7 @@ _PHASE_PATTERNS = [
 ]
 
 
-def extract_bold_subject(text: str) -> Tuple[str, str]:
+def extract_bold_subject(text: str) -> tuple[str, str]:
     """
     Extract the first **bold** subject from thinking text.
 

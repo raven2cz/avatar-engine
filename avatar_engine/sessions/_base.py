@@ -1,7 +1,6 @@
 """Abstract base class for filesystem session stores."""
 
 from abc import ABC, abstractmethod
-from typing import List
 
 from ..types import Message, SessionInfo
 
@@ -14,10 +13,10 @@ class SessionStore(ABC):
     """
 
     @abstractmethod
-    async def list_sessions(self, working_dir: str) -> List[SessionInfo]:
+    async def list_sessions(self, working_dir: str) -> list[SessionInfo]:
         """List sessions scoped to working directory, sorted by updated_at desc."""
         ...
 
-    def load_session_messages(self, session_id: str, working_dir: str) -> List[Message]:
+    def load_session_messages(self, session_id: str, working_dir: str) -> list[Message]:
         """Load messages from a session file. Default: empty list."""
         return []

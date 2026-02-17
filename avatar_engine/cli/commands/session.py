@@ -1,6 +1,7 @@
 """Session management commands."""
 
 import asyncio
+
 import click
 from rich.console import Console
 from rich.table import Table

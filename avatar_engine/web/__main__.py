@@ -106,7 +106,7 @@ def main() -> None:
         static_dir=args.static_dir,
     )
 
-    print(f"\n  Avatar Engine Web Server")
+    print("\n  Avatar Engine Web Server")
     print(f"  Provider: {args.provider}")
     if args.model:
         print(f"  Model: {args.model}")

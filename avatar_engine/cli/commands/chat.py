@@ -1,16 +1,16 @@
 """Chat command — single message interaction."""
 
 import asyncio
-import gc
 import json
 import sys
+
 import click
 from rich.console import Console
 from rich.markdown import Markdown
 
 from ...config import AvatarConfig
 from ...engine import AvatarEngine
-from ...events import TextEvent, ToolEvent, ThinkingEvent
+from ...events import TextEvent
 from ...types import ProviderType
 from ..app import provider_option
 from ..display import DisplayManager

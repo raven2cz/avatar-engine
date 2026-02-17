@@ -11,9 +11,9 @@ Usage:
     # Run with: uvicorn avatar_engine.web:app
 """
 
-from .server import create_app, create_api_app
 from .bridge import WebSocketBridge
-from .protocol import event_to_dict, EVENT_TYPE_MAP
+from .protocol import EVENT_TYPE_MAP, event_to_dict
+from .server import create_api_app, create_app
 from .session_manager import EngineSessionManager
 
 __all__ = [

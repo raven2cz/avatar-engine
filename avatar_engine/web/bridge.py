@@ -12,8 +12,7 @@ This mirrors cli/display.py:DisplayManager but outputs JSON instead of Rich.
 
 import asyncio
 import logging
-import time
-from typing import Any, Dict, Set
+from typing import Any
 
 from ..events import (
     ActivityEvent,
@@ -49,7 +48,7 @@ class WebSocketBridge:
 
     def __init__(self, emitter: EventEmitter) -> None:
         self._emitter = emitter
-        self._clients: Set[Any] = set()  # FastAPI WebSocket objects
+        self._clients: set[Any] = set()  # FastAPI WebSocket objects
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -68,14 +67,14 @@ class WebSocketBridge:
         self._emitter.add_handler(StateEvent, self._on_state)
         # TextEvent, CostEvent, PermissionRequestEvent are forwarded directly
         # (no state logic needed — just serialize and broadcast)
-        from ..events import TextEvent, CostEvent, PermissionRequestEvent
+        from ..events import CostEvent, PermissionRequestEvent, TextEvent
         self._emitter.add_handler(TextEvent, self._on_generic)
         self._emitter.add_handler(CostEvent, self._on_generic)
         self._emitter.add_handler(PermissionRequestEvent, self._on_generic)
 
     def unregister(self) -> None:
         """Remove all handlers from the emitter."""
-        from ..events import TextEvent, CostEvent, PermissionRequestEvent
+        from ..events import CostEvent, PermissionRequestEvent, TextEvent
         self._emitter.remove_handler(ThinkingEvent, self._on_thinking)
         self._emitter.remove_handler(ToolEvent, self._on_tool)
         self._emitter.remove_handler(ActivityEvent, self._on_activity)
@@ -176,11 +175,11 @@ class WebSocketBridge:
             "data": {"state": self._engine_state.value},
         })
 
-    def broadcast_message(self, msg: Dict[str, Any]) -> None:
+    def broadcast_message(self, msg: dict[str, Any]) -> None:
         """Public API: broadcast an arbitrary JSON message to all clients."""
         self._schedule_broadcast(msg)
 
-    def _schedule_broadcast(self, msg: Dict[str, Any]) -> None:
+    def _schedule_broadcast(self, msg: dict[str, Any]) -> None:
         """Schedule an async broadcast from sync event handler context."""
         try:
             loop = asyncio.get_running_loop()
@@ -193,7 +192,7 @@ class WebSocketBridge:
                     self._async_broadcast(msg),
                 )
 
-    async def _async_broadcast(self, msg: Dict[str, Any]) -> None:
+    async def _async_broadcast(self, msg: dict[str, Any]) -> None:
         """Send message to all connected clients, removing dead ones."""
         dead: list = []
         async with self._lock:

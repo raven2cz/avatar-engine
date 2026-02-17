@@ -7,12 +7,11 @@ Provides configurable logging with file rotation support.
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
-from typing import Optional
 
 from ..config import AvatarConfig
 
 
-def setup_logging(config: Optional[AvatarConfig] = None) -> None:
+def setup_logging(config: AvatarConfig | None = None) -> None:
     """
     Configure logging based on AvatarConfig settings.
 
