@@ -32,11 +32,11 @@ const synapseTheme: Record<string, React.CSSProperties> = Object.fromEntries(
 // Override container styles
 Object.assign(synapseTheme, {
   'pre[class*="language-"]': {
-    background: '#0d1117',
+    background: 'var(--ae-code-bg)',
     margin: 0,
     padding: '1.25rem',
     borderRadius: '0.75rem',
-    border: '1px solid rgba(99, 110, 123, 0.25)',
+    border: '1px solid var(--ae-code-border)',
     fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
     fontSize: '0.925rem',
     lineHeight: '1.65',
@@ -65,7 +65,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       onClick={handleCopy}
       className="p-1 rounded-md
-        text-[#8b949e] hover:text-[#c9d1d9] transition-colors duration-150
+        text-[var(--ae-code-muted)] hover:text-[var(--ae-code-text)] transition-colors duration-150
         opacity-0 group-hover:opacity-100"
       title={t('chat.copyCode')}
     >
@@ -100,12 +100,12 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
             const lang = match?.[1] || 'text'
             return (
               <div className="relative group my-4 rounded-xl overflow-hidden
-                border border-[rgba(99,110,123,0.25)] bg-[#0d1117]
+                border border-[var(--ae-code-border)] bg-[var(--ae-code-bg)]
                 shadow-lg shadow-black/20">
                 {/* Header bar with language + copy */}
                 <div className="flex items-center justify-between px-4 py-1.5
-                  bg-[#161b22] border-b border-[rgba(99,110,123,0.2)]">
-                  <span className="text-[11px] text-[#8b949e] font-mono uppercase tracking-wider select-none">
+                  bg-[var(--ae-code-header-bg)] border-b border-[var(--ae-code-border)]">
+                  <span className="text-[11px] text-[var(--ae-code-muted)] font-mono uppercase tracking-wider select-none">
                     {lang}
                   </span>
                   <CopyButton text={codeStr} />
@@ -124,8 +124,8 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
 
           return (
             <code
-              className="px-1.5 py-0.5 rounded-md bg-[#1c2128] border border-[rgba(99,110,123,0.25)]
-                text-[#e2b5ff] font-mono text-[0.9em]"
+              className="px-1.5 py-0.5 rounded-md bg-[var(--ae-code-inline-bg)] border border-[var(--ae-code-border)]
+                text-[var(--ae-code-inline-text)] font-mono text-[0.9em]"
               {...props}
             >
               {children}

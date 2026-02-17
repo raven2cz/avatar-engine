@@ -3,21 +3,96 @@
  *
  * These styles complement the Tailwind preset and provide
  * non-utility CSS that components depend on.
+ *
+ * THEMING: Override :root CSS variables to customize colors.
+ * Example — change accent from indigo to red:
+ *
+ *   :root {
+ *     --ae-accent-rgb: 239 68 68;
+ *     --ae-pulse-rgb: 220 38 38;
+ *     --ae-accent: #ef4444;
+ *     --ae-gradient: linear-gradient(135deg, #ef4444, #dc2626, #f87171);
+ *     --ae-glass-scroll-hover: rgba(239, 68, 68, 0.45);
+ *   }
  */
 
-/* Custom scrollbar */
+/* ============================================
+   Theme Variables
+   ============================================ */
+:root {
+  /* Accent colors — RGB format for Tailwind alpha support */
+  --ae-accent-rgb: 99 102 241;     /* synapse — primary accent */
+  --ae-pulse-rgb: 139 92 246;      /* pulse — secondary accent */
+  --ae-neural-rgb: 6 182 212;      /* neural — tertiary accent */
+
+  /* Accent colors — hex format for CSS usage */
+  --ae-accent: #6366f1;
+  --ae-pulse: #8b5cf6;
+
+  /* Surface / background — RGB for Tailwind */
+  --ae-bg-obsidian-rgb: 10 10 15;
+  --ae-bg-darker-rgb: 15 15 23;
+  --ae-bg-deep-rgb: 18 18 26;
+  --ae-bg-base-rgb: 19 19 27;
+  --ae-bg-dark-rgb: 22 22 31;
+  --ae-bg-mid-rgb: 26 26 46;
+  --ae-bg-light-rgb: 42 42 66;
+
+  /* Surface — hex for CSS usage */
+  --ae-bg-deep: #12121a;
+  --ae-bg-mid: #1a1a2e;
+  --ae-bg-light: #2a2a42;
+
+  /* Text colors — RGB for Tailwind */
+  --ae-text-primary-rgb: 248 250 252;
+  --ae-text-secondary-rgb: 148 163 184;
+  --ae-text-muted-rgb: 100 116 139;
+
+  /* Text — hex for CSS usage */
+  --ae-text-muted: #64748b;
+
+  /* Error / status glow — RGB for inline styles */
+  --ae-error-rgb: 244 63 94;
+
+  /* Glass composites (override for custom surfaces) */
+  --ae-glass-bg: rgba(18, 18, 26, 0.8);
+  --ae-glass-panel-bg: rgba(12, 12, 20, 0.92);
+  --ae-glass-light-bg: rgba(26, 26, 46, 0.5);
+  --ae-glass-scroll: rgba(26, 26, 46, 0.5);
+  --ae-glass-scroll-hover: rgba(99, 102, 241, 0.45);
+
+  /* Code block theme */
+  --ae-code-bg: #0d1117;
+  --ae-code-header-bg: #161b22;
+  --ae-code-border: rgba(99, 110, 123, 0.25);
+  --ae-code-inline-bg: #1c2128;
+  --ae-code-inline-text: #e2b5ff;
+  --ae-code-muted: #8b949e;
+  --ae-code-text: #c9d1d9;
+
+  /* Logo */
+  --ae-logo-primary: #58a6ff;
+  --ae-logo-secondary: #bc8cff;
+
+  /* Gradient text */
+  --ae-gradient: linear-gradient(135deg, #6366f1, #a78bfa, #c084fc);
+}
+
+/* ============================================
+   Scrollbar
+   ============================================ */
 ::-webkit-scrollbar {
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #12121a;
+  background: var(--ae-bg-deep);
 }
 ::-webkit-scrollbar-thumb {
-  background: #1a1a2e;
+  background: var(--ae-bg-mid);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2a2a42;
+  background: var(--ae-bg-light);
 }
 
 /* Smooth scroll for chat */
@@ -25,34 +100,40 @@
   scroll-behavior: smooth;
 }
 
-/* Glassmorphism utility */
+/* ============================================
+   Glassmorphism
+   ============================================ */
 .glass {
-  background: rgba(18, 18, 26, 0.8);
+  background: var(--ae-glass-bg);
   backdrop-filter: blur(20px) saturate(150%);
   -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
 
 .glass-panel {
-  background: rgba(12, 12, 20, 0.92);
+  background: var(--ae-glass-panel-bg);
   backdrop-filter: blur(32px) saturate(120%);
   -webkit-backdrop-filter: blur(32px) saturate(120%);
 }
 
 .glass-light {
-  background: rgba(26, 26, 46, 0.5);
+  background: var(--ae-glass-light-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
 
-/* Gradient text */
+/* ============================================
+   Gradient text
+   ============================================ */
 .gradient-text {
-  background: linear-gradient(135deg, #6366f1, #a78bfa, #c084fc);
+  background: var(--ae-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Breathing orb glow */
+/* ============================================
+   Breathing orb glow
+   ============================================ */
 .orb-glow {
   box-shadow:
     0 0 30px rgba(139, 92, 246, 0.4),
@@ -60,20 +141,24 @@
     inset 0 0 20px rgba(255, 255, 255, 0.1);
 }
 
-/* Code block styling */
+/* ============================================
+   Code block styling (prose)
+   ============================================ */
 .prose pre {
-  background: #0f0f17;
-  border: 1px solid #1a1a2e;
+  background: var(--ae-code-bg);
+  border: 1px solid var(--ae-bg-mid);
   border-radius: 0.75rem;
   padding: 1rem;
 }
 
 .prose code {
-  color: #a78bfa;
+  color: var(--ae-pulse);
   font-size: 0.875em;
 }
 
-/* Markdown body */
+/* ============================================
+   Markdown body
+   ============================================ */
 .markdown-body {
   line-height: 1.65;
   word-wrap: break-word;
@@ -92,7 +177,7 @@
   appearance: none;
   width: 14px;
   height: 14px;
-  border: 1.5px solid #6366f1;
+  border: 1.5px solid var(--ae-accent);
   border-radius: 3px;
   vertical-align: middle;
   margin-right: 6px;
@@ -101,7 +186,7 @@
 }
 
 .markdown-body input[type="checkbox"]:checked {
-  background: #6366f1;
+  background: var(--ae-accent);
 }
 
 .markdown-body input[type="checkbox"]:checked::after {
@@ -115,7 +200,7 @@
 
 /* Strikethrough (GFM) */
 .markdown-body del {
-  color: #64748b;
+  color: var(--ae-text-muted);
   text-decoration: line-through;
 }
 
@@ -125,7 +210,7 @@
 
 .compact-messages {
   scrollbar-width: thin;
-  scrollbar-color: rgba(58, 58, 90, 0.5) transparent;
+  scrollbar-color: var(--ae-glass-scroll) transparent;
 }
 .compact-messages::-webkit-scrollbar { width: 8px; }
 .compact-messages::-webkit-scrollbar-track {
@@ -133,13 +218,13 @@
   margin: 4px 0;
 }
 .compact-messages::-webkit-scrollbar-thumb {
-  background: rgba(58, 58, 90, 0.5);
+  background: var(--ae-glass-scroll);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 .compact-messages::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.45);
+  background: var(--ae-glass-scroll-hover);
   border: 2px solid transparent;
   background-clip: padding-box;
 }

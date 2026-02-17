@@ -372,10 +372,10 @@ export function AvatarWidget({
               <div className="absolute bottom-[2%] left-1/2 -translate-x-[40%] w-[180px] h-[50px] rounded-full pointer-events-none blur-[10px]"
                 style={{
                   background: engineState === 'error'
-                    ? 'radial-gradient(ellipse, rgba(244,63,94,0.2) 0%, transparent 70%)'
+                    ? 'radial-gradient(ellipse, rgb(var(--ae-error-rgb) / 0.2) 0%, transparent 70%)'
                     : engineState === 'responding'
-                    ? 'radial-gradient(ellipse, rgba(139,92,246,0.25) 0%, transparent 70%)'
-                    : 'radial-gradient(ellipse, rgba(99,102,241,0.25) 0%, transparent 70%)',
+                    ? 'radial-gradient(ellipse, rgb(var(--ae-pulse-rgb) / 0.25) 0%, transparent 70%)'
+                    : 'radial-gradient(ellipse, rgb(var(--ae-accent-rgb) / 0.25) 0%, transparent 70%)',
                   opacity: engineState !== 'idle' ? 0.8 : 0,
                   transition: 'opacity 0.5s ease',
                 }}

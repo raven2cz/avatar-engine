@@ -35,8 +35,8 @@ const SIZES: Record<string, SizeConfig> = {
 }
 
 const PHASE_COLORS: Record<string, PhaseColors> = {
-  general:       { c1: '#6366f1', c2: '#8b5cf6', c3: '#a78bfa' },
-  idle:          { c1: '#6366f1', c2: '#8b5cf6', c3: '#a78bfa' },
+  general:       { c1: 'rgb(var(--ae-accent-rgb))', c2: 'rgb(var(--ae-pulse-rgb))', c3: '#a78bfa' },
+  idle:          { c1: 'rgb(var(--ae-accent-rgb))', c2: 'rgb(var(--ae-pulse-rgb))', c3: '#a78bfa' },
   thinking:      { c1: '#3b82f6', c2: '#6366f1', c3: '#06b6d4' },
   analyzing:     { c1: '#06b6d4', c2: '#3b82f6', c3: '#8b5cf6' },
   coding:        { c1: '#10b981', c2: '#06b6d4', c3: '#34d399' },

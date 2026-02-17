@@ -27,7 +27,7 @@ export function AvatarFab({ onClick, avatarThumbUrl }: AvatarFabProps) {
         opacity-60 hover:opacity-100
         transition-all duration-300 ease-out
         hover:scale-105 hover:border-synapse/40
-        hover:shadow-[0_6px_24px_rgba(0,0,0,0.5),0_0_0_2px_rgba(99,102,241,0.12)]
+        hover:shadow-[0_6px_24px_rgba(0,0,0,0.5),0_0_0_2px_rgb(var(--ae-accent-rgb)_/_0.12)]
         active:scale-95
         shadow-lg shadow-black/40
         flex items-center justify-center

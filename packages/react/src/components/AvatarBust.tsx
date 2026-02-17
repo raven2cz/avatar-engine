@@ -69,11 +69,11 @@ export function AvatarBust({ avatar, engineState, hasText = false, className = '
         className="w-[200px] h-auto block"
         style={{
           filter: bustState === 'thinking'
-            ? 'drop-shadow(0 0 18px rgba(99, 102, 241, 0.45)) drop-shadow(3px 3px 12px rgba(0,0,0,0.6))'
+            ? 'drop-shadow(0 0 18px rgb(var(--ae-accent-rgb) / 0.45)) drop-shadow(3px 3px 12px rgba(0,0,0,0.6))'
             : bustState === 'speaking'
-            ? 'drop-shadow(0 0 22px rgba(139, 92, 246, 0.45)) drop-shadow(3px 3px 12px rgba(0,0,0,0.6))'
+            ? 'drop-shadow(0 0 22px rgb(var(--ae-pulse-rgb) / 0.45)) drop-shadow(3px 3px 12px rgba(0,0,0,0.6))'
             : bustState === 'error'
-            ? 'drop-shadow(0 0 16px rgba(244, 63, 94, 0.5)) drop-shadow(3px 3px 12px rgba(0,0,0,0.6))'
+            ? 'drop-shadow(0 0 16px rgb(var(--ae-error-rgb) / 0.5)) drop-shadow(3px 3px 12px rgba(0,0,0,0.6))'
             : 'drop-shadow(3px 3px 12px rgba(0,0,0,0.6))',
           transition: 'filter 0.5s ease',
         }}

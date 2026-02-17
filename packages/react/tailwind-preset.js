@@ -1,21 +1,52 @@
+// Avatar Engine — Tailwind CSS preset.
+//
+// All colors reference CSS custom properties (--ae-*-rgb),
+// so consumers can override them in their CSS:
+//
+//   :root {
+//     --ae-accent-rgb: 239 68 68;   /* red accent */
+//     --ae-bg-mid-rgb: 30 30 50;    /* custom surface */
+//   }
+//
+// Usage in consumer tailwind.config.js:
+//
+//   import avatarPreset from '@avatar-engine/react/tailwind-preset'
+//   export default {
+//     presets: [avatarPreset],
+//     content: ['./src/**', './node_modules/@avatar-engine/react/dist/**/*.js'],
+//   }
+
+/* Helper: creates a color function that supports Tailwind opacity modifiers */
+function cssVar(variable) {
+  return ({ opacityValue }) => {
+    if (opacityValue !== undefined) {
+      return `rgb(var(${variable}) / ${opacityValue})`
+    }
+    return `rgb(var(${variable}))`
+  }
+}
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   theme: {
     extend: {
       colors: {
-        obsidian: '#0a0a0f',
-        'slate-darker': '#0f0f17',
-        'slate-deep': '#12121a',
-        'slate-base': '#13131b',
-        'slate-dark': '#16161f',
-        'slate-mid': '#1a1a2e',
-        'slate-light': '#2a2a42',
-        synapse: '#6366f1',
-        pulse: '#8b5cf6',
-        neural: '#06b6d4',
-        'text-primary': '#f8fafc',
-        'text-secondary': '#94a3b8',
-        'text-muted': '#64748b',
+        /* Surface / background */
+        obsidian: cssVar('--ae-bg-obsidian-rgb'),
+        'slate-darker': cssVar('--ae-bg-darker-rgb'),
+        'slate-deep': cssVar('--ae-bg-deep-rgb'),
+        'slate-base': cssVar('--ae-bg-base-rgb'),
+        'slate-dark': cssVar('--ae-bg-dark-rgb'),
+        'slate-mid': cssVar('--ae-bg-mid-rgb'),
+        'slate-light': cssVar('--ae-bg-light-rgb'),
+        /* Accent */
+        synapse: cssVar('--ae-accent-rgb'),
+        pulse: cssVar('--ae-pulse-rgb'),
+        neural: cssVar('--ae-neural-rgb'),
+        /* Text */
+        'text-primary': cssVar('--ae-text-primary-rgb'),
+        'text-secondary': cssVar('--ae-text-secondary-rgb'),
+        'text-muted': cssVar('--ae-text-muted-rgb'),
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],

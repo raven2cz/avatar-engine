@@ -71,7 +71,7 @@ function AvatarThumb({ avatar, selected, onSelect }: {
       onClick={onSelect}
       className={`relative w-12 h-[72px] rounded-[10px] overflow-hidden cursor-pointer border-2 transition-all duration-200 ${
         selected
-          ? 'border-synapse shadow-[0_0_12px_rgba(99,102,241,0.3)]'
+          ? 'border-synapse shadow-[0_0_12px_rgb(var(--ae-accent-rgb)_/_0.3)]'
           : 'border-transparent hover:border-synapse hover:scale-105'
       }`}
     >
