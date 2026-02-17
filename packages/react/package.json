@@ -29,7 +29,7 @@
     "react-dom": "^18.0.0 || ^19.0.0"
   },
   "dependencies": {
-    "@avatar-engine/core": "*",
+    "@avatar-engine/core": "^1.0.0",
     "lucide-react": "^0.300.0",
     "react-markdown": "^9.0.0",
     "react-syntax-highlighter": "^15.6.0",
@@ -48,6 +48,19 @@
     "vite-plugin-dts": "^4.0.0",
     "vitest": "^4.0.18"
   },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "avatar",
+    "ai",
+    "react",
+    "chat",
+    "websocket",
+    "tailwind",
+    "components",
+    "hooks"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

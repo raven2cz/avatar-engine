@@ -30,6 +30,19 @@
     "vite-plugin-dts": "^4.0.0",
     "vitest": "^4.0.18"
   },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "avatar",
+    "ai",
+    "websocket",
+    "state-machine",
+    "mcp",
+    "gemini",
+    "claude",
+    "codex"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
