@@ -5,6 +5,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { UploadedFile } from '@avatar-engine/core'
 
+/**
+ * Return type for the {@link useFileUpload} hook.
+ *
+ * @property pending - Files that have been uploaded and are queued to attach to the next message.
+ * @property uploading - Whether a file upload request is currently in flight.
+ * @property upload - Upload a file to the backend; resolves with file metadata or null on failure.
+ * @property remove - Remove a pending file by its ID (also revokes its preview URL).
+ * @property clear - Remove all pending files (revokes all preview URLs).
+ */
 export interface UseFileUploadReturn {
   pending: UploadedFile[]
   uploading: boolean
@@ -13,6 +22,24 @@ export interface UseFileUploadReturn {
   clear: () => void
 }
 
+/**
+ * Hook for uploading files to the Avatar Engine backend and managing pending attachments.
+ *
+ * Uploaded files are held in a pending queue until consumed by a chat message.
+ * Image files receive a local preview URL (blob:) that is automatically revoked on removal.
+ *
+ * @param apiBase - REST API base URL (default: "/api/avatar").
+ *
+ * @example
+ * ```tsx
+ * const { pending, uploading, upload, remove } = useFileUpload('/api/avatar');
+ *
+ * const handleDrop = async (file: File) => {
+ *   const uploaded = await upload(file);
+ *   if (uploaded) console.log('Uploaded:', uploaded.filename);
+ * };
+ * ```
+ */
 export function useFileUpload(apiBase?: string): UseFileUploadReturn {
   const resolvedApiBase = apiBase ?? '/api/avatar'
 

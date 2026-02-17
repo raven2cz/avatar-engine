@@ -17,6 +17,7 @@ function kokoroAvatar(id: string, name: string): AvatarConfig {
   }
 }
 
+/** Registry of all available avatar configurations. */
 export const AVATARS: AvatarConfig[] = [
   kokoroAvatar('af_bella', 'Bella'),
   kokoroAvatar('af_heart', 'Heart'),
@@ -38,12 +39,26 @@ export const AVATARS: AvatarConfig[] = [
   },
 ]
 
+/** Default avatar identifier used when no preference is set. */
 export const DEFAULT_AVATAR_ID = 'af_bella'
 
+/**
+ * Look up an avatar configuration by its identifier.
+ *
+ * @param id - Avatar identifier (e.g. "af_bella", "astronaut").
+ * @returns The matching avatar config, or undefined if not found.
+ */
 export function getAvatarById(id: string): AvatarConfig | undefined {
   return AVATARS.find((a) => a.id === id)
 }
 
+/**
+ * Construct the base asset path for an avatar's image files.
+ *
+ * @param id - Avatar identifier.
+ * @param basePath - Root avatars directory (defaults to "/avatars").
+ * @returns Full path to the avatar's asset directory (e.g. "/avatars/af_bella").
+ */
 export function getAvatarBasePath(id: string, basePath: string = '/avatars'): string {
   return `${basePath}/${id}`
 }

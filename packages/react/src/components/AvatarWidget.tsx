@@ -30,6 +30,42 @@ import { AvatarBust } from './AvatarBust'
 import { AvatarPicker } from './AvatarPicker'
 import { CompactChat } from './CompactChat'
 
+/**
+ * Props for the {@link AvatarWidget} component.
+ *
+ * All chat-related props are typically sourced from a single {@link useAvatarChat} call
+ * and shared between compact and fullscreen modes to avoid WebSocket reconnections.
+ *
+ * @property children - Fullscreen content (e.g. StatusBar + ChatPanel) rendered as a fixed overlay.
+ * @property messages - Chat message history from useAvatarChat.
+ * @property sendMessage - Send a user message.
+ * @property stopResponse - Abort the current assistant response.
+ * @property isStreaming - Whether the assistant is currently streaming.
+ * @property connected - Whether the WebSocket connection is active.
+ * @property wasConnected - Whether a connection was previously established (reconnect UI).
+ * @property initDetail - Human-readable initialization status.
+ * @property error - Current error message, if any.
+ * @property diagnostic - Current diagnostic message, if any.
+ * @property provider - Active provider ID.
+ * @property model - Active model ID.
+ * @property engineState - Current engine state (idle, thinking, responding, etc.).
+ * @property thinkingSubject - Subject of the current thinking phase, if any.
+ * @property toolName - Name of the tool currently being executed.
+ * @property version - Backend engine version string.
+ * @property pendingFiles - Files queued for upload.
+ * @property uploading - Whether a file upload is in progress.
+ * @property uploadFile - Upload a file to the backend.
+ * @property removeFile - Remove a pending file by ID.
+ * @property switching - Whether a provider switch is in progress.
+ * @property activeOptions - Currently active provider options.
+ * @property availableProviders - Set of available provider IDs from the backend.
+ * @property switchProvider - Switch to a different provider/model.
+ * @property customProviders - Custom provider list; overrides built-in PROVIDERS.
+ * @property onCompactModeRef - Ref to receive the openCompact callback for parent wiring.
+ * @property avatars - Custom avatar list (default: built-in AVATARS).
+ * @property avatarBasePath - Base path for avatar assets (default: "/avatars").
+ * @property renderBackground - Optional render function for background content behind all modes.
+ */
 export interface AvatarWidgetProps {
   /** Fullscreen content (StatusBar + ChatPanel + CostTracker) — rendered as overlay */
   children: ReactNode

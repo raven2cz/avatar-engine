@@ -16,6 +16,17 @@ import { OptionControl } from './OptionControl'
 import { SafetyModeSelector } from './SafetyModeSelector'
 import type { SafetyMode } from '@avatar-engine/core'
 
+/**
+ * Props for the {@link ProviderModelSelector} component.
+ *
+ * @property currentProvider - Currently active provider ID.
+ * @property currentModel - Currently active model ID, or null for the provider default.
+ * @property switching - Whether a provider/model switch is in progress (disables interaction).
+ * @property activeOptions - Currently active provider options (flat key-value map).
+ * @property availableProviders - Set of available provider IDs; null means show all.
+ * @property onSwitch - Callback invoked when the user selects a provider/model/options combination.
+ * @property customProviders - Custom provider list; overrides built-in PROVIDERS (order = priority).
+ */
 export interface ProviderModelSelectorProps {
   currentProvider: string
   currentModel: string | null

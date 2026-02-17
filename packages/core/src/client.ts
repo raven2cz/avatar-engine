@@ -29,6 +29,25 @@ export interface AvatarClientOptions {
   onMessage?: (msg: ServerMessage) => void
 }
 
+/**
+ * Framework-agnostic WebSocket client for the Avatar Engine server.
+ *
+ * Manages the connection lifecycle, dispatches state updates through a pure
+ * reducer, and exposes high-level methods for chat, stopping, switching
+ * providers, and session management.
+ *
+ * @example
+ * ```ts
+ * const client = new AvatarClient('ws://localhost:8080/ws', {
+ *   onStateChange: (state) => console.log('State:', state),
+ *   onMessage: (msg) => console.log('Raw message:', msg),
+ * });
+ * client.connect();
+ * client.sendChat('Hello!');
+ * // Later...
+ * client.disconnect();
+ * ```
+ */
 export class AvatarClient {
   private state: AvatarState
   private ws: WebSocket | null = null
@@ -36,6 +55,12 @@ export class AvatarClient {
   private destroyed = false
   private errorFenced = false
 
+  /**
+   * Create a new AvatarClient instance.
+   *
+   * @param url - WebSocket server URL (e.g. "ws://localhost:8080/ws").
+   * @param options - Optional configuration and event callbacks.
+   */
   constructor(
     private url: string,
     private options: AvatarClientOptions = {},
@@ -67,6 +92,14 @@ export class AvatarClient {
 
   // === Actions ===
 
+  /**
+   * Send a chat message to the avatar engine.
+   *
+   * Clears any previous error and diagnostic state before sending.
+   *
+   * @param text - The user's message text.
+   * @param attachments - Optional file or image attachments.
+   */
   sendChat(text: string, attachments?: ChatAttachment[]): void {
     this.errorFenced = false
     this._dispatch({ type: 'CLEAR_ERROR' })
@@ -74,31 +107,53 @@ export class AvatarClient {
     this._send(createChatMessage(text, attachments))
   }
 
+  /** Stop the current generation and reset the engine to idle. */
   stop(): void {
     this._send(createStopMessage())
     this._dispatch({ type: 'ENGINE_STATE', state: 'idle' })
     this._dispatch({ type: 'THINKING_END' })
   }
 
+  /**
+   * Switch to a different provider and/or model.
+   *
+   * @param provider - Target provider identifier (e.g. "gemini", "claude").
+   * @param model - Optional model name within the provider.
+   * @param options - Optional provider-specific configuration overrides.
+   */
   switchProvider(provider: string, model?: string, options?: Record<string, unknown>): void {
     this._dispatch({ type: 'SWITCHING' })
     this._send(createSwitchMessage(provider, model, options))
   }
 
+  /**
+   * Resume a previously saved session.
+   *
+   * @param sessionId - Identifier of the session to resume.
+   */
   resumeSession(sessionId: string): void {
     this._dispatch({ type: 'SWITCHING' })
     this._send(createResumeSessionMessage(sessionId))
   }
 
+  /** Start a new session, discarding the current one. */
   newSession(): void {
     this._dispatch({ type: 'SWITCHING' })
     this._send(createNewSessionMessage())
   }
 
+  /**
+   * Respond to a safety-system permission request.
+   *
+   * @param requestId - Identifier of the original permission request.
+   * @param optionId - Selected permission option (e.g. "allow", "deny").
+   * @param cancelled - Whether the user dismissed the prompt without choosing.
+   */
   sendPermissionResponse(requestId: string, optionId: string, cancelled: boolean): void {
     this._send(createPermissionResponse(requestId, optionId, cancelled))
   }
 
+  /** Clear the conversation history on the server. */
   clearHistory(): void {
     this._send(createClearHistoryMessage())
   }

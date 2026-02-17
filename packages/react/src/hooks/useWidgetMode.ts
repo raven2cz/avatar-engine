@@ -40,6 +40,24 @@ export type TransitionHandler = (
   complete: () => void,
 ) => void
 
+/**
+ * Return type for the {@link useWidgetMode} hook.
+ *
+ * @property mode - Current display mode: "fab", "compact", or "fullscreen".
+ * @property setMode - Transition to a specific mode (respects transition handler).
+ * @property openCompact - Shortcut to switch to compact mode.
+ * @property openFullscreen - Shortcut to switch to fullscreen mode.
+ * @property closeTofab - Shortcut to collapse back to the FAB.
+ * @property toggleCompact - Toggle between fab and compact modes.
+ * @property compactWidth - Current width of the compact drawer in pixels.
+ * @property compactHeight - Current height of the compact drawer in pixels.
+ * @property setCompactWidth - Set compact drawer width (clamped to minimum).
+ * @property setCompactHeight - Set compact drawer height (clamped to minimum).
+ * @property bustVisible - Whether the avatar bust is visible in compact mode.
+ * @property toggleBust - Toggle avatar bust visibility.
+ * @property defaultMode - Persisted default mode used on initial load.
+ * @property setDefaultMode - Update the persisted default mode.
+ */
 export interface UseWidgetModeReturn {
   mode: WidgetMode
   setMode: (mode: WidgetMode) => void
@@ -57,6 +75,24 @@ export interface UseWidgetModeReturn {
   setDefaultMode: (mode: WidgetMode) => void
 }
 
+/**
+ * Manages the widget display mode state machine: fab, compact, and fullscreen.
+ *
+ * Persists mode, drawer dimensions, bust visibility, and default mode to localStorage.
+ * Registers keyboard shortcuts (Escape, Ctrl+Shift+A/F/H) for mode transitions.
+ *
+ * @param onTransition - Optional callback invoked during compact/fullscreen transitions
+ *   to enable custom animations. Call `complete()` to commit the mode change.
+ *
+ * @example
+ * ```tsx
+ * const { mode, openCompact, openFullscreen, closeTofab } = useWidgetMode();
+ *
+ * if (mode === 'fab') return <button onClick={openCompact}>Open</button>;
+ * if (mode === 'compact') return <CompactView onExpand={openFullscreen} onClose={closeTofab} />;
+ * return <FullscreenView />;
+ * ```
+ */
 export function useWidgetMode(
   onTransition?: TransitionHandler,
 ): UseWidgetModeReturn {

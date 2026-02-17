@@ -9,6 +9,19 @@ import type {
   ChatAttachment,
 } from '@avatar-engine/core'
 
+/**
+ * Return type for the {@link useAvatarWebSocket} hook.
+ *
+ * @property state - Reactive avatar connection and engine state.
+ * @property sendMessage - Send a chat message with optional file attachments.
+ * @property stopResponse - Request the server to stop the current response.
+ * @property clearHistory - Clear server-side chat history.
+ * @property switchProvider - Switch to a different provider/model with optional config.
+ * @property resumeSession - Resume a previous session by its ID.
+ * @property newSession - Start a new server-side session.
+ * @property sendPermissionResponse - Respond to an ACP permission request.
+ * @property onServerMessage - Register a handler for raw server messages; returns an unsubscribe function.
+ */
 export interface UseAvatarWebSocketReturn {
   state: AvatarState
   sendMessage: (message: string, attachments?: ChatAttachment[]) => void
@@ -21,6 +34,26 @@ export interface UseAvatarWebSocketReturn {
   onServerMessage: (handler: (msg: ServerMessage) => void) => () => void
 }
 
+/**
+ * Low-level hook that manages the WebSocket connection to the Avatar Engine backend.
+ *
+ * Handles automatic reconnection, state dispatching, and message routing.
+ * Most consumers should use {@link useAvatarChat} instead, which builds on this hook
+ * and adds message history, file uploads, and higher-level chat logic.
+ *
+ * @param url - WebSocket endpoint URL (e.g. "ws://localhost:3000/ws").
+ *
+ * @example
+ * ```tsx
+ * const { state, sendMessage, onServerMessage } = useAvatarWebSocket('ws://localhost:3000/ws');
+ *
+ * useEffect(() => {
+ *   return onServerMessage((msg) => {
+ *     if (msg.type === 'text') console.log(msg.data.text);
+ *   });
+ * }, [onServerMessage]);
+ * ```
+ */
 export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
   const [state, dispatch] = useReducer(avatarReducer, initialAvatarState)
   const wsRef = useRef<WebSocket | null>(null)

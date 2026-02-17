@@ -26,6 +26,43 @@ export interface AvatarChatOptions {
   onResponse?: (message: ChatMessage) => void
 }
 
+/**
+ * Return type for the {@link useAvatarChat} hook.
+ *
+ * @property messages - Chat message history (user + assistant).
+ * @property sendMessage - Send a user message, optionally with file attachments.
+ * @property stopResponse - Abort the current assistant response.
+ * @property clearHistory - Clear all messages and reset chat state.
+ * @property switchProvider - Switch to a different AI provider/model with optional config.
+ * @property resumeSession - Resume a previous chat session by its ID.
+ * @property newSession - Start a fresh session (clears messages and resets server state).
+ * @property activeOptions - Currently active provider options (flat key-value map).
+ * @property pendingFiles - Files queued for upload but not yet sent.
+ * @property uploading - Whether a file upload is currently in progress.
+ * @property uploadFile - Upload a file to the backend; resolves with metadata or null on failure.
+ * @property removeFile - Remove a pending file by its ID.
+ * @property isStreaming - Whether the assistant is currently streaming a response.
+ * @property safetyMode - Current safety mode (safe, ask, or unrestricted).
+ * @property permissionRequest - Pending permission request from the AI, if any.
+ * @property sendPermissionResponse - Respond to a pending permission request.
+ * @property switching - Whether a provider/model switch is in progress.
+ * @property connected - Whether the WebSocket connection is established and ready.
+ * @property wasConnected - Whether a connection was previously established (for reconnect UI).
+ * @property initDetail - Human-readable initialization status detail.
+ * @property sessionId - Current server-side session ID, if known.
+ * @property sessionTitle - Display title for the current session.
+ * @property provider - Active provider ID (e.g. "anthropic", "google").
+ * @property model - Active model ID, or null if using the provider default.
+ * @property version - Engine backend version string.
+ * @property cwd - Server working directory.
+ * @property engineState - Current engine state (idle, thinking, responding, etc.).
+ * @property thinking - Thinking indicator state (phase, subject, timing).
+ * @property cost - Cumulative token usage and cost for the session.
+ * @property capabilities - Provider capability flags reported by the backend.
+ * @property toolName - Name of the tool currently being executed, if any.
+ * @property error - Last error message, or null.
+ * @property diagnostic - Last diagnostic message, or null.
+ */
 export interface UseAvatarChatReturn {
   messages: ChatMessage[]
   sendMessage: (text: string, attachments?: UploadedFile[]) => void
@@ -62,6 +99,33 @@ export interface UseAvatarChatReturn {
   diagnostic: string | null
 }
 
+/**
+ * Primary hook for Avatar Engine chat integration.
+ *
+ * Manages the full chat lifecycle: WebSocket connection, message streaming,
+ * file uploads, provider switching, session management, and permission handling.
+ *
+ * @param wsUrl - WebSocket URL for the Avatar Engine backend (e.g. "ws://localhost:3000/ws").
+ * @param optionsOrApiBase - Configuration options, or a plain string for the REST API base URL (legacy).
+ *
+ * @example
+ * ```tsx
+ * function ChatApp() {
+ *   const chat = useAvatarChat('ws://localhost:3000/ws', {
+ *     apiBase: '/api/avatar',
+ *     initialProvider: 'anthropic',
+ *     initialModel: 'claude-sonnet-4-20250514',
+ *   });
+ *
+ *   return (
+ *     <div>
+ *       {chat.messages.map(m => <p key={m.id}>{m.content}</p>)}
+ *       <button onClick={() => chat.sendMessage('Hello!')}>Send</button>
+ *     </div>
+ *   );
+ * }
+ * ```
+ */
 export function useAvatarChat(wsUrl: string, optionsOrApiBase?: AvatarChatOptions | string): UseAvatarChatReturn {
   const { t } = useTranslation()
 

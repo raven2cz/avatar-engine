@@ -6,6 +6,26 @@ import { useEffect, useState } from 'react'
 import type { AvatarConfig } from '@avatar-engine/core'
 import { getAvatarBasePath } from '@avatar-engine/core'
 
+/**
+ * Generates a circular face-crop thumbnail data URL from an avatar configuration.
+ *
+ * Loads the avatar's idle pose (or first speaking frame), crops the upper half,
+ * and renders it into a 72x72 circular canvas. Returns a WebP data URL suitable
+ * for use as a FAB icon or avatar badge.
+ *
+ * @param avatar - Avatar configuration. Returns undefined if not provided.
+ * @param avatarBasePath - Base URL path for avatar asset files (default: "/avatars").
+ * @returns A WebP data URL string, or undefined while loading or on error.
+ *
+ * @example
+ * ```tsx
+ * const thumbUrl = useAvatarThumb(selectedAvatar, '/avatars');
+ *
+ * return thumbUrl
+ *   ? <img src={thumbUrl} className="w-9 h-9 rounded-full" />
+ *   : <DefaultIcon />;
+ * ```
+ */
 export function useAvatarThumb(avatar: AvatarConfig | undefined, avatarBasePath: string = '/avatars'): string | undefined {
   const [thumbUrl, setThumbUrl] = useState<string | undefined>()
 

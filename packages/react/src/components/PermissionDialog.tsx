@@ -10,6 +10,13 @@ import { useTranslation } from 'react-i18next'
 import { ShieldAlert } from 'lucide-react'
 import type { PermissionRequest } from '@avatar-engine/core'
 
+/**
+ * Props for the {@link PermissionDialog} component.
+ *
+ * @property request - The pending permission request to display, or null to hide the dialog.
+ * @property onRespond - Callback invoked when the user responds to the permission request.
+ *   Pass the request ID, selected option ID, and whether the request was cancelled.
+ */
 export interface PermissionDialogProps {
   request: PermissionRequest | null
   onRespond: (requestId: string, optionId: string, cancelled: boolean) => void

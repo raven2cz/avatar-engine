@@ -17,6 +17,28 @@ import type {
 
 // === State machine ===
 
+/**
+ * Complete avatar state managed by the reducer.
+ *
+ * @property connected - Whether the WebSocket connection is currently open.
+ * @property wasConnected - Whether the client has connected at least once (survives reconnects).
+ * @property sessionId - Current session identifier, or null before the first connection.
+ * @property sessionTitle - Human-readable session title, or null if unnamed.
+ * @property provider - Active provider identifier (e.g. "gemini", "claude").
+ * @property model - Active model name, or null when the server hasn't reported one.
+ * @property version - Server/engine version string.
+ * @property cwd - Server working directory.
+ * @property capabilities - Provider-specific capability flags, or null before connection.
+ * @property engineState - Current engine lifecycle state (idle, thinking, etc.).
+ * @property initDetail - Human-readable detail string shown during initialization.
+ * @property switching - Whether a provider/session switch is in progress.
+ * @property safetyMode - Active safety mode (safe, ask, or unrestricted).
+ * @property thinking - Thinking-indicator state (active flag, phase, subject, timestamp).
+ * @property toolName - Name of the currently executing tool, or empty string when idle.
+ * @property cost - Accumulated cost and token usage for the session.
+ * @property error - Most recent error message, or null.
+ * @property diagnostic - Most recent diagnostic message, or null.
+ */
 export interface AvatarState {
   connected: boolean
   wasConnected: boolean
@@ -43,6 +65,7 @@ export interface AvatarState {
   diagnostic: string | null
 }
 
+/** Discriminated union of all actions dispatched to {@link avatarReducer}. */
 export type AvatarAction =
   | { type: 'CONNECTED'; payload: ConnectedMessage }
   | { type: 'DISCONNECTED' }
@@ -61,6 +84,7 @@ export type AvatarAction =
   | { type: 'TOOL'; toolName: string; status: string }
   | { type: 'DIAGNOSTIC'; message: string; level: string }
 
+/** Default starting state for a fresh avatar session. */
 export const initialAvatarState: AvatarState = {
   connected: false,
   wasConnected: false,
@@ -301,16 +325,36 @@ export function parseServerMessage(
 
 // === Message builders ===
 
+/**
+ * Build a JSON-encoded chat message for the WebSocket server.
+ *
+ * @param text - The user's chat text.
+ * @param attachments - Optional file or image attachments to include.
+ * @returns Serialized JSON string ready to send over the WebSocket.
+ */
 export function createChatMessage(text: string, attachments?: ChatAttachment[]): string {
   const data: Record<string, unknown> = { message: text }
   if (attachments?.length) data.attachments = attachments
   return JSON.stringify({ type: 'chat', data })
 }
 
+/**
+ * Build a JSON-encoded stop message to abort the current generation.
+ *
+ * @returns Serialized JSON string ready to send over the WebSocket.
+ */
 export function createStopMessage(): string {
   return JSON.stringify({ type: 'stop', data: {} })
 }
 
+/**
+ * Build a JSON-encoded provider/model switch message.
+ *
+ * @param provider - Target provider identifier (e.g. "gemini", "claude").
+ * @param model - Optional model name to select within the provider.
+ * @param options - Optional provider-specific configuration overrides.
+ * @returns Serialized JSON string ready to send over the WebSocket.
+ */
 export function createSwitchMessage(
   provider: string,
   model?: string,
@@ -322,6 +366,14 @@ export function createSwitchMessage(
   })
 }
 
+/**
+ * Build a JSON-encoded permission response for the safety system.
+ *
+ * @param requestId - Identifier of the original permission request.
+ * @param optionId - Selected permission option (e.g. "allow", "deny").
+ * @param cancelled - Whether the user dismissed the prompt without choosing.
+ * @returns Serialized JSON string ready to send over the WebSocket.
+ */
 export function createPermissionResponse(
   requestId: string,
   optionId: string,
@@ -333,18 +385,39 @@ export function createPermissionResponse(
   })
 }
 
+/**
+ * Build a JSON-encoded message to resume an existing session.
+ *
+ * @param sessionId - Identifier of the session to resume.
+ * @returns Serialized JSON string ready to send over the WebSocket.
+ */
 export function createResumeSessionMessage(sessionId: string): string {
   return JSON.stringify({ type: 'resume_session', data: { session_id: sessionId } })
 }
 
+/**
+ * Build a JSON-encoded message to start a new session.
+ *
+ * @returns Serialized JSON string ready to send over the WebSocket.
+ */
 export function createNewSessionMessage(): string {
   return JSON.stringify({ type: 'new_session', data: {} })
 }
 
+/**
+ * Build a JSON-encoded message to clear conversation history.
+ *
+ * @returns Serialized JSON string ready to send over the WebSocket.
+ */
 export function createClearHistoryMessage(): string {
   return JSON.stringify({ type: 'clear_history', data: {} })
 }
 
+/**
+ * Build a JSON-encoded ping/keepalive message.
+ *
+ * @returns Serialized JSON string ready to send over the WebSocket.
+ */
 export function createPingMessage(): string {
   return JSON.stringify({ type: 'ping', data: {} })
 }

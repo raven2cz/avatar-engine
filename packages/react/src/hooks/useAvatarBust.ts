@@ -14,6 +14,13 @@ interface LoadedPoses {
   speakingFrames: HTMLCanvasElement[]
 }
 
+/**
+ * Return type for the {@link useAvatarBust} hook.
+ *
+ * @property bustState - Current visual state of the bust: "idle", "thinking", "speaking", or "error".
+ * @property currentFrame - The current image or canvas element to render, or null while loading.
+ * @property loading - Whether avatar assets are still being loaded.
+ */
 export interface UseAvatarBustReturn {
   bustState: BustState
   currentFrame: HTMLCanvasElement | HTMLImageElement | null
@@ -60,6 +67,26 @@ function extractFrames(img: HTMLImageElement, frameCount: number): HTMLCanvasEle
   return frames
 }
 
+/**
+ * Maps engine state to avatar bust visual state and drives sprite sheet animation.
+ *
+ * Loads avatar pose images (idle, thinking, error) and a speaking sprite sheet,
+ * then plays a ping-pong frame animation while the engine is in the "speaking" state.
+ *
+ * @param avatar - Avatar configuration with pose file paths and animation settings.
+ * @param engineState - Current engine state string (e.g. "idle", "thinking", "responding").
+ * @param hasText - Whether the assistant has started producing text (triggers speaking animation).
+ * @param avatarBasePath - Base URL path for avatar asset files (default: "/avatars").
+ *
+ * @example
+ * ```tsx
+ * const { bustState, currentFrame, loading } = useAvatarBust(avatar, engineState, hasText);
+ *
+ * if (loading || !currentFrame) return <Skeleton />;
+ * return <img src={currentFrame instanceof HTMLCanvasElement
+ *   ? currentFrame.toDataURL() : currentFrame.src} />;
+ * ```
+ */
 export function useAvatarBust(
   avatar: AvatarConfig | undefined,
   engineState: string,

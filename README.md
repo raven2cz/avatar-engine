@@ -7,15 +7,24 @@
 </p>
 
 <p align="center">
-  <strong>Python library for building application-specific AI avatars with configurable behavior, context-aware reasoning, and MCP-powered task execution.</strong>
+  <strong>Application-specific AI avatar runtime with configurable behavior,<br>context-aware reasoning, and MCP-powered task execution.</strong>
 </p>
 
 <p align="center">
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-green.svg" alt="License: Apache 2.0"></a>
+  <a href="https://github.com/raven2cz/avatar-engine/actions/workflows/test.yml"><img src="https://github.com/raven2cz/avatar-engine/actions/workflows/test.yml/badge.svg?branch=main" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/raven2cz/avatar-engine" alt="License"></a>
+  <a href="https://pypi.org/project/avatar-engine/"><img src="https://img.shields.io/pypi/v/avatar-engine" alt="PyPI"></a>
+  <a href="https://www.npmjs.com/package/@avatar-engine/core"><img src="https://img.shields.io/npm/v/@avatar-engine/core?label=%40avatar-engine%2Fcore" alt="npm core"></a>
+  <a href="https://www.npmjs.com/package/@avatar-engine/react"><img src="https://img.shields.io/npm/v/@avatar-engine/react?label=%40avatar-engine%2Freact" alt="npm react"></a>
 </p>
 
-## Project Intent
+<p align="center">
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg" alt="Node.js 18+"></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript&logoColor=white" alt="TypeScript"></a>
+</p>
+
+---
 
 Avatar Engine is designed for embedding a dedicated AI avatar into a specific application domain, not as a generic chatbot wrapper.
 
@@ -24,296 +33,218 @@ Avatar Engine is designed for embedding a dedicated AI avatar into a specific ap
 - **MCP for complex operations** — For tasks that are hard to encode as deterministic algorithms, the avatar can call MCP tools to inspect data, run analyses, and assist with larger changes.
 - **Provider abstraction as infrastructure** — Gemini CLI, Claude Code, and Codex CLI support is an implementation layer that enables the avatar runtime, not the product goal itself.
 
+## Packages
+
+Avatar Engine is a monorepo with a **Python backend** and **npm frontend packages**:
+
+| Package | Description |
+|---------|-------------|
+| [`avatar-engine`](https://pypi.org/project/avatar-engine/) | Python backend — AI engine, CLI, web server, provider bridges |
+| [`@avatar-engine/core`](packages/core/) | TypeScript — framework-agnostic types, WebSocket protocol, client class |
+| [`@avatar-engine/react`](packages/react/) | React — components, hooks, Tailwind preset, CSS styles |
+
 ## Features
 
-- **Avatar Runtime API** — Stable interface for embedding a domain-specific avatar into your app
-- **Configurable Behavior** — Fine-grained control of model, prompts, permissions, and execution policy
-- **Context-Aware Operation** — Designed to consume application context and source data
-- **MCP Orchestration** — Tool-based execution path for complex analysis and non-trivial edits
-- **Provider Abstraction** — Single integration surface for Gemini CLI, Claude Code, and Codex CLI
-- **Session Management** — Resume, continue, and list sessions across all providers
+### Backend (Python)
+
+- **Three Providers** — Gemini CLI, Claude Code, Codex CLI — unified API
 - **Warm Sessions** — ACP / stream-json persistent subprocess for instant responses
+- **Session Management** — Resume, continue, and list sessions across all providers
+- **Event System** — Callbacks for text, tools, thinking, diagnostics, state changes
+- **MCP Orchestration** — Tool-based execution with configurable MCP servers
+- **Provider Capabilities** — Runtime feature detection (thinking, cost tracking, MCP)
+- **Safety System** — Three-mode safety (Safe / Ask / Unrestricted) with ACP permission routing
+- **Budget Control** — Pre-request budget enforcement with cost tracking
 - **Zero Footprint** — No config files written to your project directory
-- **Event System** — Callbacks for GUI integration (text, tools, thinking, diagnostics, state changes)
-- **Activity Tracking** — Concurrent operation tracking for GUI visualization (parallel tools, agents)
-- **Provider Capabilities** — Runtime capability detection per provider (thinking, cost tracking, MCP)
-- **Tool Policy** — Engine-level allow/deny rules for tool filtering
-- **Budget Control** — Pre-request budget enforcement with cost tracking (Claude)
-- **CLI Display** — Rich-based display with thinking spinner, tool group panels, status line
-- **Streaming** — Real-time response streaming
+- **CLI** — Rich terminal interface with thinking spinner, tool panels, session management
+- **Web Server** — FastAPI + WebSocket for real-time frontend integration
 - **Production Ready** — Rate limiting, metrics, auto-restart, graceful shutdown
 
-## Installation
+### Frontend (TypeScript / React)
 
-```bash
-# Interactive installer (recommended)
-./install.sh              # Choose providers, optionally install web demo
-./install.sh --all        # Install everything
-./install.sh --check      # Check what's installed
-
-# Or manual with uv
-uv sync --extra cli               # Core + CLI
-uv sync --extra cli --extra web   # Core + CLI + Web Demo backend
-uv sync --extra cli --extra dev   # Core + CLI + Dev tools
-```
-
-### Prerequisites
-
-Install only the providers you need. All providers use **account-based authentication** (Pro/Max monthly subscriptions, no API keys):
-
-```bash
-# Gemini CLI (Google account — free tier / Pro / Max)
-sudo npm install -g @google/gemini-cli
-gemini  # Sign in with Google account
-
-# Claude Code (Anthropic Pro / Max subscription)
-sudo npm install -g @anthropic-ai/claude-code
-claude  # Sign in with Anthropic account
-
-# Codex CLI (ChatGPT Plus / Pro subscription)
-sudo npm install -g @openai/codex
-codex login  # Sign in with ChatGPT account
-# ACP adapter (used by Avatar Engine, auto-fetched via npx):
-npx @zed-industries/codex-acp --help
-```
-
-Or use the interactive install script:
-
-```bash
-./install.sh              # Interactive — choose providers + web demo
-./install.sh --all        # Install everything
-./install.sh --web        # Install web demo dependencies only
-./install.sh --setup-cli  # Install AI agent CLIs only
-./install.sh --check      # Check what's installed
-```
+- **`AvatarClient`** — Framework-agnostic WebSocket client with auto-reconnect
+- **State Machine** — Pure reducer for predictable state management
+- **`useAvatarChat`** — React hook for complete chat orchestration
+- **23 Components** — Chat UI, provider selector, session panel, avatar bust, safety controls
+- **Tailwind Preset** — Dark glassmorphism theme with customizable accent colors
+- **CSS Custom Properties** — Runtime theming without rebuilds
+- **i18n** — English and Czech translations (extensible)
 
 ## Quick Start
 
-### Library Usage
+### Python Library
 
 ```python
 from avatar_engine import AvatarEngine
 
-# Synchronous — any provider: "gemini", "claude", or "codex"
 engine = AvatarEngine(provider="gemini")
 engine.start_sync()
 response = engine.chat_sync("Hello!")
 print(response.content)
 engine.stop_sync()
-
-# Asynchronous
-import asyncio
-
-async def main():
-    engine = AvatarEngine(provider="codex")  # or "claude", "gemini"
-    await engine.start()
-
-    # Streaming
-    async for chunk in engine.chat_stream("Tell me a story"):
-        print(chunk, end="", flush=True)
-
-    await engine.stop()
-
-asyncio.run(main())
 ```
 
-### CLI Usage
+### CLI
 
 ```bash
-# Single message (provider flag -p goes on the subcommand)
 avatar chat "What is 2+2?"
 avatar chat -p claude "Write a haiku"
-avatar chat -p codex "Refactor this function"
-
-# Working directory override
-avatar -w /path/to/project chat "Analyze this codebase"
-avatar --working-dir /tmp/sandbox repl
-
-# Interactive REPL
-avatar repl
-avatar repl -p codex
-avatar repl --plain
-
-# Session management
-avatar chat --continue "Continue where we left off"
-avatar chat --resume abc123 "Back to this session"
-avatar repl --continue
-avatar session list
-avatar session info abc123
-
-# Claude-specific: allowed tools filter
-avatar chat -p claude --allowed-tools "Read,Write,Bash" "Fix the bug"
-
-# With config file: -p overrides config's provider
-avatar chat -p codex "Hello"     # uses codex even if .avatar.yaml says gemini
-
-# Health check
-avatar health --check-cli
-
-# MCP server management
-avatar mcp list
-avatar mcp add calc python calc_server.py
-avatar mcp test calc
+avatar repl                        # Interactive REPL
+avatar health --check-cli          # Check installed providers
+avatar session list                # List sessions
 ```
 
-## Web Demo
-
-Avatar Engine includes a real-time web interface with a React frontend and FastAPI backend connected via WebSocket.
-
-### Quick Start
+### React Frontend
 
 ```bash
-# 1. Install dependencies
-./install.sh --web
-
-# 2. Start both servers (backend + frontend dev)
-./scripts/start-web.sh
-
-# 3. Open http://localhost:5173
+npm install @avatar-engine/react
 ```
 
-### Start Script Options
+```tsx
+import { useAvatarChat, AvatarWidget } from '@avatar-engine/react'
+import '@avatar-engine/react/styles.css'
+
+function App() {
+  const chat = useAvatarChat('ws://localhost:8420/api/avatar/ws')
+  return <AvatarWidget {...chat} />
+}
+```
+
+### Non-React Frontend (Vue, Svelte, vanilla)
 
 ```bash
-./scripts/start-web.sh                          # Default (Gemini, port 8420)
-./scripts/start-web.sh --provider claude        # Use Claude
-./scripts/start-web.sh --provider codex         # Use Codex
-./scripts/start-web.sh --model claude-sonnet-4-5 # Specific model
-./scripts/start-web.sh --build                  # Production build (single server)
+npm install @avatar-engine/core
 ```
 
-### Architecture
+```ts
+import { AvatarClient } from '@avatar-engine/core'
 
-```
-Browser (React + Vite)          Python Backend (FastAPI + uvicorn)
-┌─────────────────────┐         ┌──────────────────────────────────┐
-│  useAvatarWebSocket  │◄──WS──►│  /api/avatar/ws                  │
-│  useAvatarChat       │        │    WebSocketBridge               │
-│                      │        │      ├─ on(TextEvent)            │
-│  Components:         │  REST  │      ├─ on(ThinkingEvent)        │
-│  ├─ ChatPanel        │◄─────►│      ├─ on(ToolEvent)            │
-│  ├─ StatusBar        │        │      ├─ on(StateEvent)           │
-│  ├─ ThinkingIndicator│        │      ├─ on(CostEvent)            │
-│  ├─ ToolActivity     │        │      ├─ on(ErrorEvent)           │
-│  ├─ BreathingOrb     │        │      └─ on(ActivityEvent)        │
-│  ├─ MessageBubble    │        │                                  │
-│  └─ CostTracker      │        │  EngineSessionManager            │
-└─────────────────────┘         │    └─ AvatarEngine               │
-                                └──────────────────────────────────┘
+const client = new AvatarClient('ws://localhost:8420/api/avatar/ws', {
+  onStateChange: (state) => console.log(state.engineState),
+  onMessage: (msg) => {
+    if (msg.type === 'text') process.stdout.write(msg.data.text)
+  },
+})
+client.connect()
+client.sendChat('Hello!')
 ```
 
-### REST API
+### Web Demo
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/avatar/health` | Health check |
-| GET | `/api/avatar/capabilities` | Provider capabilities |
-| GET | `/api/avatar/history` | Conversation history |
-| GET | `/api/avatar/usage` | Usage and cost stats |
-| GET | `/api/avatar/sessions` | List sessions |
-| POST | `/api/avatar/chat` | Non-streaming chat |
-| POST | `/api/avatar/stop` | Stop engine |
-| POST | `/api/avatar/clear` | Clear history |
+```bash
+./install.sh --web         # Install dependencies
+./scripts/start-web.sh     # Start backend + frontend dev servers
+# Open http://localhost:5173
+```
 
-### WebSocket Protocol
+## Installation
 
-Connect to `ws://localhost:8420/api/avatar/ws` for real-time bidirectional streaming.
+### Python Backend
 
-**Server → Client messages:**
+```bash
+# Interactive installer (recommended)
+./install.sh              # Choose providers, optionally install web demo
+./install.sh --all        # Install everything
 
-| Type | Description |
-|------|-------------|
-| `connected` | Session info on connect |
-| `text` | Text chunk from AI |
-| `thinking` | AI thinking phase + subject |
-| `tool` | Tool execution status |
-| `state` | Bridge state change |
-| `cost` | Usage/cost update |
-| `error` | Error occurred |
-| `engine_state` | Engine state change |
-| `chat_response` | Complete response |
+# Or manual with uv
+uv sync --extra cli               # Core + CLI
+uv sync --extra cli --extra web   # Core + CLI + Web server
+```
 
-**Client → Server messages:**
+### Prerequisites
 
-| Type | Description |
-|------|-------------|
-| `chat` | Send message: `{"type": "chat", "data": {"message": "..."}}` |
-| `ping` | Heartbeat |
-| `stop` | Cancel current request |
-| `clear_history` | Clear conversation |
+Install only the providers you need. All use **account-based authentication** (Pro/Max subscriptions, no API keys):
 
-## Event-Driven GUI Integration
+```bash
+# Gemini CLI (Google account)
+sudo npm install -g @google/gemini-cli
+
+# Claude Code (Anthropic Pro / Max)
+sudo npm install -g @anthropic-ai/claude-code
+
+# Codex CLI (ChatGPT Plus / Pro)
+sudo npm install -g @openai/codex
+```
+
+## Architecture
+
+```
+avatar-engine/
+├── avatar_engine/              # Python backend
+│   ├── engine.py               # AvatarEngine — main API
+│   ├── bridges/                # Provider implementations
+│   │   ├── gemini.py           # Gemini CLI (ACP warm session)
+│   │   ├── claude.py           # Claude Code (stream-json)
+│   │   └── codex.py            # Codex CLI (ACP via codex-acp)
+│   ├── events.py               # Event system
+│   ├── web/                    # FastAPI + WebSocket server
+│   └── cli/                    # Rich CLI (click)
+├── packages/
+│   ├── core/                   # @avatar-engine/core (npm)
+│   │   └── src/
+│   │       ├── types.ts        # TypeScript types (mirrors Python events)
+│   │       ├── protocol.ts     # State machine (reducer + parser)
+│   │       ├── client.ts       # AvatarClient (WS client)
+│   │       └── config/         # Provider & avatar configuration
+│   └── react/                  # @avatar-engine/react (npm)
+│       └── src/
+│           ├── hooks/          # useAvatarChat, useWidgetMode, ...
+│           ├── components/     # 23 React components
+│           ├── styles/         # Glassmorphism CSS
+│           └── tailwind-preset.js
+├── examples/
+│   └── web-demo/               # Demo app (imports from @avatar-engine/react)
+└── tests/                      # 1200+ tests (Python + TypeScript)
+```
+
+### Communication Flow
+
+```
+Browser (React)                    Python Backend (FastAPI)
+┌─────────────────────┐            ┌──────────────────────────┐
+│  useAvatarChat       │◄──WS───►  │  /api/avatar/ws          │
+│  (or AvatarClient)   │           │    WebSocketBridge        │
+│                      │  REST     │      ├─ on(TextEvent)     │
+│  Components:         │◄────────► │      ├─ on(ThinkingEvent) │
+│  ├─ AvatarWidget     │           │      ├─ on(ToolEvent)     │
+│  ├─ ChatPanel        │           │      └─ on(CostEvent)     │
+│  ├─ MessageBubble    │           │                           │
+│  └─ ...              │           │  AvatarEngine             │
+└─────────────────────┘            │    └─ GeminiBridge        │
+                                   │    └─ ClaudeBridge        │
+                                   │    └─ CodexBridge         │
+                                   └──────────────────────────┘
+```
+
+## Embedding in Your Application
+
+### Python: FastAPI mount
 
 ```python
-from avatar_engine import AvatarEngine
-from avatar_engine.events import TextEvent, ToolEvent, StateEvent
+from avatar_engine.web.server import create_api_app
 
-engine = AvatarEngine(provider="gemini")
-
-@engine.on(TextEvent)
-def on_text(event):
-    """Avatar speaks — update GUI, trigger TTS"""
-    gui.update_speech_bubble(event.text)
-    tts.speak(event.text)
-
-@engine.on(ToolEvent)
-def on_tool(event):
-    """Tool execution — show in GUI"""
-    gui.show_tool_status(event.tool_name, event.status)
-
-@engine.on(StateEvent)
-def on_state(event):
-    """State change — update status bar"""
-    gui.set_status(event.new_state.value)
-
-engine.start_sync()
-engine.chat_async("Analyze this file", callback=gui.show_result)
+# Mount avatar API into your existing FastAPI app
+avatar_app = create_api_app(provider="gemini")
+app.mount("/api/avatar", avatar_app)
 ```
 
-### Activity Tracking & Diagnostics
+### Python: Standalone server
 
-```python
-from avatar_engine import AvatarEngine, ActivityTracker
-from avatar_engine.events import (
-    ThinkingEvent, ActivityEvent, DiagnosticEvent, CostEvent
-)
-
-engine = AvatarEngine(provider="gemini")
-
-@engine.on(ThinkingEvent)
-def on_thinking(event):
-    """AI thinking — drive avatar animation"""
-    print(f"[{event.phase.value}] {event.subject}: {event.thought[:80]}")
-
-@engine.on(DiagnosticEvent)
-def on_diag(event):
-    """Stderr/warnings — show in debug panel"""
-    print(f"[{event.level}] {event.source}: {event.message}")
-
-@engine.on(ActivityEvent)
-def on_activity(event):
-    """Concurrent operations — show progress tree"""
-    print(f"  {event.name}: {event.status.value} ({event.progress:.0%})")
+```bash
+avatar-web --port 8420 --provider gemini
 ```
 
-### Provider Capabilities & Tool Policy
+### Frontend: Vite proxy
 
-```python
-from avatar_engine import AvatarEngine, ToolPolicy
-
-engine = AvatarEngine(provider="claude", max_budget_usd=5.0)
-engine.start_sync()
-
-# Check provider capabilities at runtime
-caps = engine.capabilities
-print(f"Thinking: {caps.thinking_supported}")
-print(f"Cost tracking: {caps.cost_tracking}")
-print(f"System prompt: {caps.system_prompt_method}")
-
-# Restrict which tools the AI can use
-engine.tool_policy = ToolPolicy(allow=["Read", "Grep", "Glob"])
-# or deny specific tools:
-engine.tool_policy = ToolPolicy(deny=["Bash", "Write"])
+```ts
+// vite.config.ts
+export default defineConfig({
+  server: {
+    proxy: {
+      '/api/avatar': { target: 'http://localhost:8420', ws: true },
+    },
+  },
+})
 ```
 
 ## Configuration
@@ -324,12 +255,9 @@ engine.tool_policy = ToolPolicy(deny=["Bash", "Write"])
 provider: "gemini"
 
 gemini:
-  model: ""  # Empty = CLI default
+  model: ""
   approval_mode: "yolo"
   acp_enabled: true
-  session:
-    # resume_id: ""        # Resume specific session by ID
-    # continue_last: false # Continue most recent session
   mcp_servers:
     tools:
       command: "python"
@@ -338,234 +266,104 @@ gemini:
 claude:
   model: "claude-sonnet-4-5"
   permission_mode: "acceptEdits"
-  session:
-    # resume_id: ""
-    # continue_last: false
   cost_control:
     max_turns: 10
     max_budget_usd: 5.0
 
 codex:
-  model: ""  # Empty = CLI default
-  auth_method: "chatgpt"  # chatgpt | codex-api-key | openai-api-key
+  model: ""
+  auth_method: "chatgpt"
   approval_mode: "auto"
-  sandbox_mode: "workspace-write"
-  session:
-    # resume_id: ""
-    # continue_last: false
 
 engine:
   auto_restart: true
   max_restarts: 3
-  health_check_interval: 30
-
-rate_limit:
-  enabled: true
-  requests_per_minute: 60
-
-logging:
-  level: "INFO"
-  file: "avatar.log"
 ```
 
 ### Programmatic Config
 
 ```python
-from avatar_engine import AvatarEngine, AvatarConfig
-
-# From file
-engine = AvatarEngine.from_config("config.yaml")
-
-# Programmatic
 engine = AvatarEngine(
     provider="claude",
     model="claude-sonnet-4-5",
     timeout=120,
     system_prompt="You are a helpful assistant.",
+    mcp_servers={"tools": {"command": "python", "args": ["server.py"]}},
 )
 ```
 
-## Architecture
-
-```
-avatar-engine/
-├── avatar_engine/
-│   ├── __init__.py        # Public API
-│   ├── engine.py          # AvatarEngine class
-│   ├── config.py          # Configuration
-│   ├── events.py          # Event system (TextEvent, ThinkingEvent, ...)
-│   ├── activity.py        # ActivityTracker for concurrent operations
-│   ├── types.py           # Type definitions (ProviderCapabilities, ToolPolicy, ...)
-│   ├── config_sandbox.py  # Zero Footprint config (temp files)
-│   ├── bridges/           # Provider implementations
-│   │   ├── base.py        # Abstract bridge
-│   │   ├── _acp_session.py # Shared ACP session mixin
-│   │   ├── claude.py      # Claude Code bridge
-│   │   ├── gemini.py      # Gemini CLI bridge
-│   │   └── codex.py       # Codex CLI bridge (ACP)
-│   ├── cli/               # CLI application
-│   │   ├── app.py         # Main CLI (click)
-│   │   ├── display.py     # Rich display (ThinkingDisplay, ToolGroupDisplay)
-│   │   └── commands/      # CLI commands
-│   ├── web/               # Web bridge (FastAPI + WebSocket)
-│   │   ├── server.py      # REST + WS routes
-│   │   ├── bridge.py      # WebSocketBridge (event → JSON broadcast)
-│   │   ├── protocol.py    # Event serialization protocol
-│   │   ├── session_manager.py  # Engine lifecycle
-│   │   └── __main__.py    # CLI entry: avatar-web / python -m avatar_engine.web
-│   └── utils/             # Utilities
-│       ├── logging.py     # Logging configuration
-│       ├── metrics.py     # Metrics collection
-│       └── rate_limit.py  # Rate limiting
-├── examples/
-│   ├── web-demo/          # React web interface (Vite + Tailwind)
-│   │   └── src/
-│   │       ├── hooks/     # useAvatarWebSocket, useAvatarChat
-│   │       └── components/ # ChatPanel, StatusBar, BreathingOrb, ...
-│   ├── basic_chat.py      # Simple sync/async usage
-│   ├── gui_integration.py # Event-driven GUI pattern
-│   └── streaming_avatar.py # Real-time avatar with TTS
-├── scripts/
-│   └── start-web.sh       # Start web demo (backend + frontend)
-├── tests/                 # Test suite (700+ tests)
-├── install.sh             # Interactive installer (uv-based)
-└── plans/                 # Design documents
-```
-
-## Warm Session Architecture
-
-All three providers support **persistent warm sessions**:
-
-```
-CLAUDE CODE (stream-json)
-─────────────────────────
-start()  →  spawn: claude -p --input-format stream-json
-chat()   →  stdin: JSONL message → stdout: JSONL events
-chat()   →  same process, instant response
-stop()   →  close stdin → process exits
-
-GEMINI CLI (ACP)
-────────────────
-start()  →  spawn: gemini --experimental-acp
-         →  initialize → authenticate → new_session
-chat()   →  prompt(session_id, message)
-chat()   →  same session, same process
-stop()   →  exit ACP context
-
-CODEX CLI (ACP via codex-acp)
-─────────────────────────────
-start()  →  spawn: npx @zed-industries/codex-acp
-         →  initialize → authenticate → new_session
-chat()   →  prompt(session_id, message) + session_update stream
-chat()   →  same session, same process
-stop()   →  exit ACP context
-```
-
-## Session Management
-
-All three providers support **session persistence** — resume previous conversations or continue the last session:
+## Event-Driven Integration
 
 ```python
-import asyncio
 from avatar_engine import AvatarEngine
+from avatar_engine.events import TextEvent, ToolEvent, ThinkingEvent
 
-async def main():
-    # Resume a specific session by ID
-    engine = AvatarEngine(provider="codex", resume_session_id="abc123")
-    await engine.start()
-    response = await engine.chat("Continue our work")
-    await engine.stop()
+engine = AvatarEngine(provider="gemini")
 
-    # Continue the most recent session
-    engine = AvatarEngine(provider="gemini", continue_last=True)
-    await engine.start()
-    response = await engine.chat("Where were we?")
-    await engine.stop()
+@engine.on(TextEvent)
+def on_text(event):
+    gui.update_speech_bubble(event.text)
 
-    # List available sessions
-    engine = AvatarEngine(provider="codex")
-    await engine.start()
-    sessions = await engine.list_sessions()
-    for s in sessions:
-        print(f"{s.session_id[:12]}  {s.title or '-'}")
-    await engine.stop()
+@engine.on(ToolEvent)
+def on_tool(event):
+    gui.show_tool_status(event.tool_name, event.status)
 
-asyncio.run(main())
+@engine.on(ThinkingEvent)
+def on_thinking(event):
+    gui.animate_avatar(event.phase.value)
+
+engine.start_sync()
+response = engine.chat_sync("Analyze this project")
 ```
 
-**REPL session commands:**
+## WebSocket Protocol
 
-```
-/sessions     — List available sessions
-/session      — Show current session ID
-/resume ID    — Resume a session by ID
-/usage        — Show usage stats (requests, tokens, cost, latency, uptime)
-/tools        — List configured MCP servers
-/tool NAME    — Show MCP server detail (supports partial name match)
-/mcp          — Show MCP server status
-```
+Connect to `ws://localhost:8420/api/avatar/ws` for real-time streaming.
 
-**How it works:**
+**Server → Client:**
 
-| Provider | Persistence | Where | Mechanism |
-|----------|-------------|-------|-----------|
-| Codex | Auto-save after each message | `~/.codex/sessions/` | ACP `load_session` / `list_sessions` |
-| Gemini | Auto-save | `~/.gemini/` | ACP `load_session` / `list_sessions` |
-| Claude | Auto-save | `~/.claude/projects/` | CLI `--resume` / `--continue` flags |
+| Type | Description |
+|------|-------------|
+| `connected` | Session info on connect |
+| `text` | Text chunk from AI |
+| `thinking` | AI thinking phase + subject |
+| `tool` | Tool execution status |
+| `cost` | Usage/cost update |
+| `error` | Error occurred |
+| `engine_state` | Engine state change |
+| `chat_response` | Complete response |
+| `permission_request` | ACP permission request |
 
-Sessions are **per-project** (filtered by working directory). **Zero Footprint** is preserved — session data lives in provider home directories, not in your project.
+**Client → Server:**
 
-Capabilities are detected at runtime from the provider — use `engine.session_capabilities` to check what's available.
+| Type | Description |
+|------|-------------|
+| `chat` | `{"type": "chat", "data": {"message": "..."}}` |
+| `stop` | Cancel current request |
+| `switch` | Switch provider/model |
+| `permission_response` | Respond to permission request |
 
-## Examples
+## REST API
 
-See the `examples/` directory:
-
-- `web-demo/` — **React web interface** with real-time WebSocket streaming
-- `basic_chat.py` — Simple sync/async usage (supports `--provider gemini|claude|codex`)
-- `gui_integration.py` — Event-driven GUI pattern
-- `streaming_avatar.py` — Real-time avatar with TTS
-- `avatar.example.yaml` — Full configuration reference with all providers
-
-Run examples:
-
-```bash
-# Web demo (React UI)
-./scripts/start-web.sh
-
-# Python examples
-uv run python examples/basic_chat.py
-uv run python examples/basic_chat.py --provider claude --async
-uv run python examples/basic_chat.py --provider codex
-uv run python examples/streaming_avatar.py --provider codex --interactive
-```
-
-## Testing
-
-```bash
-# Run all tests
-uv run pytest tests/ -v
-
-# Run web tests only
-uv run pytest tests/test_web_*.py -v
-
-# Run with coverage
-uv run pytest tests/ --cov=avatar_engine
-```
-
-PTY REPL integration tests are marked with `-m pty` and require host PTY support (`/dev/pts`); they auto-skip when PTY devices are unavailable.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/avatar/health` | Health check |
+| GET | `/api/avatar/capabilities` | Provider capabilities |
+| GET | `/api/avatar/sessions` | List sessions |
+| GET | `/api/avatar/providers` | Available providers |
+| POST | `/api/avatar/chat` | Non-streaming chat |
+| POST | `/api/avatar/upload` | File upload |
 
 ## API Reference
 
-### AvatarEngine
+### Python: AvatarEngine
 
 ```python
 class AvatarEngine:
     # Lifecycle
     async def start() -> None
     async def stop() -> None
-    def start_sync() -> None
-    def stop_sync() -> None
+    def start_sync() / def stop_sync()
 
     # Chat
     async def chat(message: str) -> BridgeResponse
@@ -573,57 +371,65 @@ class AvatarEngine:
     def chat_sync(message: str) -> BridgeResponse
 
     # Sessions
-    async def list_sessions() -> List[SessionInfo]
+    async def list_sessions() -> list[SessionInfo]
     async def resume_session(session_id: str) -> bool
-    session_capabilities: SessionCapabilitiesInfo  # property
+    session_capabilities: SessionCapabilitiesInfo
 
     # Events
     def on(event_type) -> Callable  # Decorator
-    def emit(event: AvatarEvent) -> None
-
-    # Health
-    def is_healthy() -> bool
-    def get_health() -> HealthStatus
-
-    # History
-    def get_history() -> List[Message]
-    def clear_history() -> None
-
-    # Properties
-    session_id: Optional[str]
-    current_provider: str
-    is_warm: bool
-    capabilities: ProviderCapabilities  # Runtime provider feature flags
-    tool_policy: Optional[ToolPolicy]   # Allow/deny tool filtering
+    capabilities: ProviderCapabilities  # Runtime feature flags
 ```
 
-### Events
+### TypeScript: AvatarClient
 
-```python
-TextEvent        # Text chunk from AI
-ToolEvent        # Tool execution (started/completed/failed)
-StateEvent       # Bridge state change
-ThinkingEvent    # AI thinking with phase/subject (Gemini / Codex / synthetic Claude)
-CostEvent        # Cost/usage update
-ErrorEvent       # Error occurred
-DiagnosticEvent  # Stderr warnings, deprecations, debug info
-ActivityEvent    # Concurrent operation tracking (tools, agents, background tasks)
+```ts
+class AvatarClient {
+  connect(): void
+  disconnect(): void
+  getState(): Readonly<AvatarState>
+  sendChat(text: string, attachments?: ChatAttachment[]): void
+  stop(): void
+  switchProvider(provider: string, model?: string, options?: Record<string, unknown>): void
+  resumeSession(sessionId: string): void
+  clearHistory(): void
+}
 ```
 
-### Types
+### React: useAvatarChat
 
-```python
-BridgeResponse          # Chat response with content, success, duration, etc.
-HealthStatus            # Health check result
-Message                 # Conversation message
-ProviderType            # GEMINI | CLAUDE | CODEX
-BridgeState             # DISCONNECTED | WARMING_UP | READY | BUSY | ERROR
-EngineState             # IDLE | THINKING | RESPONDING | TOOL_EXECUTING | WAITING_APPROVAL | ERROR
-SessionInfo             # Session metadata (id, provider, cwd, title, updated_at)
-SessionCapabilitiesInfo # What session ops are supported (can_list, can_load, can_continue_last)
-ProviderCapabilities    # Per-provider feature flags (thinking, cost, MCP, system prompt)
-ToolPolicy              # Allow/deny rules for tool filtering
-ActivityStatus          # PENDING | RUNNING | COMPLETED | FAILED | CANCELLED
+```ts
+const {
+  messages,           // ChatMessage[]
+  sendMessage,        // (text, attachments?) => void
+  isStreaming,         // boolean
+  connected,          // boolean
+  provider,           // string
+  model,              // string | null
+  thinking,           // { active, phase, subject }
+  cost,               // { totalCostUsd, totalInputTokens, totalOutputTokens }
+  switchProvider,      // (provider, model?, options?) => void
+  permissionRequest,   // PermissionRequest | null
+  error,              // string | null
+} = useAvatarChat(wsUrl, options?)
+```
+
+## Testing
+
+```bash
+# Python tests (1036 tests)
+uv run pytest tests/ -x -q --timeout=30
+
+# TypeScript tests (204 tests)
+npm test -w packages/core
+npm test -w examples/web-demo
+
+# Integration tests (with real providers)
+uv run pytest tests/integration/ -m gemini -v
+uv run pytest tests/integration/ -m claude -v
+uv run pytest tests/integration/ -m codex -v
+
+# Lint
+uv run ruff check avatar_engine/
 ```
 
 ## License
@@ -647,4 +453,5 @@ This project is a **wrapper** that communicates with external AI CLI tools via t
 - [ACP SDK](https://github.com/agentclientprotocol/python-sdk) — Apache 2.0
 
 ## Author
+
 [@raven2cz](https://github.com/raven2cz)
