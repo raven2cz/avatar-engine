@@ -78,6 +78,7 @@ def _make_mock_manager(provider="gemini"):
     engine._config = MagicMock()
     engine._config.model = None
     engine._started = True
+    engine._safety_mode = "safe"
     engine.clear_history = MagicMock()
     engine.list_sessions = AsyncMock(return_value=[])
 
