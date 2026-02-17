@@ -179,9 +179,10 @@ class TestDisplayOutputVerification:
             display.on_response_end()
 
             stream_text = "".join(stream_chunks)
-            # Both should mention Paris
-            assert "Paris" in non_stream.content or "paris" in non_stream.content.lower()
-            assert "Paris" in stream_text or "paris" in stream_text.lower()
+            # Both should mention Paris (may be localized to "Paříž" if Czech context)
+            paris_variants = {"paris", "paříž"}
+            assert any(v in non_stream.content.lower() for v in paris_variants)
+            assert any(v in stream_text.lower() for v in paris_variants)
 
         finally:
             display.unregister()
