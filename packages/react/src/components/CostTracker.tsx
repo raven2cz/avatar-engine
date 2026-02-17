@@ -7,7 +7,7 @@
 import { Coins, ArrowDown, ArrowUp } from 'lucide-react'
 import type { CostInfo } from '@avatar-engine/core'
 
-interface CostTrackerProps {
+export interface CostTrackerProps {
   cost: CostInfo
   visible: boolean
 }

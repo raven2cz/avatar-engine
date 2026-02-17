@@ -15,7 +15,7 @@ import { OptionControl } from './OptionControl'
 import { SafetyModeSelector } from './SafetyModeSelector'
 import type { SafetyMode } from '@avatar-engine/core'
 
-interface ProviderModelSelectorProps {
+export interface ProviderModelSelectorProps {
   currentProvider: string
   currentModel: string | null
   switching: boolean

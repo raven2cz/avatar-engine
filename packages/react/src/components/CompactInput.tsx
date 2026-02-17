@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowUp, Paperclip, Square } from 'lucide-react'
 import type { UploadedFile } from '@avatar-engine/core'
 
-interface CompactInputProps {
+export interface CompactInputProps {
   onSend: (text: string) => void
   onStop: () => void
   isStreaming: boolean
@@ -92,7 +92,7 @@ export function CompactInput({ onSend, onStop, isStreaming, connected, pendingFi
           ? 'border-red-500/20 opacity-40'
           : 'border-white/[0.12] hover:border-white/[0.18] focus-within:border-synapse/50 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.2),0_2px_8px_rgba(99,102,241,0.08)]'
       }`}
-        style={{ background: 'rgba(8,8,20,0.7)', backdropFilter: 'blur(8px)' }}
+        style={{ background: 'var(--ae-overlay-input)', backdropFilter: 'blur(8px)' }}
       >
         <input
           ref={fileInputRef}

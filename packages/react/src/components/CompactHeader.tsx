@@ -21,7 +21,7 @@ import {
 import { OptionControl } from './OptionControl'
 import { SafetyModeSelector } from './SafetyModeSelector'
 
-interface CompactHeaderProps {
+export interface CompactHeaderProps {
   provider: string
   model: string | null
   version?: string | null

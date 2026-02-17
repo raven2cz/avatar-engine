@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { ShieldAlert } from 'lucide-react'
 import type { PermissionRequest } from '@avatar-engine/core'
 
-interface PermissionDialogProps {
+export interface PermissionDialogProps {
   request: PermissionRequest | null
   onRespond: (requestId: string, optionId: string, cancelled: boolean) => void
 }

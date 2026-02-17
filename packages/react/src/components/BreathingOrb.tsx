@@ -6,7 +6,7 @@
  * color schemes. Spins faster when the AI is actively thinking.
  */
 
-interface BreathingOrbProps {
+export interface BreathingOrbProps {
   size?: 'sm' | 'md' | 'lg'
   active?: boolean
   phase?: string
@@ -35,17 +35,17 @@ const SIZES: Record<string, SizeConfig> = {
 }
 
 const PHASE_COLORS: Record<string, PhaseColors> = {
-  general:       { c1: 'rgb(var(--ae-accent-rgb))', c2: 'rgb(var(--ae-pulse-rgb))', c3: '#a78bfa' },
-  idle:          { c1: 'rgb(var(--ae-accent-rgb))', c2: 'rgb(var(--ae-pulse-rgb))', c3: '#a78bfa' },
-  thinking:      { c1: '#3b82f6', c2: '#6366f1', c3: '#06b6d4' },
-  analyzing:     { c1: '#06b6d4', c2: '#3b82f6', c3: '#8b5cf6' },
-  coding:        { c1: '#10b981', c2: '#06b6d4', c3: '#34d399' },
-  planning:      { c1: '#8b5cf6', c2: '#c084fc', c3: '#e879f9' },
-  reviewing:     { c1: '#f59e0b', c2: '#f97316', c3: '#fbbf24' },
-  tool_planning: { c1: '#f59e0b', c2: '#f97316', c3: '#ef4444' },
-  responding:    { c1: '#818cf8', c2: '#a78bfa', c3: '#c084fc' },
-  success:       { c1: '#22c55e', c2: '#10b981', c3: '#06b6d4' },
-  error:         { c1: '#ef4444', c2: '#f97316', c3: '#fbbf24' },
+  general:       { c1: 'var(--ae-accent)', c2: 'var(--ae-pulse)', c3: 'var(--ae-phase-responding-3)' },
+  idle:          { c1: 'var(--ae-accent)', c2: 'var(--ae-pulse)', c3: 'var(--ae-phase-responding-3)' },
+  thinking:      { c1: 'var(--ae-phase-thinking-1)', c2: 'var(--ae-phase-thinking-2)', c3: 'var(--ae-phase-thinking-3)' },
+  analyzing:     { c1: 'var(--ae-phase-analyzing-1)', c2: 'var(--ae-phase-analyzing-2)', c3: 'var(--ae-phase-analyzing-3)' },
+  coding:        { c1: 'var(--ae-phase-coding-1)', c2: 'var(--ae-phase-coding-2)', c3: 'var(--ae-phase-coding-3)' },
+  planning:      { c1: 'var(--ae-phase-planning-1)', c2: 'var(--ae-phase-planning-2)', c3: 'var(--ae-phase-planning-3)' },
+  reviewing:     { c1: 'var(--ae-phase-reviewing-1)', c2: 'var(--ae-phase-reviewing-2)', c3: 'var(--ae-phase-reviewing-3)' },
+  tool_planning: { c1: 'var(--ae-phase-reviewing-1)', c2: 'var(--ae-phase-reviewing-2)', c3: 'var(--ae-phase-error-1)' },
+  responding:    { c1: 'var(--ae-phase-responding-1)', c2: 'var(--ae-phase-responding-2)', c3: 'var(--ae-phase-responding-3)' },
+  success:       { c1: 'var(--ae-phase-success-1)', c2: 'var(--ae-phase-success-2)', c3: 'var(--ae-phase-success-3)' },
+  error:         { c1: 'var(--ae-phase-error-1)', c2: 'var(--ae-phase-error-2)', c3: 'var(--ae-phase-error-3)' },
 }
 
 export function BreathingOrb({ size = 'md', active = true, phase = 'general' }: BreathingOrbProps) {

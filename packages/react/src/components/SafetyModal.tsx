@@ -7,7 +7,7 @@ import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ShieldOff } from 'lucide-react'
 
-interface SafetyModalProps {
+export interface SafetyModalProps {
   open: boolean
   onConfirm: () => void
   onCancel: () => void

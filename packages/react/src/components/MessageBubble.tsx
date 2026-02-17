@@ -12,7 +12,7 @@ import { ToolActivity } from './ToolActivity'
 import { MarkdownContent } from './MarkdownContent'
 import { AvatarLogo } from './AvatarLogo'
 
-interface MessageBubbleProps {
+export interface MessageBubbleProps {
   message: ChatMessage
 }
 

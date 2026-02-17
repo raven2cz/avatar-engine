@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import { Check, Loader2, X, Wrench } from 'lucide-react'
 import type { ToolInfo } from '@avatar-engine/core'
 
-interface ToolActivityProps {
+export interface ToolActivityProps {
   tools: ToolInfo[]
 }
 

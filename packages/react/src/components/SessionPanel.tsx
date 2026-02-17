@@ -12,11 +12,7 @@ import { Plus, Loader2, X, Pencil } from 'lucide-react'
 import type { SessionInfo, ProviderCapabilities } from '@avatar-engine/core'
 
 function resolveApiBase(apiBase?: string): string {
-  if (apiBase) return apiBase
-  if (typeof window !== 'undefined' && import.meta.env?.DEV) {
-    return `http://${window.location.hostname}:5173/api/avatar`
-  }
-  return '/api/avatar'
+  return apiBase ?? '/api/avatar'
 }
 
 function timeAgo(iso: string): string {
@@ -36,7 +32,7 @@ function basename(path: string): string {
   return parts[parts.length - 1] || path
 }
 
-interface SessionPanelProps {
+export interface SessionPanelProps {
   open: boolean
   onClose: () => void
   provider: string

@@ -14,12 +14,7 @@ export interface UseFileUploadReturn {
 }
 
 export function useFileUpload(apiBase?: string): UseFileUploadReturn {
-  const resolvedApiBase = apiBase ?? (() => {
-    if (typeof window !== 'undefined' && import.meta.env?.DEV) {
-      return `http://${window.location.hostname}:5173/api/avatar`
-    }
-    return '/api/avatar'
-  })()
+  const resolvedApiBase = apiBase ?? '/api/avatar'
 
   const [pending, setPending] = useState<UploadedFile[]>([])
   const [uploading, setUploading] = useState(false)

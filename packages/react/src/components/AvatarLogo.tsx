@@ -5,7 +5,7 @@
  * Accepts size via className (e.g. "w-5 h-5", "w-8 h-8").
  */
 
-interface AvatarLogoProps {
+export interface AvatarLogoProps {
   className?: string
 }
 

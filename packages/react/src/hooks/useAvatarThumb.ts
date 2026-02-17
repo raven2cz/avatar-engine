@@ -6,14 +6,14 @@ import { useEffect, useState } from 'react'
 import type { AvatarConfig } from '@avatar-engine/core'
 import { getAvatarBasePath } from '@avatar-engine/core'
 
-export function useAvatarThumb(avatar: AvatarConfig | undefined): string | undefined {
+export function useAvatarThumb(avatar: AvatarConfig | undefined, avatarBasePath: string = '/avatars'): string | undefined {
   const [thumbUrl, setThumbUrl] = useState<string | undefined>()
 
   useEffect(() => {
     if (!avatar) { setThumbUrl(undefined); return }
 
     let cancelled = false
-    const basePath = getAvatarBasePath(avatar.id)
+    const basePath = getAvatarBasePath(avatar.id, avatarBasePath)
 
     const img = new Image()
     img.crossOrigin = 'anonymous'
@@ -64,7 +64,7 @@ export function useAvatarThumb(avatar: AvatarConfig | undefined): string | undef
       img.onerror = null
       img.src = ''
     }
-  }, [avatar?.id])
+  }, [avatar?.id, avatarBasePath])
 
   return thumbUrl
 }

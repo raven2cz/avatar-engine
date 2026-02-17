@@ -52,13 +52,8 @@ export interface UseAvatarChatReturn {
 export function useAvatarChat(wsUrl: string, apiBase?: string): UseAvatarChatReturn {
   const { t } = useTranslation()
 
-  // Derive REST API base from WS URL if not provided
-  const resolvedApiBase = apiBase ?? (() => {
-    if (typeof window !== 'undefined' && import.meta.env?.DEV) {
-      return `http://${window.location.hostname}:5173/api/avatar`
-    }
-    return '/api/avatar'
-  })()
+  // Derive REST API base — relative URL works with Vite proxy and production
+  const resolvedApiBase = apiBase ?? '/api/avatar'
 
   const { state, sendMessage: wsSend, clearHistory: wsClear, switchProvider: wsSwitch, resumeSession: wsResume, newSession: wsNew, sendPermissionResponse: wsPermission, onServerMessage, stopResponse: wsStop } =
     useAvatarWebSocket(wsUrl)

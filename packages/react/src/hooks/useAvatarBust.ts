@@ -64,6 +64,7 @@ export function useAvatarBust(
   avatar: AvatarConfig | undefined,
   engineState: string,
   hasText: boolean = false,
+  avatarBasePath: string = '/avatars',
 ): UseAvatarBustReturn {
   const [loading, setLoading] = useState(true)
   const posesRef = useRef<LoadedPoses>({ idle: null, thinking: null, error: null, speakingFrames: [] })
@@ -77,7 +78,7 @@ export function useAvatarBust(
   useEffect(() => {
     if (!avatar) { setLoading(false); return }
 
-    const basePath = getAvatarBasePath(avatar.id)
+    const basePath = getAvatarBasePath(avatar.id, avatarBasePath)
     let cancelled = false
 
     async function load() {
@@ -120,7 +121,7 @@ export function useAvatarBust(
 
     load()
     return () => { cancelled = true }
-  }, [avatar?.id])
+  }, [avatar?.id, avatarBasePath])
 
   const getIdlePose = useCallback((): HTMLCanvasElement | HTMLImageElement | null => {
     const poses = posesRef.current

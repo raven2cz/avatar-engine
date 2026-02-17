@@ -11,7 +11,7 @@ import { MarkdownContent } from './MarkdownContent'
 import { BreathingOrb } from './BreathingOrb'
 import { AvatarLogo } from './AvatarLogo'
 
-interface CompactMessagesProps {
+export interface CompactMessagesProps {
   messages: ChatMessage[]
   version?: string | null
 }

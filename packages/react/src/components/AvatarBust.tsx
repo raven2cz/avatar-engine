@@ -10,16 +10,18 @@ import { useEffect, useRef } from 'react'
 import type { AvatarConfig } from '@avatar-engine/core'
 import { useAvatarBust } from '../hooks/useAvatarBust'
 
-interface AvatarBustProps {
+export interface AvatarBustProps {
   avatar: AvatarConfig | undefined
   engineState: string
   /** True when the current assistant message has non-empty text content. */
   hasText?: boolean
   className?: string
+  /** Base path for avatar assets (default: '/avatars') */
+  avatarBasePath?: string
 }
 
-export function AvatarBust({ avatar, engineState, hasText = false, className = '' }: AvatarBustProps) {
-  const { bustState, currentFrame, loading } = useAvatarBust(avatar, engineState, hasText)
+export function AvatarBust({ avatar, engineState, hasText = false, className = '', avatarBasePath }: AvatarBustProps) {
+  const { bustState, currentFrame, loading } = useAvatarBust(avatar, engineState, hasText, avatarBasePath)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // Render current frame to canvas

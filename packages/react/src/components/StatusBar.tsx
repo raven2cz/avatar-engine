@@ -15,7 +15,7 @@ import { ProviderModelSelector } from './ProviderModelSelector'
 import { SessionPanel } from './SessionPanel'
 import { getProvider } from '@avatar-engine/core'
 
-interface StatusBarProps {
+export interface StatusBarProps {
   connected: boolean
   provider: string
   model: string | null
@@ -77,11 +77,7 @@ function formatDuration(ms: number): string {
 }
 
 function resolveApiBase(apiBase?: string): string {
-  if (apiBase) return apiBase
-  if (typeof window !== 'undefined' && import.meta.env?.DEV) {
-    return `http://${window.location.hostname}:5173/api/avatar`
-  }
-  return '/api/avatar'
+  return apiBase ?? '/api/avatar'
 }
 
 export function StatusBar({

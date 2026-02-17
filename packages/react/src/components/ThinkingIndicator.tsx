@@ -10,7 +10,7 @@ import { Brain, Code, Eye, Lightbulb, Search, Wrench } from 'lucide-react'
 import { BreathingOrb } from './BreathingOrb'
 import type { ThinkingPhase } from '@avatar-engine/core'
 
-interface ThinkingIndicatorProps {
+export interface ThinkingIndicatorProps {
   active: boolean
   phase: ThinkingPhase
   subject: string

@@ -22,7 +22,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ChatMessage, UploadedFile, WidgetMode } from '@avatar-engine/core'
 import { LS_SELECTED_AVATAR, LS_HINTS_SHOWN } from '@avatar-engine/core'
-import { AVATARS, DEFAULT_AVATAR_ID, getAvatarById } from '@avatar-engine/core'
+import { AVATARS, DEFAULT_AVATAR_ID } from '@avatar-engine/core'
 import { useWidgetMode } from '../hooks/useWidgetMode'
 import { useAvatarThumb } from '../hooks/useAvatarThumb'
 import { AvatarFab } from './AvatarFab'
@@ -30,7 +30,7 @@ import { AvatarBust } from './AvatarBust'
 import { AvatarPicker } from './AvatarPicker'
 import { CompactChat } from './CompactChat'
 
-interface AvatarWidgetProps {
+export interface AvatarWidgetProps {
   /** Fullscreen content (StatusBar + ChatPanel + CostTracker) — rendered as overlay */
   children: ReactNode
   // Chat data (shared between compact and fullscreen, from single useAvatarChat)
@@ -60,6 +60,10 @@ interface AvatarWidgetProps {
   switchProvider?: (provider: string, model?: string, options?: Record<string, string | number>) => void
   /** Ref to receive the openCompact callback — allows parent to wire it into StatusBar */
   onCompactModeRef?: React.MutableRefObject<(() => void) | null>
+  /** Custom avatar list (default: built-in AVATARS) */
+  avatars?: import('@avatar-engine/core').AvatarConfig[]
+  /** Base path for avatar assets (default: '/avatars') */
+  avatarBasePath?: string
   /** Optional background content (e.g., LandingPage) rendered behind all modes */
   renderBackground?: (props: {
     showFabHint: boolean
@@ -94,6 +98,8 @@ export function AvatarWidget({
   activeOptions,
   availableProviders,
   switchProvider,
+  avatars: customAvatars,
+  avatarBasePath,
   onCompactModeRef,
   renderBackground,
 }: AvatarWidgetProps) {
@@ -140,9 +146,10 @@ export function AvatarWidget({
   const [selectedAvatarId, setSelectedAvatarId] = useState(() =>
     localStorage.getItem(LS_SELECTED_AVATAR) || DEFAULT_AVATAR_ID
   )
-  const selectedAvatar = getAvatarById(selectedAvatarId) || AVATARS[0]
+  const avatarList = customAvatars ?? AVATARS
+  const selectedAvatar = avatarList.find((a) => a.id === selectedAvatarId) || avatarList[0]
   const [pickerOpen, setPickerOpen] = useState(false)
-  const fabThumbUrl = useAvatarThumb(selectedAvatar)
+  const fabThumbUrl = useAvatarThumb(selectedAvatar, avatarBasePath)
 
   const handleAvatarSelect = useCallback((id: string) => {
     setSelectedAvatarId(id)
@@ -343,6 +350,7 @@ export function AvatarWidget({
                 engineState={engineState}
                 hasText={hasText}
                 className="absolute bottom-0 left-[14px] w-[200px]"
+                avatarBasePath={avatarBasePath}
               />
               <button
                 onClick={() => setPickerOpen((v) => !v)}
@@ -367,6 +375,8 @@ export function AvatarWidget({
                   selectedId={selectedAvatarId}
                   onSelect={handleAvatarSelect}
                   onClose={() => setPickerOpen(false)}
+                  avatars={avatarList}
+                  avatarBasePath={avatarBasePath}
                 />
               )}
               <div className="absolute bottom-[2%] left-1/2 -translate-x-[40%] w-[180px] h-[50px] rounded-full pointer-events-none blur-[10px]"
@@ -391,7 +401,7 @@ export function AvatarWidget({
               onClick={toggleBust}
               className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-10 rounded-full z-[1003]
                 flex items-center justify-center cursor-pointer
-                bg-[rgba(15,15,23,0.9)] backdrop-blur-sm border border-white/[0.06]
+                bg-[var(--ae-overlay-bust-toggle)] backdrop-blur-sm border border-white/[0.06]
                 text-text-muted opacity-0 group-hover/panel:opacity-100 hover:opacity-100
                 hover:bg-synapse/20 hover:border-synapse/40 hover:text-text-primary
                 transition-all duration-200"

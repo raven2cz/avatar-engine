@@ -14,7 +14,7 @@ import { CompactHeader } from './CompactHeader'
 import { CompactMessages } from './CompactMessages'
 import { CompactInput } from './CompactInput'
 
-interface CompactChatProps {
+export interface CompactChatProps {
   messages: ChatMessage[]
   provider: string
   model: string | null
@@ -76,7 +76,7 @@ export function CompactChat({
   const { t } = useTranslation()
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-t-2xl bg-[rgba(18,18,35,0.96)] backdrop-blur-[24px] border-t border-l border-white/[0.08] shadow-[0_-8px_40px_rgba(0,0,0,0.6)]">
+    <div className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-t-2xl bg-[var(--ae-overlay-chat)] backdrop-blur-[24px] border-t border-l border-white/[0.08] shadow-[0_-8px_40px_rgba(0,0,0,0.6)]">
       {/* Accent gradient line at top edge for visual separation from background */}
       <div className="h-[1.5px] w-full bg-gradient-to-r from-transparent via-synapse/40 to-transparent flex-shrink-0" />
       <CompactHeader

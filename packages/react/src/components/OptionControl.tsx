@@ -12,7 +12,7 @@ import { useEffect } from 'react'
 import type { ProviderOption } from '@avatar-engine/core'
 import { filterChoicesForModel } from '@avatar-engine/core'
 
-interface OptionControlProps {
+export interface OptionControlProps {
   option: ProviderOption
   model: string | null
   value: string | number | undefined

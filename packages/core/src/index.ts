@@ -102,7 +102,9 @@ export {
   getAvatarBasePath,
 } from './config/avatars'
 
-// i18n
+// i18n — IMPORTANT: Call initAvatarI18n() before rendering React components.
+// For React apps: initAvatarI18n(reactI18nextModule)
+// For non-React: initAvatarI18n()
 export {
   initAvatarI18n,
   changeLanguage,

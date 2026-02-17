@@ -10,16 +10,21 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AvatarConfig } from '@avatar-engine/core'
 import { AVATARS, getAvatarBasePath } from '@avatar-engine/core'
 
-interface AvatarPickerProps {
+export interface AvatarPickerProps {
   selectedId: string
   onSelect: (id: string) => void
   onClose: () => void
+  /** Custom avatar list (default: built-in AVATARS) */
+  avatars?: AvatarConfig[]
+  /** Base path for avatar assets (default: '/avatars') */
+  avatarBasePath?: string
 }
 
-function AvatarThumb({ avatar, selected, onSelect }: {
+function AvatarThumb({ avatar, selected, onSelect, avatarBasePath }: {
   avatar: AvatarConfig
   selected: boolean
   onSelect: () => void
+  avatarBasePath?: string
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [loaded, setLoaded] = useState(false)
@@ -28,7 +33,7 @@ function AvatarThumb({ avatar, selected, onSelect }: {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const basePath = getAvatarBasePath(avatar.id)
+    const basePath = getAvatarBasePath(avatar.id, avatarBasePath)
     const img = new Image()
     img.crossOrigin = 'anonymous'
 
@@ -94,7 +99,7 @@ function AvatarThumb({ avatar, selected, onSelect }: {
   )
 }
 
-export function AvatarPicker({ selectedId, onSelect, onClose }: AvatarPickerProps) {
+export function AvatarPicker({ selectedId, onSelect, onClose, avatars: customAvatars, avatarBasePath }: AvatarPickerProps) {
   const ref = useRef<HTMLDivElement>(null)
 
   const handleSelect = useCallback((id: string) => {
@@ -135,18 +140,19 @@ export function AvatarPicker({ selectedId, onSelect, onClose }: AvatarPickerProp
     <div
       ref={ref}
       className="absolute bottom-[12%] left-[13px] z-[1003] p-2.5 rounded-[14px]
-        bg-[rgba(12,12,20,0.92)] backdrop-blur-[24px] border border-white/[0.06]
+        bg-[var(--ae-overlay-picker)] backdrop-blur-[24px] border border-white/[0.06]
         shadow-[0_12px_40px_rgba(0,0,0,0.5)]
         animate-fade-in"
       style={{ maxWidth: 220 }}
     >
       <div className="grid grid-cols-3 gap-2">
-        {AVATARS.map((avatar) => (
+        {(customAvatars ?? AVATARS).map((avatar) => (
           <AvatarThumb
             key={avatar.id}
             avatar={avatar}
             selected={avatar.id === selectedId}
             onSelect={() => handleSelect(avatar.id)}
+            avatarBasePath={avatarBasePath}
           />
         ))}
       </div>

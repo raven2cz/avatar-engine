@@ -80,7 +80,7 @@ function CopyButton({ text }: { text: string }) {
 
 /* ---------- Markdown renderer ---------- */
 
-interface MarkdownContentProps {
+export interface MarkdownContentProps {
   content: string
 }
 

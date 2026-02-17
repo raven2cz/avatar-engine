@@ -5,12 +5,7 @@ import { useState, useEffect } from 'react'
  * Returns null while loading, or a Set of available provider IDs.
  */
 export function useAvailableProviders(apiBase?: string): Set<string> | null {
-  const resolvedApiBase = apiBase ?? (() => {
-    if (typeof window !== 'undefined' && import.meta.env?.DEV) {
-      return `http://${window.location.hostname}:5173/api/avatar`
-    }
-    return '/api/avatar'
-  })()
+  const resolvedApiBase = apiBase ?? '/api/avatar'
 
   const [available, setAvailable] = useState<Set<string> | null>(null)
 

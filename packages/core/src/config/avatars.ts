@@ -44,6 +44,6 @@ export function getAvatarById(id: string): AvatarConfig | undefined {
   return AVATARS.find((a) => a.id === id)
 }
 
-export function getAvatarBasePath(id: string): string {
-  return `/avatars/${id}`
+export function getAvatarBasePath(id: string, basePath: string = '/avatars'): string {
+  return `${basePath}/${id}`
 }

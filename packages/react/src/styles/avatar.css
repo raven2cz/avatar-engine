@@ -76,6 +76,38 @@
 
   /* Gradient text */
   --ae-gradient: linear-gradient(135deg, #6366f1, #a78bfa, #c084fc);
+
+  /* Phase colors — BreathingOrb galaxy per-phase palette */
+  --ae-phase-thinking-1: #3b82f6;
+  --ae-phase-thinking-2: #6366f1;
+  --ae-phase-thinking-3: #06b6d4;
+  --ae-phase-analyzing-1: #06b6d4;
+  --ae-phase-analyzing-2: #3b82f6;
+  --ae-phase-analyzing-3: #8b5cf6;
+  --ae-phase-coding-1: #10b981;
+  --ae-phase-coding-2: #06b6d4;
+  --ae-phase-coding-3: #34d399;
+  --ae-phase-planning-1: #8b5cf6;
+  --ae-phase-planning-2: #c084fc;
+  --ae-phase-planning-3: #e879f9;
+  --ae-phase-reviewing-1: #f59e0b;
+  --ae-phase-reviewing-2: #f97316;
+  --ae-phase-reviewing-3: #fbbf24;
+  --ae-phase-responding-1: #818cf8;
+  --ae-phase-responding-2: #a78bfa;
+  --ae-phase-responding-3: #c084fc;
+  --ae-phase-success-1: #22c55e;
+  --ae-phase-success-2: #10b981;
+  --ae-phase-success-3: #06b6d4;
+  --ae-phase-error-1: #ef4444;
+  --ae-phase-error-2: #f97316;
+  --ae-phase-error-3: #fbbf24;
+
+  /* Overlay surfaces */
+  --ae-overlay-chat: rgba(18, 18, 35, 0.96);
+  --ae-overlay-input: rgba(8, 8, 20, 0.7);
+  --ae-overlay-picker: rgba(12, 12, 20, 0.92);
+  --ae-overlay-bust-toggle: rgba(15, 15, 23, 0.9);
 }
 
 /* ============================================

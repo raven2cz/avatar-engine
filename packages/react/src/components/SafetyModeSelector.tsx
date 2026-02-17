@@ -11,7 +11,7 @@ import { Shield, ShieldQuestion, ShieldOff } from 'lucide-react'
 import type { SafetyMode } from '@avatar-engine/core'
 import { SafetyModal } from './SafetyModal'
 
-interface SafetyModeSelectorProps {
+export interface SafetyModeSelectorProps {
   value: SafetyMode
   onChange: (mode: SafetyMode) => void
   provider?: string

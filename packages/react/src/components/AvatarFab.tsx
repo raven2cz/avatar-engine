@@ -8,7 +8,7 @@
 
 import { useTranslation } from 'react-i18next'
 
-interface AvatarFabProps {
+export interface AvatarFabProps {
   onClick: () => void
   avatarThumbUrl?: string
 }
