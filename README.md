@@ -13,9 +13,9 @@
 <p align="center">
   <a href="https://github.com/raven2cz/avatar-engine/actions/workflows/test.yml"><img src="https://github.com/raven2cz/avatar-engine/actions/workflows/test.yml/badge.svg?branch=main" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/raven2cz/avatar-engine" alt="License"></a>
-  <a href="https://pypi.org/project/avatar-engine/"><img src="https://img.shields.io/pypi/v/avatar-engine" alt="PyPI"></a>
-  <a href="https://www.npmjs.com/package/@avatar-engine/core"><img src="https://img.shields.io/npm/v/@avatar-engine/core?label=%40avatar-engine%2Fcore" alt="npm core"></a>
-  <a href="https://www.npmjs.com/package/@avatar-engine/react"><img src="https://img.shields.io/npm/v/@avatar-engine/react?label=%40avatar-engine%2Freact" alt="npm react"></a>
+  <a href="https://pypi.org/project/avatar-engine/"><img src="https://img.shields.io/pypi/v/avatar-engine?v=1.0.0" alt="PyPI"></a>
+  <a href="https://www.npmjs.com/package/@avatar-engine/core"><img src="https://img.shields.io/npm/v/@avatar-engine/core?label=%40avatar-engine%2Fcore&v=1.0.0" alt="npm core"></a>
+  <a href="https://www.npmjs.com/package/@avatar-engine/react"><img src="https://img.shields.io/npm/v/@avatar-engine/react?label=%40avatar-engine%2Freact&v=1.0.0" alt="npm react"></a>
 </p>
 
 <p align="center">
