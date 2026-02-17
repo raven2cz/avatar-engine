@@ -48,7 +48,6 @@ wheels = [
 
 [[package]]
 name = "avatar-engine"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -90,7 +89,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'web'", specifier = ">=0.20" },
 ]
-provides-extras = ["dev", "cli", "web"]
+provides-extras = ["cli", "dev", "web"]
 
 [[package]]
 name = "backports-asyncio-runner"

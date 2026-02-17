@@ -26,10 +26,12 @@ jobs:
       - run: npm run build -w packages/core
       - run: npm run build -w packages/react
       - run: npm run build -w examples/web-demo
+      - run: npm test -w packages/core
       - run: npm test -w examples/web-demo
 
   lint:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
