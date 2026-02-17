@@ -495,6 +495,46 @@ describe('Smoke test — full chat lifecycle', () => {
   })
 })
 
+describe('Smoke test — Tailwind content paths', () => {
+  it('tailwind.config.js content paths resolve to existing files with component classes', () => {
+    const fs = require('fs') as { existsSync(p: string): boolean; readFileSync(p: string, e: string): string }
+    const path = require('path') as { resolve(...p: string[]): string }
+
+    const webDemoRoot = path.resolve(__dirname, '../..')
+
+    // Read tailwind config to extract content paths
+    const configSrc = fs.readFileSync(path.resolve(webDemoRoot, 'tailwind.config.js'), 'utf-8')
+
+    // The config must reference packages/react source (for workspace dev mode)
+    expect(configSrc).toContain('packages/react/src')
+
+    // Verify the path actually resolves to files
+    const reactSrcPath = path.resolve(webDemoRoot, '../../packages/react/src')
+    expect(fs.existsSync(reactSrcPath)).toBe(true)
+
+    // Check that key component files exist in the scanned path
+    const components = [
+      'components/AvatarFab.tsx',
+      'components/AvatarWidget.tsx',
+      'components/CompactChat.tsx',
+      'components/ChatPanel.tsx',
+      'components/StatusBar.tsx',
+      'components/PermissionDialog.tsx',
+    ]
+    for (const comp of components) {
+      const fullPath = path.resolve(reactSrcPath, comp)
+      expect(fs.existsSync(fullPath)).toBe(true)
+    }
+
+    // Verify key Tailwind classes exist in scanned source files
+    const fabSource = fs.readFileSync(path.resolve(reactSrcPath, 'components/AvatarFab.tsx'), 'utf-8')
+    expect(fabSource).toContain('fixed')
+    expect(fabSource).toContain('bottom-6')
+    expect(fabSource).toContain('left-6')
+    expect(fabSource).toContain('z-50')
+  })
+})
+
 describe('Smoke test — import chain verification', () => {
   it('all essential exports from @avatar-engine/react are importable', async () => {
     // This test verifies the re-export chain at runtime.

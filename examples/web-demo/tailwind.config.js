@@ -6,7 +6,9 @@ export default {
   content: [
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
-    './node_modules/@avatar-engine/react/dist/**/*.js',
+    // npm workspaces: symlinks resolve to packages/ — scan both paths
+    '../../packages/react/src/**/*.{ts,tsx}',
+    '../../node_modules/@avatar-engine/react/dist/**/*.js',
   ],
   plugins: [],
 }
