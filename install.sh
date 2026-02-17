@@ -283,11 +283,20 @@ check_dependencies() {
         check_python_module "$python_bin" "fastapi" "fastapi (web server)" false || true
         check_python_module "$python_bin" "uvicorn" "uvicorn (ASGI server)" false || true
     fi
-    if [ -d "examples/web-demo/node_modules" ]; then
-        print_ok "Web demo frontend deps installed"
+    if [ -d "node_modules/@avatar-engine" ]; then
+        print_ok "npm workspaces installed (packages/core + packages/react)"
+    elif [ -d "node_modules" ]; then
+        print_warn "node_modules exists but @avatar-engine packages not linked"
+        echo "    Run: npm install"
     else
-        print_warn "Web demo frontend deps not installed"
+        print_warn "npm dependencies not installed"
         echo "    Install: ./install.sh --web"
+    fi
+    if [ -d "packages/core/dist" ] && [ -d "packages/react/dist" ]; then
+        print_ok "Packages built (core + react)"
+    else
+        print_warn "Packages not built yet"
+        echo "    Build: npm run build -w packages/core && npm run build -w packages/react"
     fi
 
     echo ""
@@ -473,38 +482,37 @@ install_web_demo() {
 
     print_header "Installing Web Demo (React frontend)"
 
-    local web_dir="examples/web-demo"
-    if [ ! -d "$web_dir" ]; then
-        print_error "Web demo directory not found: $web_dir"
+    if [ ! -d "examples/web-demo" ]; then
+        print_error "Web demo directory not found: examples/web-demo"
         return 1
     fi
 
-    # Detect package manager (prefer pnpm > npm)
-    local pkg_cmd=""
-    if command -v pnpm &> /dev/null; then
-        pkg_cmd="pnpm"
-        print_ok "Using pnpm: $(pnpm --version)"
-    elif command -v npm &> /dev/null; then
-        pkg_cmd="npm"
-        print_ok "Using npm: $(npm --version)"
-    else
-        print_error "No Node.js package manager found (pnpm or npm required)"
+    if ! command -v npm &> /dev/null; then
+        print_error "npm is not installed"
         echo "Install Node.js: sudo pacman -S nodejs npm"
-        echo "Or install pnpm: npm install -g pnpm"
         return 1
     fi
 
-    echo "Installing frontend dependencies in $web_dir..."
-    (cd "$web_dir" && $pkg_cmd install)
+    print_ok "Using npm: $(npm --version)"
 
-    print_ok "Web demo frontend dependencies installed"
+    # npm install from root sets up workspaces (core, react, web-demo)
+    echo "Installing npm workspace dependencies..."
+    npm install
+
+    # Build packages (web-demo needs built core + react)
+    echo "Building @avatar-engine/core..."
+    npm run build -w packages/core
+    echo "Building @avatar-engine/react..."
+    npm run build -w packages/react
+
+    print_ok "Web demo frontend dependencies installed and packages built"
     echo ""
     echo "To start the web demo:"
     echo "  ./scripts/start-web.sh"
     echo ""
     echo "Or manually:"
-    echo "  uv run avatar-web --provider gemini  # Backend (port 8420)"
-    echo "  cd examples/web-demo && $pkg_cmd dev  # Frontend (port 5173)"
+    echo "  uv run avatar-web --provider gemini --no-static  # Backend (port 8420)"
+    echo "  npm run dev -w examples/web-demo                 # Frontend (port 5173)"
 }
 
 # ============================================================================
