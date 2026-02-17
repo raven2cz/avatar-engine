@@ -26,6 +26,13 @@
 
 ---
 
+<p align="center">
+  <img src="assets/demo-landing.jpg" alt="Avatar Engine — Landing page with compact chat" width="49%">
+  <img src="assets/demo-fullscreen.jpg" alt="Avatar Engine — Fullscreen mode" width="49%">
+</p>
+
+---
+
 Avatar Engine is designed for embedding a dedicated AI avatar into a specific application domain, not as a generic chatbot wrapper.
 
 - **Application-defined behavior** — Your app controls avatar behavior through explicit configuration (model, prompts, permissions, tool policy, safety limits).
