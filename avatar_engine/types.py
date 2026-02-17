@@ -4,11 +4,11 @@ Avatar Engine type definitions.
 This module contains all public types used by the Avatar Engine library.
 """
 
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-import time
+from typing import Any
 
 
 class ProviderType(Enum):
@@ -42,8 +42,8 @@ class Message:
     role: str  # "user" | "assistant"
     content: str
     timestamp: float = field(default_factory=time.time)
-    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
-    attachments: List[Attachment] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    attachments: list[Attachment] = field(default_factory=list)
 
 
 @dataclass
@@ -51,14 +51,14 @@ class BridgeResponse:
     """Response from AI bridge."""
     content: str
     success: bool = True
-    error: Optional[str] = None
-    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
-    raw_events: List[Dict[str, Any]] = field(default_factory=list)
+    error: str | None = None
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    raw_events: list[dict[str, Any]] = field(default_factory=list)
     duration_ms: int = 0
-    session_id: Optional[str] = None
-    cost_usd: Optional[float] = None
-    token_usage: Optional[Dict[str, Any]] = None
-    generated_images: List[Path] = field(default_factory=list)
+    session_id: str | None = None
+    cost_usd: float | None = None
+    token_usage: dict[str, Any] | None = None
+    generated_images: list[Path] = field(default_factory=list)
 
     def __bool__(self) -> bool:
         """Allow `if response:` checks."""
@@ -74,8 +74,8 @@ class SessionInfo:
     session_id: str
     provider: str  # "gemini" | "claude" | "codex"
     cwd: str = ""
-    title: Optional[str] = None
-    updated_at: Optional[str] = None  # ISO 8601
+    title: str | None = None
+    updated_at: str | None = None  # ISO 8601
 
 
 @dataclass
@@ -98,8 +98,8 @@ class ToolPolicy:
     If deny is set, listed tools are blocked.
     deny takes precedence over allow.
     """
-    allow: List[str] = field(default_factory=list)
-    deny: List[str] = field(default_factory=list)
+    allow: list[str] = field(default_factory=list)
+    deny: list[str] = field(default_factory=list)
 
     def is_allowed(self, tool_name: str) -> bool:
         """Check if a tool is allowed by this policy."""
@@ -150,9 +150,9 @@ class HealthStatus:
     healthy: bool
     state: str
     provider: str
-    session_id: Optional[str] = None
+    session_id: str | None = None
     history_length: int = 0
-    pid: Optional[int] = None
-    returncode: Optional[int] = None
+    pid: int | None = None
+    returncode: int | None = None
     total_cost_usd: float = 0.0
     uptime_seconds: float = 0.0

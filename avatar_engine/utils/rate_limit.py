@@ -8,7 +8,6 @@ import asyncio
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 
 def _validate_rate_limit_params(requests_per_minute: int, burst: int) -> None:

@@ -16,7 +16,6 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 from ..types import Message, SessionInfo
 from ._base import SessionStore
@@ -27,7 +26,7 @@ logger = logging.getLogger(__name__)
 class GeminiFileSessionStore(SessionStore):
     """Reads Gemini CLI session files from ~/.gemini/tmp/."""
 
-    def __init__(self, gemini_home: Optional[Path] = None):
+    def __init__(self, gemini_home: Path | None = None):
         self._gemini_home = gemini_home or Path.home() / ".gemini" / "tmp"
 
     @staticmethod
@@ -35,7 +34,7 @@ class GeminiFileSessionStore(SessionStore):
         """SHA-256 hash of the working directory path (matches Gemini CLI)."""
         return hashlib.sha256(working_dir.encode()).hexdigest()
 
-    def _parse_session_file(self, path: Path) -> Optional[SessionInfo]:
+    def _parse_session_file(self, path: Path) -> SessionInfo | None:
         """Parse a single Gemini session JSON file into SessionInfo."""
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -66,7 +65,7 @@ class GeminiFileSessionStore(SessionStore):
             updated_at=updated_at,
         )
 
-    async def list_sessions(self, working_dir: str) -> List[SessionInfo]:
+    async def list_sessions(self, working_dir: str) -> list[SessionInfo]:
         """List Gemini sessions for the given working directory."""
         project_hash = self._compute_project_hash(working_dir)
         chats_dir = self._gemini_home / project_hash / "chats"
@@ -74,7 +73,7 @@ class GeminiFileSessionStore(SessionStore):
         if not chats_dir.is_dir():
             return []
 
-        sessions: List[SessionInfo] = []
+        sessions: list[SessionInfo] = []
         for path in chats_dir.glob("session-*.json"):
             info = self._parse_session_file(path)
             if info:
@@ -85,7 +84,7 @@ class GeminiFileSessionStore(SessionStore):
         sessions.sort(key=lambda s: s.updated_at or "", reverse=True)
         return sessions
 
-    def _find_session_file(self, session_id: str, working_dir: str) -> Optional[Path]:
+    def _find_session_file(self, session_id: str, working_dir: str) -> Path | None:
         """Find a Gemini session file by sessionId.
 
         Gemini CLI filenames use ``session-{timestamp}-{shortId}.json``
@@ -124,7 +123,7 @@ class GeminiFileSessionStore(SessionStore):
 
         return None
 
-    def load_session_messages(self, session_id: str, working_dir: str) -> List[Message]:
+    def load_session_messages(self, session_id: str, working_dir: str) -> list[Message]:
         """Load messages from a Gemini session file.
 
         Finds the session file by matching the ``sessionId`` field inside
@@ -142,7 +141,7 @@ class GeminiFileSessionStore(SessionStore):
             logger.debug(f"Failed to parse session {session_id}: {exc}")
             return []
 
-        messages: List[Message] = []
+        messages: list[Message] = []
         for msg in data.get("messages", []):
             msg_type = msg.get("type", "")
             content = msg.get("content", "")

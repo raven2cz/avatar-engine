@@ -9,26 +9,24 @@ Provides:
 """
 
 import asyncio
-import json
 import logging
 import shutil
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .. import __version__
+from ..sessions._titles import SessionTitleRegistry
+from ..types import Attachment
 from .protocol import (
     capabilities_to_dict,
-    event_to_dict,
     health_to_dict,
     parse_client_message,
     response_to_dict,
 )
 from .session_manager import EngineSessionManager
 from .uploads import UploadStorage
-from ..sessions._titles import SessionTitleRegistry
-from ..types import Attachment
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +34,27 @@ logger = logging.getLogger(__name__)
 title_registry = SessionTitleRegistry()
 
 
+def create_api_app(**kwargs: Any) -> Any:
+    """Create avatar API without static serving. For embedding in host FastAPI.
+
+    Args:
+        **kwargs: Same as create_app() except serve_static is forced off.
+
+    Returns:
+        FastAPI application instance (API-only, no static files)
+    """
+    return create_app(serve_static=False, **kwargs)
+
+
 def create_app(
     provider: str = "gemini",
-    model: Optional[str] = None,
-    config_path: Optional[str] = None,
-    working_dir: Optional[str] = None,
+    model: str | None = None,
+    config_path: str | None = None,
+    working_dir: str | None = None,
     system_prompt: str = "",
-    cors_origins: Optional[List[str]] = None,
+    cors_origins: list[str] | None = None,
     serve_static: bool = True,
+    static_dir: str | None = None,
     **kwargs: Any,
 ) -> Any:
     """Create a FastAPI application for Avatar Engine web bridge.
@@ -82,7 +93,7 @@ def create_app(
     )
 
     # Track background startup task so it can be cancelled on early switch
-    _startup_task: Optional[asyncio.Task] = None
+    _startup_task: asyncio.Task | None = None
 
     async def _run_startup(mgr: EngineSessionManager) -> None:
         """Background task: start engine and broadcast connected."""
@@ -171,7 +182,7 @@ def create_app(
         return JSONResponse({"version": __version__})
 
     # Provider → CLI executable mapping (used for availability detection)
-    _PROVIDER_EXECUTABLES = {
+    provider_executables = {
         "gemini": "gemini",
         "claude": "claude",
         "codex": "npx",
@@ -181,7 +192,7 @@ def create_app(
     async def get_providers() -> JSONResponse:
         """List all known providers with CLI availability on this machine."""
         providers = []
-        for provider_id, executable in _PROVIDER_EXECUTABLES.items():
+        for provider_id, executable in provider_executables.items():
             available = shutil.which(executable) is not None
             providers.append({
                 "id": provider_id,
@@ -291,7 +302,7 @@ def create_app(
         ])
 
     @app.post("/api/avatar/chat")
-    async def post_chat(body: Dict[str, Any]) -> JSONResponse:
+    async def post_chat(body: dict[str, Any]) -> JSONResponse:
         """Non-streaming chat (for simple use cases)."""
         engine = await manager.ensure_started()
         message = body.get("message", "")
@@ -353,7 +364,7 @@ def create_app(
 
     # === WebSocket helpers ===
 
-    def _get_model(mgr: EngineSessionManager) -> Optional[str]:
+    def _get_model(mgr: EngineSessionManager) -> str | None:
         """Extract current model from engine/bridge/config.
 
         Falls back to 'gemini-3-pro-preview' for Gemini provider when no
@@ -379,7 +390,7 @@ def create_app(
             mdl = "gemini-3-pro-preview"
         return mdl or None
 
-    def _get_session_title(mgr: EngineSessionManager, session_id: Optional[str]) -> Optional[str]:
+    def _get_session_title(mgr: EngineSessionManager, session_id: str | None) -> str | None:
         """Look up the title for a session.
 
         Priority: custom title (from registry) > provider title (first user message).
@@ -528,7 +539,7 @@ def create_app(
 
                     # Parse file attachments from message data
                     raw_attachments = msg_data.get("attachments", [])
-                    chat_attachments: Optional[List[Attachment]] = None
+                    chat_attachments: list[Attachment] | None = None
                     if raw_attachments:
                         valid = []
                         for a in raw_attachments:
@@ -544,7 +555,7 @@ def create_app(
 
                     # Run chat in background — events auto-broadcast via bridge
                     # Use manager refs (not local vars) so chat works after switch
-                    async def _run_chat(msg: str, atts: Optional[List[Attachment]] = chat_attachments, client_ws: WebSocket = ws) -> None:
+                    async def _run_chat(msg: str, atts: list[Attachment] | None = chat_attachments, client_ws: WebSocket = ws) -> None:
                         try:
                             eng = manager.engine
                             brg = manager.ws_bridge
@@ -750,12 +761,14 @@ def create_app(
     # === Optional: Serve static web-demo build ===
 
     if serve_static:
-        static_dir = Path(__file__).parent.parent.parent / "examples" / "web-demo" / "dist"
-        if static_dir.exists():
+        sd = Path(static_dir) if static_dir else (
+            Path(__file__).parent.parent.parent / "examples" / "web-demo" / "dist"
+        )
+        if sd.exists():
             try:
                 from fastapi.staticfiles import StaticFiles
-                app.mount("/", StaticFiles(directory=str(static_dir), html=True))
-                logger.info(f"Serving static files from {static_dir}")
+                app.mount("/", StaticFiles(directory=str(sd), html=True))
+                logger.info(f"Serving static files from {sd}")
             except Exception:
                 pass
 

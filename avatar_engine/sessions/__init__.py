@@ -8,8 +8,6 @@ Usage:
         sessions = await store.list_sessions("/home/user/project")
 """
 
-from typing import Optional
-
 from ._base import SessionStore
 from ._claude import ClaudeFileSessionStore
 from ._codex import CodexFileSessionStore
@@ -24,7 +22,7 @@ __all__ = [
 ]
 
 
-def get_session_store(provider: str) -> Optional[SessionStore]:
+def get_session_store(provider: str) -> SessionStore | None:
     """Get a filesystem session store for the given provider.
 
     All providers now have filesystem stores for loading session messages.

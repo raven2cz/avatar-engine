@@ -10,12 +10,12 @@ Three safety modes:
 - "unrestricted" — no safety restrictions
 """
 
-from typing import Literal, Union
+from typing import Literal
 
 SafetyMode = Literal["safe", "ask", "unrestricted"]
 
 
-def normalize_safety_mode(value: Union[bool, str]) -> SafetyMode:
+def normalize_safety_mode(value: bool | str) -> SafetyMode:
     """Convert legacy bool or string to SafetyMode.
 
     Backwards compatibility: True → "safe", False → "unrestricted".

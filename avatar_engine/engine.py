@@ -14,43 +14,48 @@ import asyncio
 import dataclasses
 import logging
 import signal
-import sys
 import threading
 import time
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
+from typing import Any
 
 from .activity import ActivityTracker
 from .bridges import BaseBridge, ClaudeBridge, CodexBridge, GeminiBridge
 from .config import AvatarConfig
+from .events import (
+    CostEvent,
+    DiagnosticEvent,
+    ErrorEvent,
+    EventEmitter,
+    StateEvent,
+    TextEvent,
+    ThinkingEvent,
+    ThinkingPhase,
+    ToolEvent,
+    classify_thinking,
+    extract_bold_subject,
+)
 from .safety import (
-    DEFAULT_SAFETY_INSTRUCTIONS,
     ASK_MODE_SAFETY_INSTRUCTIONS,
+    DEFAULT_SAFETY_INSTRUCTIONS,
     SafetyMode,
     normalize_safety_mode,
 )
+from .types import (
+    Attachment,
+    BridgeResponse,
+    BridgeState,
+    HealthStatus,
+    Message,
+    ProviderCapabilities,
+    ProviderType,
+    SessionCapabilitiesInfo,
+    SessionInfo,
+    ToolPolicy,
+)
 from .utils.logging import setup_logging
 from .utils.rate_limit import RateLimiter
-from .events import (
-    EventEmitter,
-    AvatarEvent,
-    TextEvent,
-    ToolEvent,
-    StateEvent,
-    ErrorEvent,
-    CostEvent,
-    ThinkingEvent,
-    DiagnosticEvent,
-    ActivityEvent,
-    ThinkingPhase,
-    ActivityStatus,
-    extract_bold_subject,
-    classify_thinking,
-)
-from .types import (
-    Attachment, BridgeResponse, BridgeState, HealthStatus, Message, ProviderType,
-    SessionInfo, SessionCapabilitiesInfo, ProviderCapabilities, ToolPolicy,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -87,12 +92,12 @@ class AvatarEngine(EventEmitter):
 
     def __init__(
         self,
-        provider: Union[str, ProviderType] = ProviderType.GEMINI,
-        model: Optional[str] = None,
-        working_dir: Optional[str] = None,
+        provider: str | ProviderType = ProviderType.GEMINI,
+        model: str | None = None,
+        working_dir: str | None = None,
         timeout: int = 120,
         system_prompt: str = "",
-        config: Optional[AvatarConfig] = None,
+        config: AvatarConfig | None = None,
         **kwargs: Any,
     ):
         """
@@ -131,24 +136,24 @@ class AvatarEngine(EventEmitter):
             self._safety_mode: SafetyMode = normalize_safety_mode(raw_safety)
             self._kwargs = kwargs
 
-        self._bridge: Optional[BaseBridge] = None
+        self._bridge: BaseBridge | None = None
         self._started = False
-        self._start_time: Optional[float] = None
+        self._start_time: float | None = None
         self._restart_count = 0
-        self._health_check_task: Optional[asyncio.Task] = None
+        self._health_check_task: asyncio.Task | None = None
         self._shutting_down = False
-        self._pending_permissions: Dict[str, asyncio.Future] = {}
+        self._pending_permissions: dict[str, asyncio.Future] = {}
         self._signal_handlers_installed = False
         self._original_sigterm = None
         self._original_sigint = None
-        self._sync_loop: Optional[asyncio.AbstractEventLoop] = None  # For sync wrappers
+        self._sync_loop: asyncio.AbstractEventLoop | None = None  # For sync wrappers
         self._sync_loop_lock = threading.Lock()  # RC-1: protect loop creation
 
         # Activity tracker for parallel operations (GUI visualization)
         self._activity_tracker = ActivityTracker(self)
 
         # Tool policy for engine-level filtering (GAP-8)
-        self._tool_policy: Optional[ToolPolicy] = None
+        self._tool_policy: ToolPolicy | None = None
 
         # Thinking state cache (GAP-10: optimize high-frequency events)
         self._current_thinking_block_id = ""
@@ -287,7 +292,7 @@ class AvatarEngine(EventEmitter):
 
     # === Chat API (async) ===
 
-    async def chat(self, message: str, attachments: Optional[List["Attachment"]] = None) -> BridgeResponse:
+    async def chat(self, message: str, attachments: list["Attachment"] | None = None) -> BridgeResponse:
         """
         Send a message and get response (async).
 
@@ -412,7 +417,7 @@ class AvatarEngine(EventEmitter):
 
     # === Provider switching ===
 
-    async def switch_provider(self, provider: Union[str, ProviderType]) -> None:
+    async def switch_provider(self, provider: str | ProviderType) -> None:
         """
         Switch to a different provider.
 
@@ -448,7 +453,7 @@ class AvatarEngine(EventEmitter):
 
     # === History ===
 
-    def get_history(self) -> List[Message]:
+    def get_history(self) -> list[Message]:
         """Get conversation history."""
         if self._bridge:
             return self._bridge.get_history()
@@ -467,7 +472,7 @@ class AvatarEngine(EventEmitter):
         return self._provider.value
 
     @property
-    def session_id(self) -> Optional[str]:
+    def session_id(self) -> str | None:
         """Get current session ID."""
         return self._bridge.session_id if self._bridge else None
 
@@ -508,12 +513,12 @@ class AvatarEngine(EventEmitter):
         return ProviderCapabilities()
 
     @property
-    def tool_policy(self) -> Optional[ToolPolicy]:
+    def tool_policy(self) -> ToolPolicy | None:
         """Get the current tool policy (if set)."""
         return self._tool_policy
 
     @tool_policy.setter
-    def tool_policy(self, policy: Optional[ToolPolicy]) -> None:
+    def tool_policy(self, policy: ToolPolicy | None) -> None:
         """Set a tool policy for engine-level tool filtering."""
         self._tool_policy = policy
         if self._bridge:
@@ -528,7 +533,7 @@ class AvatarEngine(EventEmitter):
             return self._bridge.session_capabilities
         return SessionCapabilitiesInfo()
 
-    async def list_sessions(self) -> List[SessionInfo]:
+    async def list_sessions(self) -> list[SessionInfo]:
         """List available sessions from the provider."""
         if self._bridge:
             return await self._bridge.list_sessions()
@@ -554,8 +559,8 @@ class AvatarEngine(EventEmitter):
         request_id: str,
         tool_name: str,
         tool_input: str,
-        options: List[Dict[str, str]],
-    ) -> Dict[str, Any]:
+        options: list[dict[str, str]],
+    ) -> dict[str, Any]:
         """Route permission request to GUI via events. Returns user's choice.
 
         Called by ACP bridge clients in Ask mode. Emits PermissionRequestEvent,
@@ -573,7 +578,7 @@ class AvatarEngine(EventEmitter):
         )
 
         loop = asyncio.get_running_loop()
-        future: asyncio.Future[Dict[str, Any]] = loop.create_future()
+        future: asyncio.Future[dict[str, Any]] = loop.create_future()
         if request_id in self._pending_permissions:
             logger.warning(
                 f"Duplicate permission request_id '{request_id}', "
@@ -748,7 +753,7 @@ class AvatarEngine(EventEmitter):
         # Raw event callback
         self._bridge.on_event(self._process_event)
 
-    def _process_event(self, event: Dict[str, Any]) -> None:
+    def _process_event(self, event: dict[str, Any]) -> None:
         """Process raw events from bridge and emit typed events.
 
         GAP-10: Optimized for high-frequency events with thinking state caching.
@@ -771,7 +776,7 @@ class AvatarEngine(EventEmitter):
                 # or if we are still in GENERAL phase and might find a better one
                 if not self._current_thinking_subject:
                     self._current_thinking_subject, _ = extract_bold_subject(thought)
-                
+
                 if self._current_thinking_phase == ThinkingPhase.GENERAL:
                     self._current_thinking_phase = classify_thinking(thought)
 

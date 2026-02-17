@@ -13,7 +13,6 @@ Session ID = filename stem (UUID).
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 from ..types import Message, SessionInfo
 from ._base import SessionStore
@@ -27,7 +26,7 @@ _MAX_LINES = 50
 class ClaudeFileSessionStore(SessionStore):
     """Reads Claude Code session files from ~/.claude/projects/."""
 
-    def __init__(self, claude_home: Optional[Path] = None):
+    def __init__(self, claude_home: Path | None = None):
         self._claude_home = claude_home or Path.home() / ".claude" / "projects"
 
     @staticmethod
@@ -38,7 +37,7 @@ class ClaudeFileSessionStore(SessionStore):
         """
         return working_dir.replace("/", "-")
 
-    def _parse_session_file(self, path: Path) -> Optional[SessionInfo]:
+    def _parse_session_file(self, path: Path) -> SessionInfo | None:
         """Parse a Claude JSONL session file into SessionInfo.
 
         Reads only the first _MAX_LINES to extract a title from the
@@ -95,7 +94,7 @@ class ClaudeFileSessionStore(SessionStore):
             updated_at=updated_at,
         )
 
-    async def list_sessions(self, working_dir: str) -> List[SessionInfo]:
+    async def list_sessions(self, working_dir: str) -> list[SessionInfo]:
         """List Claude sessions for the given working directory."""
         encoded = self._encode_path(working_dir)
         project_dir = self._claude_home / encoded
@@ -103,7 +102,7 @@ class ClaudeFileSessionStore(SessionStore):
         if not project_dir.is_dir():
             return []
 
-        sessions: List[SessionInfo] = []
+        sessions: list[SessionInfo] = []
         for path in project_dir.glob("*.jsonl"):
             info = self._parse_session_file(path)
             if info:
@@ -114,7 +113,7 @@ class ClaudeFileSessionStore(SessionStore):
         sessions.sort(key=lambda s: s.updated_at or "", reverse=True)
         return sessions
 
-    def load_session_messages(self, session_id: str, working_dir: str) -> List[Message]:
+    def load_session_messages(self, session_id: str, working_dir: str) -> list[Message]:
         """Load messages from a Claude Code JSONL session file.
 
         Parses user and assistant events into Message objects.
@@ -127,7 +126,7 @@ class ClaudeFileSessionStore(SessionStore):
             logger.debug(f"Session file not found: {session_file}")
             return []
 
-        messages: List[Message] = []
+        messages: list[Message] = []
         try:
             with session_file.open("r", encoding="utf-8", errors="replace") as f:
                 for line in f:

@@ -2,8 +2,9 @@
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,8 @@ class RetryConfig:
 async def retry_async(
     func: Callable[..., Any],
     *args: Any,
-    config: Optional[RetryConfig] = None,
-    on_retry: Optional[Callable[[int, Exception], None]] = None,
+    config: RetryConfig | None = None,
+    on_retry: Callable[[int, Exception], None] | None = None,
     **kwargs: Any,
 ) -> Any:
     """
@@ -50,7 +51,7 @@ async def retry_async(
     if config is None:
         config = RetryConfig()
 
-    last_exc: Optional[Exception] = None
+    last_exc: Exception | None = None
     backoff = config.backoff_base
 
     for attempt in range(1, config.max_attempts + 1):
@@ -81,8 +82,8 @@ async def retry_async(
 def retry_sync(
     func: Callable[..., T],
     *args: Any,
-    config: Optional[RetryConfig] = None,
-    on_retry: Optional[Callable[[int, Exception], None]] = None,
+    config: RetryConfig | None = None,
+    on_retry: Callable[[int, Exception], None] | None = None,
     **kwargs: Any,
 ) -> T:
     """
@@ -106,7 +107,7 @@ def retry_sync(
     if config is None:
         config = RetryConfig()
 
-    last_exc: Optional[Exception] = None
+    last_exc: Exception | None = None
     backoff = config.backoff_base
 
     for attempt in range(1, config.max_attempts + 1):

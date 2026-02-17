@@ -4,7 +4,6 @@ import asyncio
 import logging
 import shutil
 from dataclasses import dataclass
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +12,9 @@ logger = logging.getLogger(__name__)
 class VersionInfo:
     """CLI version information."""
     executable: str
-    version: Optional[str] = None
+    version: str | None = None
     available: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
 
 async def check_cli_version(executable: str, timeout: float = 10.0) -> VersionInfo:

@@ -2,7 +2,6 @@
 
 import threading
 import time
-from typing import Dict, List, Optional
 
 from rich.console import Console, Group
 from rich.panel import Panel
@@ -99,7 +98,7 @@ class ThinkingDisplay:
         with self._lock:
             return self._active
 
-    def render(self) -> Optional[Text]:
+    def render(self) -> Text | None:
         """Render current thinking state as Rich Text (or None if inactive)."""
         with self._lock:
             if not self._active:
@@ -150,8 +149,8 @@ class ToolGroupDisplay:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._tools: Dict[str, _ToolEntry] = {}
-        self._order: List[str] = []  # insertion order
+        self._tools: dict[str, _ToolEntry] = {}
+        self._order: list[str] = []  # insertion order
 
     def tool_started(self, event: ToolEvent) -> None:
         """Register a tool as started."""
@@ -198,7 +197,7 @@ class ToolGroupDisplay:
         with self._lock:
             return len(self._tools)
 
-    def render(self) -> Optional[Panel]:
+    def render(self) -> Panel | None:
         """Render tool group as a Rich Panel (or None if empty)."""
         with self._lock:
             if not self._tools:
@@ -222,7 +221,7 @@ class ToolGroupDisplay:
             padding=(0, 1),
         )
 
-    def render_inline(self) -> Optional[Text]:
+    def render_inline(self) -> Text | None:
         """Render a compact one-line summary of active tools."""
         with self._lock:
             active = [e for e in self._tools.values() if e.status == "running"]
@@ -296,7 +295,7 @@ class DisplayManager:
     def __init__(
         self,
         emitter: EventEmitter,
-        console: Optional[Console] = None,
+        console: Console | None = None,
         verbose: bool = False,
     ) -> None:
         self._emitter = emitter
@@ -575,7 +574,7 @@ class DisplayManager:
         self._set_state(EngineState.IDLE)
 
 
-def _summarize_params(params: Dict) -> str:
+def _summarize_params(params: dict) -> str:
     """Create a short summary of tool parameters for display."""
     if not params:
         return ""

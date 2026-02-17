@@ -22,18 +22,18 @@ Requirements:
 
 import asyncio
 import base64
-import json
 import logging
 import os
 import shutil
 import threading
 import time
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from typing import Any
 
-from .base import BaseBridge, BridgeResponse, BridgeState, Message
 from ..config_sandbox import ConfigSandbox
 from ..types import Attachment, SessionInfo
+from .base import BaseBridge, BridgeResponse, BridgeState, Message
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,13 @@ logger = logging.getLogger(__name__)
 _ACP_AVAILABLE = False
 try:
     from acp import PROTOCOL_VERSION, connect_to_agent, text_block
-    from acp.helpers import audio_block, embedded_blob_resource, image_block, resource_block, resource_link_block
+    from acp.helpers import (
+        audio_block,
+        embedded_blob_resource,
+        image_block,
+        resource_block,
+        resource_link_block,
+    )
     from acp.interfaces import Client as ACPClient
     from acp.schema import (
         AgentMessageChunk,
@@ -52,12 +58,11 @@ try:
         ClientCapabilities,
         DeniedOutcome,
         FileSystemCapability,
-        PermissionOption,
         RequestPermissionResponse,
         TextContentBlock,
         ToolCall,
-        ToolCallStart,
         ToolCallProgress,
+        ToolCallStart,
     )
 
     _ACP_AVAILABLE = True
@@ -69,13 +74,12 @@ except ImportError:
     )
 
 
-from ._acp_session import ACPSessionMixin
-
+from ._acp_session import ACPSessionMixin  # noqa: E402
 
 INLINE_LIMIT_BYTES = 20 * 1024 * 1024  # ~20 MB — Gemini API rejects larger inline base64
 
 
-def _build_prompt_blocks(text: str, attachments: Optional[List[Attachment]] = None) -> list:
+def _build_prompt_blocks(text: str, attachments: list[Attachment] | None = None) -> list:
     """Build ACP prompt content blocks from text + optional attachments.
 
     Returns [text_block(text)] when no attachments (zero overhead for 95% of calls).
@@ -144,13 +148,13 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         context_messages: int = 20,
         context_max_chars: int = 500,
         acp_enabled: bool = True,
-        generation_config: Optional[Dict[str, Any]] = None,
-        env: Optional[Dict[str, str]] = None,
-        mcp_servers: Optional[Dict[str, Any]] = None,
-        resume_session_id: Optional[str] = None,
+        generation_config: dict[str, Any] | None = None,
+        env: dict[str, str] | None = None,
+        mcp_servers: dict[str, Any] | None = None,
+        resume_session_id: str | None = None,
         continue_last: bool = False,
         debug: bool = False,
-        permission_handler: Optional[Any] = None,
+        permission_handler: Any | None = None,
     ):
         """
         Args:
@@ -195,13 +199,13 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         # ACP state
         self._acp_conn = None
         self._acp_proc = None
-        self._acp_session_id: Optional[str] = None
+        self._acp_session_id: str | None = None
         self._acp_mode = False  # True = running in ACP warm session
-        self._acp_restart_task: Optional[asyncio.Task] = None
-        self._acp_stderr_task: Optional[asyncio.Task] = None
+        self._acp_restart_task: asyncio.Task | None = None
+        self._acp_stderr_task: asyncio.Task | None = None
 
         # Collected events from ACP session_update notifications
-        self._acp_events: List[Dict[str, Any]] = []
+        self._acp_events: list[dict[str, Any]] = []
         self._acp_text_buffer: str = ""
         self._acp_buffer_lock = threading.Lock()  # RC-3/4: sync callback vs main thread
         self._was_thinking = False  # Track thinking→text transition for is_complete
@@ -233,7 +237,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
     # Session management — ACP first, filesystem fallback
     # ======================================================================
 
-    async def list_sessions(self) -> List[SessionInfo]:
+    async def list_sessions(self) -> list[SessionInfo]:
         """List sessions — ACP first, filesystem fallback."""
         # Try ACP first (if connected and protocol supports it)
         if self._acp_conn and self._session_capabilities.can_list:
@@ -669,7 +673,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
     # send() / send_stream() — dispatches to ACP or oneshot
     # ======================================================================
 
-    async def send(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> BridgeResponse:
+    async def send(self, prompt: str, attachments: list[Attachment] | None = None) -> BridgeResponse:
         """Send prompt. Uses ACP warm session if active, otherwise oneshot."""
         if self.state == BridgeState.DISCONNECTED:
             await self.start()
@@ -700,7 +704,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
     # ACP send/stream implementation
     # ======================================================================
 
-    async def _send_acp(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> BridgeResponse:
+    async def _send_acp(self, prompt: str, attachments: list[Attachment] | None = None) -> BridgeResponse:
         """Send a prompt through the ACP warm session."""
         # GAP-5: Inject system prompt into first ACP message
         effective_prompt = self._prepend_system_prompt(prompt)
@@ -731,7 +735,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 events_copy = self._acp_events.copy()
 
             # Extract generated images from response
-            generated_images: List[Path] = []
+            generated_images: list[Path] = []
             raw_images = _extract_images_from_result(result)
             if raw_images:
                 import tempfile
@@ -772,7 +776,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 content="",
                 duration_ms=int((time.time() - t0) * 1000),
                 success=False,
-                error=f"ACP timeout ({int((time.time() - t0))}s) — cancelled by outer timeout",
+                error=f"ACP timeout ({int(time.time() - t0)}s) — cancelled by outer timeout",
             )
             self._update_stats(response)
             return response
@@ -850,7 +854,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         # The prompt() call blocks until the model finishes its turn, but text
         # chunks arrive asynchronously through _handle_acp_update.
         # We use an asyncio.Queue to bridge callback → async iterator.
-        queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
         original_callback = self._on_output
 
         def _stream_callback(text: str) -> None:
@@ -860,7 +864,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
 
         self._on_output = _stream_callback
 
-        prompt_error: Optional[Exception] = None
+        prompt_error: Exception | None = None
 
         async def _run_prompt():
             nonlocal prompt_error
@@ -936,7 +940,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         """
         self._sandbox = ConfigSandbox()
 
-        settings: Dict[str, Any] = {}
+        settings: dict[str, Any] = {}
 
         # model.name — specifies the concrete model, bypassing gemini-cli's
         # auto-classifier (auto-gemini-3 may route to Flash).
@@ -991,7 +995,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             gen_cfg = self._build_generation_config()
             if gen_cfg:
                 if self.acp_enabled:
-                    model_configs: Dict[str, Any] = {}
+                    model_configs: dict[str, Any] = {}
                     actual_model = self.model or "gemini-3-pro-preview"
                     # Store resolved model so _get_model() can report it
                     self._actual_model = actual_model
@@ -1000,7 +1004,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                     # alias. Only needed for non-default models.
                     if self.model and self.model != "gemini-3-pro-preview":
                         extends_base = self._get_base_alias()
-                        alias_entry: Dict[str, Any] = {
+                        alias_entry: dict[str, Any] = {
                             "modelConfig": {"model": actual_model}
                         }
                         if extends_base:
@@ -1049,7 +1053,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         else:
             self._system_prompt_path = None
 
-    def _get_base_alias(self) -> Optional[str]:
+    def _get_base_alias(self) -> str | None:
         """Determine the correct built-in base alias for the extends chain.
 
         Gemini CLI's built-in alias chain:
@@ -1069,9 +1073,9 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             return "chat-base-2.5"
         return "chat-base"  # generic fallback
 
-    def _build_generation_config(self) -> Dict[str, Any]:
+    def _build_generation_config(self) -> dict[str, Any]:
         """Build generateContentConfig dict from generation_config."""
-        gen_cfg: Dict[str, Any] = {}
+        gen_cfg: dict[str, Any] = {}
 
         # Temperature: default 1.0 for Gemini 3 (docs recommend not lowering)
         gen_cfg["temperature"] = self.generation_config.get("temperature", 1.0)
@@ -1096,7 +1100,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         # they don't support thinking and the API returns "Internal error").
         is_image_model = self.model and "image" in self.model.lower()
         if not is_image_model:
-            thinking_cfg: Dict[str, Any] = {}
+            thinking_cfg: dict[str, Any] = {}
             if "thinking_level" in self.generation_config:
                 level = self.generation_config["thinking_level"].upper()
                 thinking_cfg["thinkingLevel"] = level
@@ -1110,7 +1114,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
 
         return gen_cfg
 
-    def _build_subprocess_env(self) -> Dict[str, str]:
+    def _build_subprocess_env(self) -> dict[str, str]:
         """Build subprocess environment with sandbox config paths.
 
         GEMINI_CLI_SYSTEM_SETTINGS_PATH has the highest priority in Gemini CLI's
@@ -1143,7 +1147,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
     # Oneshot fallback (BaseBridge abstract implementations)
     # ======================================================================
 
-    def _build_oneshot_command(self, prompt: str) -> List[str]:
+    def _build_oneshot_command(self, prompt: str) -> list[str]:
         """Build CLI command for oneshot headless JSON mode."""
         cmd = [self.executable]
         if self.model:
@@ -1175,27 +1179,27 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         return "\n".join(lines)
 
     # Persistent mode stubs — ACP handles this differently
-    def _build_persistent_command(self) -> List[str]:
+    def _build_persistent_command(self) -> list[str]:
         raise NotImplementedError("Use ACP mode for persistent Gemini sessions")
 
-    def _format_user_message(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> str:
+    def _format_user_message(self, prompt: str, attachments: list[Attachment] | None = None) -> str:
         raise NotImplementedError("Use ACP mode for persistent Gemini sessions")
 
     # ======================================================================
     # Event parsing (used by oneshot fallback)
     # ======================================================================
 
-    def _is_turn_complete(self, event: Dict[str, Any]) -> bool:
+    def _is_turn_complete(self, event: dict[str, Any]) -> bool:
         return event.get("type") == "result"
 
-    def _parse_session_id(self, events: List[Dict[str, Any]]) -> Optional[str]:
+    def _parse_session_id(self, events: list[dict[str, Any]]) -> str | None:
         for ev in events:
             if ev.get("type") == "init" and "session_id" in ev:
                 return ev["session_id"]
         return None
 
-    def _parse_content(self, events: List[Dict[str, Any]]) -> str:
-        parts: List[str] = []
+    def _parse_content(self, events: list[dict[str, Any]]) -> str:
+        parts: list[str] = []
         for ev in events:
             if ev.get("type") == "message" and ev.get("role") == "assistant":
                 text = ev.get("content", "")
@@ -1207,7 +1211,7 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                     return ev["response"]
         return "".join(parts)
 
-    def _parse_tool_calls(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _parse_tool_calls(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         calls = []
         for ev in events:
             if ev.get("type") == "tool_use":
@@ -1220,13 +1224,13 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
                 )
         return calls
 
-    def _parse_usage(self, events: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _parse_usage(self, events: list[dict[str, Any]]) -> dict[str, Any] | None:
         for ev in events:
             if ev.get("type") == "result" and "stats" in ev:
                 return ev["stats"]
         return None
 
-    def _extract_text_delta(self, event: Dict[str, Any]) -> Optional[str]:
+    def _extract_text_delta(self, event: dict[str, Any]) -> str | None:
         if event.get("type") == "message" and event.get("role") == "assistant":
             return event.get("content", "") or None
         return None
@@ -1252,8 +1256,8 @@ if _ACP_AVAILABLE:
         def __init__(
             self,
             auto_approve: bool = True,
-            on_update: Optional[Callable] = None,
-            permission_handler: Optional[Any] = None,
+            on_update: Callable | None = None,
+            permission_handler: Any | None = None,
         ):
             self._auto_approve = auto_approve
             self._on_update = on_update
@@ -1318,8 +1322,8 @@ if _ACP_AVAILABLE:
             # Auto-approve non-destructive interactive tools (ask_user, etc.)
             # These tools need user text input which ACP permission flow can't carry.
             # The interaction happens through normal chat messages instead.
-            _AUTO_APPROVE_TOOLS = {"ask_user"}
-            if tool_name in _AUTO_APPROVE_TOOLS:
+            auto_approve_tools = {"ask_user"}
+            if tool_name in auto_approve_tools:
                 logger.info(
                     f"Auto-approving non-destructive tool '{tool_name}'"
                 )
@@ -1419,7 +1423,7 @@ else:
 # ==========================================================================
 
 
-def _text_from_content(content: Any) -> Optional[str]:
+def _text_from_content(content: Any) -> str | None:
     """Extract text from a typed ACP content block (SDK 0.8+).
 
     Handles TextContentBlock and plain strings.
@@ -1435,7 +1439,7 @@ def _text_from_content(content: Any) -> Optional[str]:
     return None
 
 
-def _extract_thinking_from_update(update: Any) -> Optional[str]:
+def _extract_thinking_from_update(update: Any) -> str | None:
     """Extract thinking content from an ACP session/update notification (Gemini 3)."""
     try:
         # Direct thinking attribute
@@ -1497,7 +1501,7 @@ def _is_thinking_block(block: Any) -> bool:
     return False
 
 
-def _extract_text_from_update(update: Any) -> Optional[str]:
+def _extract_text_from_update(update: Any) -> str | None:
     """Extract text content from an ACP session/update notification.
 
     Skips thinking/reasoning blocks — those are handled by
@@ -1554,7 +1558,7 @@ def _extract_text_from_update(update: Any) -> Optional[str]:
     return None
 
 
-def _extract_images_from_result(result: Any) -> List[tuple]:
+def _extract_images_from_result(result: Any) -> list[tuple]:
     """Extract image content blocks from an ACP prompt result.
 
     Returns list of (base64_data, mime_type) tuples.

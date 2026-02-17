@@ -1,0 +1,337 @@
+/* Avatar Engine — component styles
+ * Import as: import '@avatar-engine/react/styles.css'
+ *
+ * These styles complement the Tailwind preset and provide
+ * non-utility CSS that components depend on.
+ *
+ * THEMING: Override :root CSS variables to customize colors.
+ * Example — change accent from indigo to red:
+ *
+ *   :root {
+ *     --ae-accent-rgb: 239 68 68;
+ *     --ae-pulse-rgb: 220 38 38;
+ *     --ae-accent: #ef4444;
+ *     --ae-gradient: linear-gradient(135deg, #ef4444, #dc2626, #f87171);
+ *     --ae-glass-scroll-hover: rgba(239, 68, 68, 0.45);
+ *   }
+ */
+
+/* ============================================
+   Theme Variables
+   ============================================ */
+:root {
+  /* Accent colors — RGB format for Tailwind alpha support */
+  --ae-accent-rgb: 99 102 241;     /* synapse — primary accent */
+  --ae-pulse-rgb: 139 92 246;      /* pulse — secondary accent */
+  --ae-neural-rgb: 6 182 212;      /* neural — tertiary accent */
+
+  /* Accent colors — hex format for CSS usage */
+  --ae-accent: #6366f1;
+  --ae-pulse: #8b5cf6;
+
+  /* Surface / background — RGB for Tailwind */
+  --ae-bg-obsidian-rgb: 10 10 15;
+  --ae-bg-darker-rgb: 15 15 23;
+  --ae-bg-deep-rgb: 18 18 26;
+  --ae-bg-base-rgb: 19 19 27;
+  --ae-bg-dark-rgb: 22 22 31;
+  --ae-bg-mid-rgb: 26 26 46;
+  --ae-bg-light-rgb: 42 42 66;
+
+  /* Surface — hex for CSS usage */
+  --ae-bg-deep: #12121a;
+  --ae-bg-mid: #1a1a2e;
+  --ae-bg-light: #2a2a42;
+
+  /* Text colors — RGB for Tailwind */
+  --ae-text-primary-rgb: 248 250 252;
+  --ae-text-secondary-rgb: 148 163 184;
+  --ae-text-muted-rgb: 100 116 139;
+
+  /* Text — hex for CSS usage */
+  --ae-text-muted: #64748b;
+
+  /* Error / status glow — RGB for inline styles */
+  --ae-error-rgb: 244 63 94;
+
+  /* Glass composites (override for custom surfaces) */
+  --ae-glass-bg: rgba(18, 18, 26, 0.8);
+  --ae-glass-panel-bg: rgba(12, 12, 20, 0.92);
+  --ae-glass-light-bg: rgba(26, 26, 46, 0.5);
+  --ae-glass-scroll: rgba(26, 26, 46, 0.5);
+  --ae-glass-scroll-hover: rgba(99, 102, 241, 0.45);
+
+  /* Code block theme */
+  --ae-code-bg: #0d1117;
+  --ae-code-header-bg: #161b22;
+  --ae-code-border: rgba(99, 110, 123, 0.25);
+  --ae-code-inline-bg: #1c2128;
+  --ae-code-inline-text: #e2b5ff;
+  --ae-code-muted: #8b949e;
+  --ae-code-text: #c9d1d9;
+
+  /* Logo */
+  --ae-logo-primary: #58a6ff;
+  --ae-logo-secondary: #bc8cff;
+
+  /* Gradient text */
+  --ae-gradient: linear-gradient(135deg, #6366f1, #a78bfa, #c084fc);
+
+  /* Phase colors — BreathingOrb galaxy per-phase palette */
+  --ae-phase-thinking-1: #3b82f6;
+  --ae-phase-thinking-2: #6366f1;
+  --ae-phase-thinking-3: #06b6d4;
+  --ae-phase-analyzing-1: #06b6d4;
+  --ae-phase-analyzing-2: #3b82f6;
+  --ae-phase-analyzing-3: #8b5cf6;
+  --ae-phase-coding-1: #10b981;
+  --ae-phase-coding-2: #06b6d4;
+  --ae-phase-coding-3: #34d399;
+  --ae-phase-planning-1: #8b5cf6;
+  --ae-phase-planning-2: #c084fc;
+  --ae-phase-planning-3: #e879f9;
+  --ae-phase-reviewing-1: #f59e0b;
+  --ae-phase-reviewing-2: #f97316;
+  --ae-phase-reviewing-3: #fbbf24;
+  --ae-phase-responding-1: #818cf8;
+  --ae-phase-responding-2: #a78bfa;
+  --ae-phase-responding-3: #c084fc;
+  --ae-phase-success-1: #22c55e;
+  --ae-phase-success-2: #10b981;
+  --ae-phase-success-3: #06b6d4;
+  --ae-phase-error-1: #ef4444;
+  --ae-phase-error-2: #f97316;
+  --ae-phase-error-3: #fbbf24;
+
+  /* Overlay surfaces */
+  --ae-overlay-chat: rgba(18, 18, 35, 0.96);
+  --ae-overlay-input: rgba(8, 8, 20, 0.7);
+  --ae-overlay-picker: rgba(12, 12, 20, 0.92);
+  --ae-overlay-bust-toggle: rgba(15, 15, 23, 0.9);
+}
+
+/* ============================================
+   Scrollbar
+   ============================================ */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--ae-bg-deep);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ae-bg-mid);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ae-bg-light);
+}
+
+/* Smooth scroll for chat */
+.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+/* ============================================
+   Glassmorphism
+   ============================================ */
+.glass {
+  background: var(--ae-glass-bg);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+.glass-panel {
+  background: var(--ae-glass-panel-bg);
+  backdrop-filter: blur(32px) saturate(120%);
+  -webkit-backdrop-filter: blur(32px) saturate(120%);
+}
+
+.glass-light {
+  background: var(--ae-glass-light-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ============================================
+   Gradient text
+   ============================================ */
+.gradient-text {
+  background: var(--ae-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============================================
+   Breathing orb glow
+   ============================================ */
+.orb-glow {
+  box-shadow:
+    0 0 30px rgba(139, 92, 246, 0.4),
+    0 0 60px rgba(236, 72, 153, 0.2),
+    inset 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   Code block styling (prose)
+   ============================================ */
+.prose pre {
+  background: var(--ae-code-bg);
+  border: 1px solid var(--ae-bg-mid);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.prose code {
+  color: var(--ae-pulse);
+  font-size: 0.875em;
+}
+
+/* ============================================
+   Markdown body
+   ============================================ */
+.markdown-body {
+  line-height: 1.65;
+  word-wrap: break-word;
+}
+
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Task list checkboxes (GFM) */
+.markdown-body input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--ae-accent);
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 6px;
+  position: relative;
+  top: -1px;
+}
+
+.markdown-body input[type="checkbox"]:checked {
+  background: var(--ae-accent);
+}
+
+.markdown-body input[type="checkbox"]:checked::after {
+  content: '\2713';
+  color: white;
+  font-size: 10px;
+  position: absolute;
+  top: -1px;
+  left: 2px;
+}
+
+/* Strikethrough (GFM) */
+.markdown-body del {
+  color: var(--ae-text-muted);
+  text-decoration: line-through;
+}
+
+/* ===========================
+   COMPACT MODE — scrollbar & markdown overrides
+   =========================== */
+
+.compact-messages {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ae-glass-scroll) transparent;
+}
+.compact-messages::-webkit-scrollbar { width: 8px; }
+.compact-messages::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px 0;
+}
+.compact-messages::-webkit-scrollbar-thumb {
+  background: var(--ae-glass-scroll);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.compact-messages::-webkit-scrollbar-thumb:hover {
+  background: var(--ae-glass-scroll-hover);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Compact markdown — smaller fonts, tighter spacing */
+.compact-markdown .markdown-body {
+  line-height: 1.5;
+}
+.compact-markdown .markdown-body [class*="language-"] {
+  padding: 0.5rem !important;
+  font-size: 0.65rem !important;
+  line-height: 1.45 !important;
+}
+.compact-markdown .markdown-body pre {
+  padding: 0.5rem !important;
+  font-size: 0.65rem !important;
+  border-radius: 0.5rem;
+  line-height: 1.45 !important;
+}
+.compact-markdown .markdown-body code {
+  font-size: 0.85em !important;
+}
+.compact-markdown .markdown-body .group {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+.compact-markdown .markdown-body .group > div:first-child {
+  padding: 0.2rem 0.6rem !important;
+}
+.compact-markdown .markdown-body .group > div:first-child span {
+  font-size: 9px !important;
+}
+.compact-markdown .markdown-body p {
+  margin-bottom: 0.4em;
+}
+.compact-markdown .markdown-body h1,
+.compact-markdown .markdown-body h2,
+.compact-markdown .markdown-body h3 {
+  margin-top: 0.6em;
+  margin-bottom: 0.3em;
+}
+.compact-markdown .markdown-body ul,
+.compact-markdown .markdown-body ol {
+  padding-left: 1.2em;
+  margin-bottom: 0.4em;
+}
+
+/* ===========================
+   BUST ANIMATION STATES (CSS keyframes)
+   =========================== */
+
+@keyframes bust-breathe {
+  0%, 100% { transform: translateY(2.8%) scale(1); }
+  50% { transform: translateY(calc(2.8% - 4px)) scale(1.006); }
+}
+@keyframes bust-thinking {
+  0%, 100% { transform: translateY(2.8%) rotate(0deg); }
+  30% { transform: translateY(calc(2.8% - 7px)) rotate(-1.2deg); }
+  70% { transform: translateY(calc(2.8% - 3px)) rotate(0.8deg); }
+}
+@keyframes bust-speaking {
+  0%, 100% { transform: translateY(2.8%) scale(1); }
+  50% { transform: translateY(2.8%) scale(1.015); }
+}
+@keyframes bust-shake {
+  0%, 100% { transform: translateY(2.8%) translateX(0); }
+  15% { transform: translateY(2.8%) translateX(-8px); }
+  30% { transform: translateY(2.8%) translateX(8px); }
+  45% { transform: translateY(2.8%) translateX(-6px); }
+  60% { transform: translateY(2.8%) translateX(6px); }
+  75% { transform: translateY(2.8%) translateX(-3px); }
+  90% { transform: translateY(2.8%) translateX(3px); }
+}
+
+[data-state="idle"] { animation: bust-breathe 3.5s ease-in-out infinite; }
+[data-state="thinking"] { animation: bust-thinking 3s ease-in-out infinite; }
+[data-state="speaking"] { animation: bust-speaking 2s ease-in-out infinite; }
+[data-state="error"] { animation: bust-shake 0.6s ease-in-out; }

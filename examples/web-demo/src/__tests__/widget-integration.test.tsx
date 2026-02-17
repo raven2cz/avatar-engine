@@ -7,27 +7,24 @@
  *   - Fullscreen content stays in DOM (not unmounted) to preserve state
  *   - First-time hints show and dismiss correctly
  *   - Compact header dropdown shows provider switching UI
+ *   - renderBackground render prop works correctly
  */
 
 /// <reference types="vitest/globals" />
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
-import { AvatarWidget } from '../components/AvatarWidget'
-import { LS_WIDGET_MODE, LS_HINTS_SHOWN, LS_DEFAULT_MODE } from '../types/avatar'
+import { AvatarWidget } from '@avatar-engine/react'
+import { LS_WIDGET_MODE, LS_HINTS_SHOWN, LS_DEFAULT_MODE } from '@avatar-engine/core'
 
 // Mock avatar assets (canvas operations not available in jsdom)
-vi.mock('../hooks/useAvatarThumb', () => ({
-  useAvatarThumb: () => undefined,
-}))
-vi.mock('../hooks/useAvatarBust', () => ({
-  useAvatarBust: () => ({ frameDataUrl: null, bustState: 'idle' }),
-}))
-vi.mock('../components/AvatarBust', () => ({
-  AvatarBust: () => <div data-testid="avatar-bust" />,
-}))
-vi.mock('../components/AvatarPicker', () => ({
-  AvatarPicker: () => <div data-testid="avatar-picker" />,
-}))
+vi.mock('@avatar-engine/react', async () => {
+  const actual = await vi.importActual('@avatar-engine/react')
+  return {
+    ...actual,
+    useAvatarThumb: () => undefined,
+    AvatarBust: () => <div data-testid="avatar-bust" />,
+  }
+})
 
 const defaultProps = {
   messages: [
@@ -48,7 +45,35 @@ const compactModeRef = { current: null as (() => void) | null }
 
 function renderWidget(overrides = {}) {
   return render(
-    <AvatarWidget {...defaultProps} {...overrides} onCompactModeRef={compactModeRef}>
+    <AvatarWidget
+      {...defaultProps}
+      {...overrides}
+      onCompactModeRef={compactModeRef}
+      renderBackground={({ showFabHint, defaultMode, onDefaultModeChange }) => (
+        <div data-testid="background-content">
+          <h1>Avatar Engine</h1>
+          {showFabHint && <span>Open chat</span>}
+          <div>
+            <span>Startup Mode</span>
+            {(['fab', 'compact', 'fullscreen'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => onDefaultModeChange(m)}
+                className={defaultMode === m ? 'text-synapse' : ''}
+              >
+                {m === 'fab' ? 'FAB' : m === 'compact' ? 'Compact' : 'Fullscreen'}
+              </button>
+            ))}
+          </div>
+          <a href="https://github.com" target="_blank">Documentation & README →</a>
+          <div>
+            <span>Keyboard Shortcuts</span>
+            <span>Ctrl+Shift+A</span>
+            <span>Ctrl+Shift+F</span>
+          </div>
+        </div>
+      )}
+    >
       <div data-testid="fullscreen-content">
         <div data-testid="status-bar">StatusBar</div>
         <div data-testid="chat-panel">ChatPanel with messages</div>
@@ -69,9 +94,9 @@ describe('AvatarWidget integration', () => {
       expect(screen.getByRole('button', { name: /open chat panel/i })).toBeInTheDocument()
     })
 
-    it('renders landing page in all modes', () => {
+    it('renders background content via renderBackground prop', () => {
       renderWidget()
-      // Landing page title should always be visible (promo modal may also show "Avatar Engine")
+      expect(screen.getByTestId('background-content')).toBeInTheDocument()
       const elements = screen.getAllByText('Avatar Engine')
       expect(elements.length).toBeGreaterThanOrEqual(1)
     })
@@ -207,11 +232,10 @@ describe('AvatarWidget integration', () => {
     })
   })
 
-  describe('landing page features', () => {
+  describe('renderBackground features', () => {
     it('renders startup mode selector buttons', () => {
       renderWidget()
       expect(screen.getByText('Startup Mode')).toBeInTheDocument()
-      // Use getByRole to match accessible name (avoids collision with fullscreen children button)
       expect(screen.getByRole('button', { name: 'FAB' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Compact' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Fullscreen' })).toBeInTheDocument()

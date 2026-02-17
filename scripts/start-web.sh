@@ -185,12 +185,10 @@ if $BUILD_MODE; then
     fi
 
     echo -e "${CYAN}Building frontend...${NC}"
-    if command -v pnpm &> /dev/null; then
-        (cd "$WEB_DEMO_DIR" && pnpm build)
-    elif command -v npm &> /dev/null; then
-        (cd "$WEB_DEMO_DIR" && npm run build)
+    if command -v npm &> /dev/null; then
+        (cd "$PROJECT_ROOT" && npm run build -w packages/core && npm run build -w packages/react && npm run build -w examples/web-demo)
     else
-        echo -e "${RED}No package manager found (pnpm or npm)${NC}" >&2
+        echo -e "${RED}npm not found${NC}" >&2
         exit 1
     fi
 
@@ -250,24 +248,17 @@ if [ ! -d "$WEB_DEMO_DIR" ]; then
     exit 1
 fi
 
-if [ ! -d "$WEB_DEMO_DIR/node_modules" ]; then
-    echo -e "${YELLOW}Frontend deps not installed. Installing...${NC}"
-    if command -v pnpm &> /dev/null; then
-        (cd "$WEB_DEMO_DIR" && pnpm install)
-    elif command -v npm &> /dev/null; then
-        (cd "$WEB_DEMO_DIR" && npm install)
-    else
-        echo -e "${RED}No package manager found (pnpm or npm)${NC}" >&2
-        exit 1
-    fi
+if [ ! -d "$PROJECT_ROOT/node_modules" ]; then
+    echo -e "${YELLOW}Dependencies not installed. Installing...${NC}"
+    (cd "$PROJECT_ROOT" && npm install)
 fi
 
+# Build core + react packages first (needed for dev mode imports)
+echo -e "${BLUE}Building packages...${NC}"
+(cd "$PROJECT_ROOT" && npm run build -w packages/core && npm run build -w packages/react) 2>&1 | tail -4
+
 echo -e "${BLUE}Starting frontend dev server...${NC}"
-if command -v pnpm &> /dev/null; then
-    (cd "$WEB_DEMO_DIR" && pnpm dev --port "$FRONTEND_PORT") &
-elif command -v npm &> /dev/null; then
-    (cd "$WEB_DEMO_DIR" && npm run dev -- --port "$FRONTEND_PORT") &
-fi
+(cd "$PROJECT_ROOT" && npm run dev -w examples/web-demo -- --port "$FRONTEND_PORT") &
 FRONTEND_PID=$!
 
 echo ""

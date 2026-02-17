@@ -9,13 +9,12 @@ Default location: ~/.avatar-engine/session-titles.json
 
 import json
 from pathlib import Path
-from typing import Optional
 
 
 class SessionTitleRegistry:
     """Persistent key-value store mapping session_id -> custom title."""
 
-    def __init__(self, path: Optional[Path] = None) -> None:
+    def __init__(self, path: Path | None = None) -> None:
         self._path = path or Path.home() / ".avatar-engine" / "session-titles.json"
         self._cache: dict[str, str] = {}
         self._load()
@@ -33,7 +32,7 @@ class SessionTitleRegistry:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(self._cache, indent=2, ensure_ascii=False))
 
-    def get(self, session_id: str) -> Optional[str]:
+    def get(self, session_id: str) -> str | None:
         return self._cache.get(session_id)
 
     def set(self, session_id: str, title: str) -> None:

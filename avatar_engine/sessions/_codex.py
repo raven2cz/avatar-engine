@@ -14,7 +14,6 @@ Each JSONL file has events:
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 from ..types import Message, SessionInfo
 from ._base import SessionStore
@@ -25,10 +24,10 @@ logger = logging.getLogger(__name__)
 class CodexFileSessionStore(SessionStore):
     """Reads Codex CLI session files from ~/.codex/sessions/."""
 
-    def __init__(self, codex_home: Optional[Path] = None):
+    def __init__(self, codex_home: Path | None = None):
         self._codex_home = codex_home or Path.home() / ".codex" / "sessions"
 
-    def _find_session_file(self, session_id: str) -> Optional[Path]:
+    def _find_session_file(self, session_id: str) -> Path | None:
         """Find a Codex session file by session ID.
 
         Filenames use ``rollout-{timestamp}-{sessionId}.jsonl``
@@ -43,7 +42,7 @@ class CodexFileSessionStore(SessionStore):
 
         return None
 
-    def _parse_session_meta(self, path: Path) -> Optional[dict]:
+    def _parse_session_meta(self, path: Path) -> dict | None:
         """Read the first line (session_meta) from a Codex session file."""
         try:
             with open(path, encoding="utf-8") as f:
@@ -57,7 +56,7 @@ class CodexFileSessionStore(SessionStore):
             logger.debug(f"Failed to parse {path}: {exc}")
         return None
 
-    async def list_sessions(self, working_dir: str) -> List[SessionInfo]:
+    async def list_sessions(self, working_dir: str) -> list[SessionInfo]:
         """List Codex sessions for the given working directory.
 
         Note: Codex ACP list_sessions works natively, so this is a fallback.
@@ -66,7 +65,7 @@ class CodexFileSessionStore(SessionStore):
         if not self._codex_home.is_dir():
             return []
 
-        sessions: List[SessionInfo] = []
+        sessions: list[SessionInfo] = []
         for path in self._codex_home.glob("**/*.jsonl"):
             meta = self._parse_session_meta(path)
             if not meta:
@@ -94,7 +93,7 @@ class CodexFileSessionStore(SessionStore):
         sessions.sort(key=lambda s: s.updated_at or "", reverse=True)
         return sessions
 
-    def _get_first_user_message(self, path: Path) -> Optional[str]:
+    def _get_first_user_message(self, path: Path) -> str | None:
         """Extract first real user message text from a session file."""
         try:
             with open(path, encoding="utf-8") as f:
@@ -115,7 +114,7 @@ class CodexFileSessionStore(SessionStore):
         return None
 
     @staticmethod
-    def _extract_text(payload: dict, content_type: str) -> Optional[str]:
+    def _extract_text(payload: dict, content_type: str) -> str | None:
         """Extract text from a response_item payload with given content type."""
         content = payload.get("content", [])
         if not isinstance(content, list):
@@ -135,7 +134,7 @@ class CodexFileSessionStore(SessionStore):
                     texts.append(stripped)
         return "\n".join(texts) if texts else None
 
-    def load_session_messages(self, session_id: str, working_dir: str) -> List[Message]:
+    def load_session_messages(self, session_id: str, working_dir: str) -> list[Message]:
         """Load messages from a Codex session file.
 
         Finds the file by session ID in the filename, then parses
@@ -146,7 +145,7 @@ class CodexFileSessionStore(SessionStore):
             logger.debug(f"Codex session not found: {session_id}")
             return []
 
-        messages: List[Message] = []
+        messages: list[Message] = []
         try:
             with open(session_file, encoding="utf-8") as f:
                 for line in f:

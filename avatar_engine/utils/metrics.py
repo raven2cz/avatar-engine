@@ -6,13 +6,13 @@ Falls back to simple in-memory metrics if external libs not installed.
 """
 
 import time
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
+from typing import Any
 
 # Try to import prometheus_client
 _PROMETHEUS_AVAILABLE = False
 try:
-    from prometheus_client import Counter, Histogram, Gauge, start_http_server
+    from prometheus_client import Counter, Gauge, Histogram, start_http_server
     _PROMETHEUS_AVAILABLE = True
 except ImportError:
     pass
@@ -43,34 +43,34 @@ class SimpleMetrics:
     """
 
     def __init__(self) -> None:
-        self._counters: Dict[str, int] = {}
-        self._histograms: Dict[str, list] = {}
-        self._gauges: Dict[str, float] = {}
+        self._counters: dict[str, int] = {}
+        self._histograms: dict[str, list] = {}
+        self._gauges: dict[str, float] = {}
         self._start_time = time.time()
 
-    def inc_counter(self, name: str, value: int = 1, labels: Optional[Dict[str, str]] = None) -> None:
+    def inc_counter(self, name: str, value: int = 1, labels: dict[str, str] | None = None) -> None:
         """Increment a counter."""
         key = self._make_key(name, labels)
         self._counters[key] = self._counters.get(key, 0) + value
 
-    def observe_histogram(self, name: str, value: float, labels: Optional[Dict[str, str]] = None) -> None:
+    def observe_histogram(self, name: str, value: float, labels: dict[str, str] | None = None) -> None:
         """Record a histogram observation."""
         key = self._make_key(name, labels)
         if key not in self._histograms:
             self._histograms[key] = []
         self._histograms[key].append(value)
 
-    def set_gauge(self, name: str, value: float, labels: Optional[Dict[str, str]] = None) -> None:
+    def set_gauge(self, name: str, value: float, labels: dict[str, str] | None = None) -> None:
         """Set a gauge value."""
         key = self._make_key(name, labels)
         self._gauges[key] = value
 
-    def get_counter(self, name: str, labels: Optional[Dict[str, str]] = None) -> int:
+    def get_counter(self, name: str, labels: dict[str, str] | None = None) -> int:
         """Get counter value."""
         key = self._make_key(name, labels)
         return self._counters.get(key, 0)
 
-    def get_histogram_stats(self, name: str, labels: Optional[Dict[str, str]] = None) -> Dict[str, float]:
+    def get_histogram_stats(self, name: str, labels: dict[str, str] | None = None) -> dict[str, float]:
         """Get histogram statistics."""
         key = self._make_key(name, labels)
         values = self._histograms.get(key, [])
@@ -84,12 +84,12 @@ class SimpleMetrics:
             "avg": sum(values) / len(values),
         }
 
-    def get_gauge(self, name: str, labels: Optional[Dict[str, str]] = None) -> float:
+    def get_gauge(self, name: str, labels: dict[str, str] | None = None) -> float:
         """Get gauge value."""
         key = self._make_key(name, labels)
         return self._gauges.get(key, 0.0)
 
-    def get_all(self) -> Dict[str, Any]:
+    def get_all(self) -> dict[str, Any]:
         """Get all metrics as a dictionary."""
         return {
             "counters": dict(self._counters),
@@ -106,7 +106,7 @@ class SimpleMetrics:
         self._start_time = time.time()
 
     @staticmethod
-    def _make_key(name: str, labels: Optional[Dict[str, str]] = None) -> str:
+    def _make_key(name: str, labels: dict[str, str] | None = None) -> str:
         """Create a unique key for a metric with labels."""
         if not labels:
             return name
@@ -192,7 +192,7 @@ class EngineMetrics:
     Automatically chooses backend based on configuration and available libraries.
     """
 
-    def __init__(self, config: Optional[MetricsConfig] = None) -> None:
+    def __init__(self, config: MetricsConfig | None = None) -> None:
         self._config = config or MetricsConfig()
         self._backend: Any = None
 
@@ -256,7 +256,7 @@ class EngineMetrics:
         else:
             self._backend.set_gauge("active_sessions", count, labels={"provider": provider})
 
-    def get_all(self) -> Dict[str, Any]:
+    def get_all(self) -> dict[str, Any]:
         """Get all metrics (simple backend only)."""
         if isinstance(self._backend, SimpleMetrics):
             return self._backend.get_all()

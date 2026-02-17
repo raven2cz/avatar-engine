@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "avatar-engine"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Application-specific AI avatar runtime with configurable behavior, context-aware reasoning, and MCP tool orchestration"
 readme = "README.md"
 license = "Apache-2.0"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["ai", "avatar", "agent", "mcp", "context-aware", "tool-orchestration", "claude", "gemini", "application-integration"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
@@ -33,6 +33,7 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "pytest-timeout>=2.2",
     "mypy>=1.0",
     "ruff>=0.1",
 ]
@@ -56,6 +57,9 @@ avatar-web = "avatar_engine.web.__main__:main"
 Homepage = "https://github.com/raven2cz/avatar-engine"
 Repository = "https://github.com/raven2cz/avatar-engine"
 Issues = "https://github.com/raven2cz/avatar-engine/issues"
+
+[tool.hatch.version]
+path = "avatar_engine/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["avatar_engine"]

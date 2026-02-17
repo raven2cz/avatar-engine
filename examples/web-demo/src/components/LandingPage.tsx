@@ -15,8 +15,8 @@
 
 import { useTranslation } from 'react-i18next'
 import { Play } from 'lucide-react'
-import type { WidgetMode } from '../types/avatar'
-import { AVAILABLE_LANGUAGES, changeLanguage } from '../i18n'
+import type { WidgetMode } from '@avatar-engine/react'
+import { AVAILABLE_LANGUAGES, changeLanguage } from '@avatar-engine/react'
 
 interface LandingPageProps {
   showFabHint: boolean

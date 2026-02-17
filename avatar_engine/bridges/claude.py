@@ -29,12 +29,11 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from .base import BaseBridge, BridgeState
-from ..types import Attachment
 from ..config_sandbox import ConfigSandbox
-from ..types import SessionInfo
+from ..types import Attachment, SessionInfo
+from .base import BaseBridge, BridgeState
 
 logger = logging.getLogger(__name__)
 
@@ -54,18 +53,18 @@ class ClaudeBridge(BaseBridge):
         working_dir: str = "",
         timeout: int = 600,
         system_prompt: str = "",
-        allowed_tools: Optional[List[str]] = None,
+        allowed_tools: list[str] | None = None,
         permission_mode: str = "acceptEdits",
         strict_mcp_config: bool = False,
-        max_turns: Optional[int] = None,
-        max_budget_usd: Optional[float] = None,
-        json_schema: Optional[Dict[str, Any]] = None,
+        max_turns: int | None = None,
+        max_budget_usd: float | None = None,
+        json_schema: dict[str, Any] | None = None,
         continue_session: bool = False,
-        resume_session_id: Optional[str] = None,
-        fallback_model: Optional[str] = None,
+        resume_session_id: str | None = None,
+        fallback_model: str | None = None,
         debug: bool = False,
-        env: Optional[Dict[str, str]] = None,
-        mcp_servers: Optional[Dict[str, Any]] = None,
+        env: dict[str, str] | None = None,
+        mcp_servers: dict[str, Any] | None = None,
     ):
         super().__init__(
             executable=executable, model=model, working_dir=working_dir,
@@ -126,7 +125,7 @@ class ClaudeBridge(BaseBridge):
         await self.start()
         return True
 
-    async def list_sessions(self) -> List[SessionInfo]:
+    async def list_sessions(self) -> list[SessionInfo]:
         """List sessions from Claude Code's filesystem store."""
         from ..sessions import get_session_store
 
@@ -202,7 +201,7 @@ class ClaudeBridge(BaseBridge):
         self._sandbox = ConfigSandbox()
 
         # Settings → temp file for --settings flag
-        settings: Dict[str, Any] = {}
+        settings: dict[str, Any] = {}
         if self.allowed_tools:
             settings["permissions"] = {"allow": self.allowed_tools}
         self._claude_settings_path = self._sandbox.write_claude_settings(settings)
@@ -221,7 +220,7 @@ class ClaudeBridge(BaseBridge):
 
     # === Persistent command ==============================================
 
-    def _build_persistent_command(self) -> List[str]:
+    def _build_persistent_command(self) -> list[str]:
         """
         Build the persistent subprocess command.
 
@@ -294,14 +293,14 @@ class ClaudeBridge(BaseBridge):
 
         return cmd
 
-    def _format_user_message(self, prompt: str, attachments: Optional[List[Attachment]] = None) -> str:
+    def _format_user_message(self, prompt: str, attachments: list[Attachment] | None = None) -> str:
         """
         Format a user prompt as JSONL for Claude's --input-format stream-json.
 
         Format documented at:
         https://code.claude.com/docs/en/headless#streaming-json-input
         """
-        content: List[Dict[str, Any]] = []
+        content: list[dict[str, Any]] = []
 
         # Attachments before text (Claude docs recommend documents first)
         if attachments:
@@ -321,7 +320,7 @@ class ClaudeBridge(BaseBridge):
 
         content.append({"type": "text", "text": prompt})
 
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "type": "user",
             "message": {
                 "role": "user",
@@ -336,7 +335,7 @@ class ClaudeBridge(BaseBridge):
 
     # === Oneshot fallback ==============================================
 
-    def _build_oneshot_command(self, prompt: str) -> List[str]:
+    def _build_oneshot_command(self, prompt: str) -> list[str]:
         """Build oneshot command (fallback when persistent fails)."""
         cmd = [self.executable, "-p", prompt]
         if self.model:
@@ -389,13 +388,13 @@ class ClaudeBridge(BaseBridge):
 
     # === Event parsing ==================================================
 
-    def _is_turn_complete(self, event: Dict[str, Any]) -> bool:
+    def _is_turn_complete(self, event: dict[str, Any]) -> bool:
         """Result event marks end of assistant turn."""
         # Only result event marks turn complete
         # (system/init is received with first response, not separately)
         return event.get("type") == "result"
 
-    def _parse_session_id(self, events: List[Dict[str, Any]]) -> Optional[str]:
+    def _parse_session_id(self, events: list[dict[str, Any]]) -> str | None:
         for ev in events:
             if ev.get("type") in ("system", "init") and "session_id" in ev:
                 return ev["session_id"]
@@ -404,8 +403,8 @@ class ClaudeBridge(BaseBridge):
                 return ev["session_id"]
         return None
 
-    def _parse_content(self, events: List[Dict[str, Any]]) -> str:
-        parts: List[str] = []
+    def _parse_content(self, events: list[dict[str, Any]]) -> str:
+        parts: list[str] = []
 
         for ev in events:
             # Assistant message events
@@ -437,7 +436,7 @@ class ClaudeBridge(BaseBridge):
 
         return "".join(parts)
 
-    def _parse_tool_calls(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _parse_tool_calls(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         calls = []
         for ev in events:
             if ev.get("type") == "tool_use":
@@ -448,7 +447,7 @@ class ClaudeBridge(BaseBridge):
                 })
         return calls
 
-    def _parse_usage(self, events: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _parse_usage(self, events: list[dict[str, Any]]) -> dict[str, Any] | None:
         for ev in events:
             if ev.get("type") == "result":
                 u = {}
@@ -459,7 +458,7 @@ class ClaudeBridge(BaseBridge):
                 return u or None
         return None
 
-    def _extract_text_delta(self, event: Dict[str, Any]) -> Optional[str]:
+    def _extract_text_delta(self, event: dict[str, Any]) -> str | None:
         # stream_event with text_delta (--verbose --include-partial-messages)
         if event.get("type") == "stream_event":
             delta = event.get("event", {}).get("delta", {})
@@ -483,7 +482,7 @@ class ClaudeBridge(BaseBridge):
 
     # === Cost tracking ==================================================
 
-    def _track_cost(self, events: List[Dict[str, Any]]) -> Optional[float]:
+    def _track_cost(self, events: list[dict[str, Any]]) -> float | None:
         """Extract and accumulate cost from response events."""
         for ev in events:
             if ev.get("type") == "result":
@@ -493,7 +492,7 @@ class ClaudeBridge(BaseBridge):
                     return cost
         return None
 
-    def get_usage(self) -> Dict[str, Any]:
+    def get_usage(self) -> dict[str, Any]:
         """Extended usage with cost and budget info."""
         usage = super().get_usage()
         usage["total_cost_usd"] = self._total_cost_usd
@@ -512,7 +511,7 @@ class ClaudeBridge(BaseBridge):
             return False
         return self._total_cost_usd >= self.max_budget_usd
 
-    def check_health(self) -> Dict[str, Any]:
+    def check_health(self) -> dict[str, Any]:
         """Extended health check with cost information."""
         health = super().check_health()
         health["total_cost_usd"] = self._total_cost_usd

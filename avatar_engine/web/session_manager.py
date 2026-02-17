@@ -7,11 +7,9 @@ Exposes the engine and WebSocket bridge for use by FastAPI routes.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
-from ..config import AvatarConfig
 from ..engine import AvatarEngine
-from ..types import ProviderType
 from .bridge import WebSocketBridge
 
 logger = logging.getLogger(__name__)
@@ -32,9 +30,9 @@ class EngineSessionManager:
     def __init__(
         self,
         provider: str = "gemini",
-        model: Optional[str] = None,
-        config_path: Optional[str] = None,
-        working_dir: Optional[str] = None,
+        model: str | None = None,
+        config_path: str | None = None,
+        working_dir: str | None = None,
         system_prompt: str = "",
         **kwargs: Any,
     ) -> None:
@@ -45,16 +43,16 @@ class EngineSessionManager:
         self._system_prompt = system_prompt
         self._kwargs = kwargs
 
-        self._engine: Optional[AvatarEngine] = None
-        self._ws_bridge: Optional[WebSocketBridge] = None
+        self._engine: AvatarEngine | None = None
+        self._ws_bridge: WebSocketBridge | None = None
         self._ready: bool = False
 
     @property
-    def engine(self) -> Optional[AvatarEngine]:
+    def engine(self) -> AvatarEngine | None:
         return self._engine
 
     @property
-    def ws_bridge(self) -> Optional[WebSocketBridge]:
+    def ws_bridge(self) -> WebSocketBridge | None:
         return self._ws_bridge
 
     @property
@@ -141,9 +139,9 @@ class EngineSessionManager:
     async def switch(
         self,
         provider: str,
-        model: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        model: str | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Switch provider and/or model by restarting the engine.
 
         Preserves connected WebSocket clients across the restart.
@@ -185,7 +183,7 @@ class EngineSessionManager:
                 pass
             raise
 
-    async def resume_session(self, session_id: str) -> Dict[str, Any]:
+    async def resume_session(self, session_id: str) -> dict[str, Any]:
         """Resume a previous session by restarting the engine with that session ID.
 
         Same pattern as switch(): save clients → set resume ID → restart → restore.
@@ -214,7 +212,7 @@ class EngineSessionManager:
                 pass
             raise
 
-    async def new_session(self) -> Dict[str, Any]:
+    async def new_session(self) -> dict[str, Any]:
         """Start a fresh session by restarting the engine without a resume ID.
 
         Same pattern as switch(): save clients → clear resume ID → restart → restore.

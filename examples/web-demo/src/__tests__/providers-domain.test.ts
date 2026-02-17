@@ -14,7 +14,7 @@ import {
   filterChoicesForModel,
   getOptionsForProvider,
   getProvider,
-} from '../config/providers'
+} from '@avatar-engine/core'
 
 describe('getFeaturedLabel', () => {
   it('returns "High" for gemini with thinking_level=high', () => {

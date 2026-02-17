@@ -9,7 +9,7 @@ Enums are converted to their string values. Timestamps are floats (epoch).
 
 import dataclasses
 from enum import Enum
-from typing import Any, Dict, Optional, Type
+from typing import Any
 
 from ..events import (
     ActivityEvent,
@@ -26,7 +26,7 @@ from ..events import (
 from ..types import BridgeResponse, HealthStatus, ProviderCapabilities
 
 # Maps event classes to WebSocket message type strings
-EVENT_TYPE_MAP: Dict[Type[AvatarEvent], str] = {
+EVENT_TYPE_MAP: dict[type[AvatarEvent], str] = {
     TextEvent: "text",
     ThinkingEvent: "thinking",
     ToolEvent: "tool",
@@ -50,7 +50,7 @@ def _serialize_value(val: Any) -> Any:
     return val
 
 
-def event_to_dict(event: AvatarEvent) -> Optional[Dict[str, Any]]:
+def event_to_dict(event: AvatarEvent) -> dict[str, Any] | None:
     """Convert an AvatarEvent to a WebSocket message dict.
 
     Returns:
@@ -67,9 +67,9 @@ def event_to_dict(event: AvatarEvent) -> Optional[Dict[str, Any]]:
     return {"type": event_type, "data": data}
 
 
-def response_to_dict(response: BridgeResponse) -> Dict[str, Any]:
+def response_to_dict(response: BridgeResponse) -> dict[str, Any]:
     """Convert BridgeResponse to a chat_response WebSocket message."""
-    data: Dict[str, Any] = {
+    data: dict[str, Any] = {
         "content": response.content,
         "success": response.success,
         "error": response.error,
@@ -86,7 +86,7 @@ def response_to_dict(response: BridgeResponse) -> Dict[str, Any]:
     return {"type": "chat_response", "data": data}
 
 
-def health_to_dict(health: HealthStatus) -> Dict[str, Any]:
+def health_to_dict(health: HealthStatus) -> dict[str, Any]:
     """Convert HealthStatus to JSON-safe dict."""
     data = {}
     for f in dataclasses.fields(health):
@@ -94,7 +94,7 @@ def health_to_dict(health: HealthStatus) -> Dict[str, Any]:
     return data
 
 
-def capabilities_to_dict(caps: ProviderCapabilities) -> Dict[str, Any]:
+def capabilities_to_dict(caps: ProviderCapabilities) -> dict[str, Any]:
     """Convert ProviderCapabilities to JSON-safe dict."""
     data = {}
     for f in dataclasses.fields(caps):
@@ -102,7 +102,7 @@ def capabilities_to_dict(caps: ProviderCapabilities) -> Dict[str, Any]:
     return data
 
 
-def parse_client_message(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def parse_client_message(raw: dict[str, Any]) -> dict[str, Any] | None:
     """Parse and validate a client→server WebSocket message.
 
     Expected format: {"type": "chat|stop|ping|clear_history|switch|resume_session|new_session", "data": {...}}

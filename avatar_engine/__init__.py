@@ -44,30 +44,23 @@ Async Usage:
     asyncio.run(main())
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 # Main engine class
-from .engine import AvatarEngine
-
 # Activity tracking
 from .activity import ActivityTracker
 
+# Bridge classes (for advanced usage)
+from .bridges import (
+    BaseBridge,
+    ClaudeBridge,
+    CodexBridge,
+    GeminiBridge,
+)
+
 # Configuration
 from .config import AvatarConfig
-
-# Type definitions
-from .types import (
-    Attachment,
-    BridgeResponse,
-    BridgeState,
-    HealthStatus,
-    Message,
-    ProviderCapabilities,
-    ProviderType,
-    SessionCapabilitiesInfo,
-    SessionInfo,
-    ToolPolicy,
-)
+from .engine import AvatarEngine
 
 # Event system
 from .events import (
@@ -85,16 +78,22 @@ from .events import (
     ThinkingEvent,
     ThinkingPhase,
     ToolEvent,
-    extract_bold_subject,
     classify_thinking,
+    extract_bold_subject,
 )
 
-# Bridge classes (for advanced usage)
-from .bridges import (
-    BaseBridge,
-    ClaudeBridge,
-    CodexBridge,
-    GeminiBridge,
+# Type definitions
+from .types import (
+    Attachment,
+    BridgeResponse,
+    BridgeState,
+    HealthStatus,
+    Message,
+    ProviderCapabilities,
+    ProviderType,
+    SessionCapabilitiesInfo,
+    SessionInfo,
+    ToolPolicy,
 )
 
 __all__ = [
@@ -107,6 +106,7 @@ __all__ = [
     # Configuration
     "AvatarConfig",
     # Types
+    "Attachment",
     "BridgeResponse",
     "BridgeState",
     "HealthStatus",
