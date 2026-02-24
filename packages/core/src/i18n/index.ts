@@ -23,29 +23,47 @@ function detectLanguage(): string {
   return 'en'
 }
 
+/** Inject avatar resource bundles (deep merge, overwrite existing keys). */
+function injectResources(): void {
+  i18n.addResourceBundle('en', 'translation', en, true, true)
+  i18n.addResourceBundle('cs', 'translation', cs, true, true)
+}
+
 /**
  * Initialize i18next for Avatar Engine.
  * Call once at app startup. Returns the i18n instance for use with framework bindings.
  *
+ * Safe to call when a consumer (e.g. Synapse) has already initialized the i18next
+ * singleton — avatar resources are always (re-)injected via addResourceBundle().
+ *
  * @param plugins - Optional i18next plugins to register (e.g. initReactI18next)
  */
 export function initAvatarI18n(plugins?: { type: string }[]): typeof i18n {
-  if (i18n.isInitialized) return i18n
-
+  // Always register plugins (idempotent in i18next)
   if (plugins) {
     for (const plugin of plugins) {
       i18n.use(plugin as any)
     }
   }
 
-  i18n.init({
-    resources: {
-      en: { translation: en },
-      cs: { translation: cs },
-    },
-    lng: detectLanguage(),
-    fallbackLng: 'en',
-    interpolation: { escapeValue: false },
+  if (i18n.isInitialized) {
+    // Singleton already initialised by consumer — just inject our resources
+    injectResources()
+  } else {
+    i18n.init({
+      resources: {
+        en: { translation: en },
+        cs: { translation: cs },
+      },
+      lng: detectLanguage(),
+      fallbackLng: 'en',
+      interpolation: { escapeValue: false },
+    })
+  }
+
+  // Re-inject after any future consumer re-init (e.g. Synapse calling i18n.init() later)
+  i18n.on('initialized', () => {
+    injectResources()
   })
 
   return i18n
