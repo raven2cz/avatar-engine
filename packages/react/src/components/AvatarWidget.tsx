@@ -199,6 +199,26 @@ export function AvatarWidget({
     setPickerOpen(false)
   }, [])
 
+  // Sync avatar selection from external changes (e.g. Settings page AvatarPicker).
+  // StorageEvent fires across tabs; custom 'avatar-change' event fires within same tab.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === LS_SELECTED_AVATAR && e.newValue) {
+        setSelectedAvatarId(e.newValue)
+      }
+    }
+    const onCustom = () => {
+      const id = localStorage.getItem(LS_SELECTED_AVATAR)
+      if (id) setSelectedAvatarId(id)
+    }
+    window.addEventListener('storage', onStorage)
+    window.addEventListener('avatar-change', onCustom)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('avatar-change', onCustom)
+    }
+  }, [])
+
   // --- First-time hints (fab arrow, expand pulsing dot) ---
   const [hintsShown, setHintsShown] = useState<Set<string>>(() => {
     const v = localStorage.getItem(LS_HINTS_SHOWN)
