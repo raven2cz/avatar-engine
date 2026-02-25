@@ -1,6 +1,6 @@
 {
   "name": "@avatar-engine/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Framework-agnostic core for Avatar Engine — types, WebSocket protocol, state machine, configuration",
   "type": "module",
   "main": "dist/index.cjs.js",

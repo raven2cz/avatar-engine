@@ -1,6 +1,6 @@
 {
   "name": "@avatar-engine/react",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "React components and hooks for Avatar Engine — chat UI, avatar bust, provider selector",
   "type": "module",
   "main": "dist/index.cjs.js",
@@ -29,7 +29,7 @@
     "react-dom": "^18.0.0 || ^19.0.0"
   },
   "dependencies": {
-    "@avatar-engine/core": "^1.0.0",
+    "@avatar-engine/core": "^1.1.0",
     "lucide-react": "^0.300.0",
     "react-markdown": "^9.0.0",
     "react-syntax-highlighter": "^15.6.0",
