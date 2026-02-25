@@ -190,7 +190,7 @@ class TestRESTFullFlow:
         manager = _make_mock_manager()
         call_count = 0
 
-        async def _chat(msg):
+        async def _chat(msg, attachments=None, context=None):
             nonlocal call_count
             call_count += 1
             return BridgeResponse(
@@ -1034,6 +1034,72 @@ class TestSessionManagerLifecycle:
                 assert mgr._provider == "gemini"
                 assert mgr._model == "gemini-3-pro-preview"
 
+    @pytest.mark.asyncio
+    async def test_switch_uses_explicit_provider_not_config_path(self):
+        """switch() must use explicit provider/model, not re-read config_path.
+
+        Regression: When config_path was set (e.g. Synapse passes avatar.yaml),
+        prepare() would always call AvatarEngine.from_config(config_path) which
+        reads the OLD provider from the file, ignoring self._provider set by switch().
+        """
+        from avatar_engine.web.session_manager import EngineSessionManager
+
+        providers_created = []
+
+        def _make_engine(**kwargs):
+            eng = MagicMock()
+            eng._started = True
+            eng.start = AsyncMock()
+            eng.stop = AsyncMock()
+            eng.session_id = f"session-{len(providers_created)}"
+            eng.current_provider = kwargs.get("provider", "gemini")
+            providers_created.append(kwargs)
+            return eng
+
+        mock_engine_cls = MagicMock(side_effect=_make_engine)
+        mock_from_config = MagicMock(side_effect=lambda path: _make_engine(provider="gemini"))
+
+        with patch("avatar_engine.web.session_manager.AvatarEngine", mock_engine_cls) as cls_mock:
+            cls_mock.from_config = mock_from_config
+
+            with patch("avatar_engine.web.session_manager.WebSocketBridge") as mock_bridge_cls:
+                mock_bridge_cls.return_value = MagicMock()
+                mock_bridge_cls.return_value._clients = set()
+                mock_bridge_cls.return_value.add_client = AsyncMock()
+                mock_bridge_cls.return_value.unregister = MagicMock()
+
+                # Create manager WITH config_path (like Synapse does)
+                mgr = EngineSessionManager(
+                    provider="gemini",
+                    config_path="/tmp/avatar.yaml",
+                )
+                await mgr.start()
+
+                # First engine created via from_config (config_path set)
+                mock_from_config.assert_called_once_with("/tmp/avatar.yaml")
+                assert len(providers_created) == 1
+
+                # Now switch to claude — should NOT call from_config again
+                mock_from_config.reset_mock()
+                providers_created.clear()
+
+                result = await mgr.switch("claude", "claude-opus-4-6")
+
+                # from_config should NOT have been called — switch uses explicit params
+                mock_from_config.assert_not_called()
+                # AvatarEngine() constructor should have been called with claude
+                assert mock_engine_cls.call_count >= 1
+                last_call_kwargs = mock_engine_cls.call_args
+                assert last_call_kwargs.kwargs.get("provider") == "claude"
+                assert last_call_kwargs.kwargs.get("model") == "claude-opus-4-6"
+
+                # Result should reflect the new provider
+                assert result["provider"] == "claude"
+                assert result["model"] == "claude-opus-4-6"
+
+                # config_path should be restored for future from_config calls
+                assert mgr._config_path == "/tmp/avatar.yaml"
+
 
 # ============================================================================
 # File Upload: Multipart endpoint integration
@@ -1146,7 +1212,7 @@ class TestFileUploadEndpoint:
         manager = _make_mock_manager()
         received_attachments = []
 
-        async def _chat(msg, attachments=None):
+        async def _chat(msg, attachments=None, context=None):
             if attachments:
                 received_attachments.extend(attachments)
             return BridgeResponse(
