@@ -84,6 +84,7 @@ export {
 // Config
 export {
   PROVIDERS,
+  createProviders,
   getProvider,
   getModelsForProvider,
   getOptionsForProvider,

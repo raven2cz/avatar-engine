@@ -95,8 +95,16 @@ export interface UseWidgetModeReturn {
  */
 export function useWidgetMode(
   onTransition?: TransitionHandler,
+  initialMode?: WidgetMode,
 ): UseWidgetModeReturn {
-  const [mode, setModeState] = useState<WidgetMode>(loadMode)
+  const [mode, setModeState] = useState<WidgetMode>(() => {
+    if (initialMode) {
+      // Override persisted value — consumer explicitly requested a starting mode
+      localStorage.setItem(LS_WIDGET_MODE, initialMode)
+      return initialMode
+    }
+    return loadMode()
+  })
   const modeRef = useRef(mode)
   modeRef.current = mode
 

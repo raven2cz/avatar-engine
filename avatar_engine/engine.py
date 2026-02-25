@@ -12,6 +12,7 @@ The engine hides the difference — you always just call chat()/chat_stream().
 
 import asyncio
 import dataclasses
+import json
 import logging
 import signal
 import threading
@@ -292,13 +293,20 @@ class AvatarEngine(EventEmitter):
 
     # === Chat API (async) ===
 
-    async def chat(self, message: str, attachments: list["Attachment"] | None = None) -> BridgeResponse:
+    async def chat(
+        self,
+        message: str,
+        attachments: list["Attachment"] | None = None,
+        context: dict | None = None,
+    ) -> BridgeResponse:
         """
         Send a message and get response (async).
 
         Args:
             message: User message to send
             attachments: Optional file attachments (images, PDFs, etc.)
+            context: Optional opaque metadata (e.g. page context from host app).
+                     Prepended to the prompt for the AI but not stored in history.
 
         Returns:
             BridgeResponse with content and metadata
@@ -328,7 +336,20 @@ class AvatarEngine(EventEmitter):
         if wait_time > 0:
             logger.debug(f"Rate limited, waited {wait_time:.2f}s")
 
-        response = await self._bridge.send(message, attachments=attachments)
+        # Build prompt: prepend context metadata if provided
+        prompt = message
+        if context:
+            prompt = f"[Context: {json.dumps(context)}]\n\n{message}"
+
+        response = await self._bridge.send(prompt, attachments=attachments)
+
+        # Fix history: bridge stored the augmented prompt, replace with clean message
+        if context and self._bridge:
+            with self._bridge._history_lock:
+                for m in reversed(self._bridge.history):
+                    if m.role == "user" and m.content == prompt:
+                        m.content = message
+                        break
 
         # Auto-restart on failure — but only for non-recoverable errors.
         # If bridge is still READY (e.g. file too large), the error is
@@ -340,7 +361,13 @@ class AvatarEngine(EventEmitter):
         ):
             logger.warning(f"Restarting due to error: {response.error}")
             await self._restart()
-            response = await self._bridge.send(message, attachments=attachments)
+            response = await self._bridge.send(prompt, attachments=attachments)
+            if context and self._bridge:
+                with self._bridge._history_lock:
+                    for m in reversed(self._bridge.history):
+                        if m.role == "user" and m.content == prompt:
+                            m.content = message
+                            break
 
         # Emit cost event
         if response.cost_usd:

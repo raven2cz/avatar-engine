@@ -330,11 +330,13 @@ export function parseServerMessage(
  *
  * @param text - The user's chat text.
  * @param attachments - Optional file or image attachments to include.
+ * @param context - Optional opaque metadata (e.g. page context) forwarded to the AI.
  * @returns Serialized JSON string ready to send over the WebSocket.
  */
-export function createChatMessage(text: string, attachments?: ChatAttachment[]): string {
+export function createChatMessage(text: string, attachments?: ChatAttachment[], context?: Record<string, unknown>): string {
   const data: Record<string, unknown> = { message: text }
   if (attachments?.length) data.attachments = attachments
+  if (context && Object.keys(context).length > 0) data.context = context
   return JSON.stringify({ type: 'chat', data })
 }
 

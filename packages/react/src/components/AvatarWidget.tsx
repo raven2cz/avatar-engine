@@ -102,6 +102,8 @@ export interface AvatarWidgetProps {
   avatars?: import('@avatar-engine/core').AvatarConfig[]
   /** Base path for avatar assets (default: '/avatars') */
   avatarBasePath?: string
+  /** Override persisted widget mode on first render (e.g. "fab" to prevent stale fullscreen) */
+  initialMode?: WidgetMode
   /** Optional background content (e.g., LandingPage) rendered behind all modes */
   renderBackground?: (props: {
     showFabHint: boolean
@@ -138,6 +140,7 @@ export function AvatarWidget({
   switchProvider,
   avatars: customAvatars,
   avatarBasePath,
+  initialMode,
   customProviders,
   onCompactModeRef,
   renderBackground,
@@ -173,7 +176,7 @@ export function AvatarWidget({
     toggleBust,
     defaultMode,
     setDefaultMode,
-  } = useWidgetMode(onTransition)
+  } = useWidgetMode(onTransition, initialMode)
 
   // Expose openCompact to parent via ref
   useEffect(() => {
@@ -194,6 +197,26 @@ export function AvatarWidget({
     setSelectedAvatarId(id)
     localStorage.setItem(LS_SELECTED_AVATAR, id)
     setPickerOpen(false)
+  }, [])
+
+  // Sync avatar selection from external changes (e.g. Settings page AvatarPicker).
+  // StorageEvent fires across tabs; custom 'avatar-change' event fires within same tab.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === LS_SELECTED_AVATAR && e.newValue) {
+        setSelectedAvatarId(e.newValue)
+      }
+    }
+    const onCustom = () => {
+      const id = localStorage.getItem(LS_SELECTED_AVATAR)
+      if (id) setSelectedAvatarId(id)
+    }
+    window.addEventListener('storage', onStorage)
+    window.addEventListener('avatar-change', onCustom)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('avatar-change', onCustom)
+    }
   }, [])
 
   // --- First-time hints (fab arrow, expand pulsing dot) ---
@@ -306,7 +329,7 @@ export function AvatarWidget({
 
       {/* FULLSCREEN OVERLAY */}
       <div
-        className={`fixed inset-0 z-[2000] overflow-hidden transition-all duration-300 ${
+        className={`fixed inset-0 z-[2000] overflow-hidden bg-[#0a0a0f] transition-all duration-300 ${
           mode === 'fullscreen'
             ? 'opacity-100 scale-100'
             : transitioning

@@ -65,7 +65,7 @@ export interface AvatarChatOptions {
  */
 export interface UseAvatarChatReturn {
   messages: ChatMessage[]
-  sendMessage: (text: string, attachments?: UploadedFile[]) => void
+  sendMessage: (text: string, attachments?: UploadedFile[], context?: Record<string, unknown>) => void
   stopResponse: () => void
   clearHistory: () => void
   switchProvider: (provider: string, model?: string, options?: Record<string, string | number>) => void
@@ -315,7 +315,7 @@ export function useAvatarChat(wsUrl: string, optionsOrApiBase?: AvatarChatOption
   }, [onServerMessage])
 
   const sendMessage = useCallback(
-    (text: string, attachments?: UploadedFile[]) => {
+    (text: string, attachments?: UploadedFile[], context?: Record<string, unknown>) => {
       if (!text.trim() || isStreaming) return
 
       const allFiles = attachments?.length ? attachments : pendingFiles.length ? pendingFiles : undefined
@@ -328,6 +328,7 @@ export function useAvatarChat(wsUrl: string, optionsOrApiBase?: AvatarChatOption
         tools: [],
         isStreaming: false,
         attachments: allFiles,
+        context,
       }
 
       const assistantMsg: ChatMessage = {
@@ -349,7 +350,7 @@ export function useAvatarChat(wsUrl: string, optionsOrApiBase?: AvatarChatOption
         mime_type: f.mimeType,
         path: f.path,
       }))
-      wsSend(text, wsAttachments)
+      wsSend(text, wsAttachments, context)
       clearFiles()
     },
     [wsSend, isStreaming, pendingFiles, clearFiles]

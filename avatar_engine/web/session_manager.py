@@ -160,10 +160,16 @@ class EngineSessionManager:
         if options:
             self._kwargs.update(options)
 
+        # Temporarily clear config_path so prepare() uses self._provider/self._model
+        # instead of re-reading the config file (which still has the OLD provider).
+        saved_config_path = self._config_path
+        self._config_path = None
+
         try:
             await self.shutdown()
             await self.start()
             await self._restore_clients(saved_clients)
+            self._config_path = saved_config_path
             logger.info(f"Switched to provider={provider} model={model}")
             return {
                 "provider": self._provider,
@@ -172,6 +178,7 @@ class EngineSessionManager:
             }
         except Exception as e:
             logger.error(f"Switch failed: {e}, reverting to {old_provider}/{old_model}")
+            self._config_path = saved_config_path
             self._provider = old_provider
             self._model = old_model
             self._kwargs = old_kwargs
@@ -191,10 +198,15 @@ class EngineSessionManager:
         saved_clients = self._save_clients()
         self._kwargs["resume_session_id"] = session_id
 
+        # Use explicit provider/model (not config file) for restart
+        saved_config_path = self._config_path
+        self._config_path = None
+
         try:
             await self.shutdown()
             await self.start()
             await self._restore_clients(saved_clients)
+            self._config_path = saved_config_path
             logger.info(f"Resumed session={session_id}")
             return {
                 "provider": self._provider,
@@ -203,6 +215,7 @@ class EngineSessionManager:
             }
         except Exception as e:
             logger.error(f"Resume session failed: {e}")
+            self._config_path = saved_config_path
             self._kwargs.pop("resume_session_id", None)
             try:
                 await self.shutdown()
@@ -220,10 +233,15 @@ class EngineSessionManager:
         saved_clients = self._save_clients()
         self._kwargs.pop("resume_session_id", None)
 
+        # Use explicit provider/model (not config file) for restart
+        saved_config_path = self._config_path
+        self._config_path = None
+
         try:
             await self.shutdown()
             await self.start()
             await self._restore_clients(saved_clients)
+            self._config_path = saved_config_path
             logger.info("Started new session")
             return {
                 "provider": self._provider,
@@ -232,6 +250,7 @@ class EngineSessionManager:
             }
         except Exception as e:
             logger.error(f"New session failed: {e}")
+            self._config_path = saved_config_path
             try:
                 await self.shutdown()
                 await self.start()

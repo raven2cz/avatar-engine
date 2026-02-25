@@ -155,6 +155,30 @@ export const PROVIDERS: ProviderConfig[] = [
 ]
 
 /**
+ * Create a modified copy of the built-in PROVIDERS with selective overrides.
+ *
+ * @param overrides - Map of provider IDs to partial overrides (defaultModel, models).
+ * @returns New array of provider configs with overrides applied.
+ *
+ * @example
+ * ```ts
+ * const testProviders = createProviders({
+ *   gemini: { defaultModel: 'gemini-2.5-flash' },
+ *   claude: { defaultModel: 'claude-haiku-4-5' },
+ * })
+ * ```
+ */
+export function createProviders(
+  overrides: Record<string, Partial<Pick<ProviderConfig, 'defaultModel' | 'models'>>>,
+): ProviderConfig[] {
+  return PROVIDERS.map((provider) => {
+    const o = overrides[provider.id]
+    if (!o) return provider
+    return { ...provider, ...o }
+  })
+}
+
+/**
  * Look up a provider configuration by its identifier.
  *
  * @param id - Provider identifier (e.g. "gemini", "claude").
