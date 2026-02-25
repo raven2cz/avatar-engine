@@ -295,10 +295,10 @@ export interface ChatAttachment {
   path: string
 }
 
-/** Sends a user message (with optional attachments) to the AI engine. */
+/** Sends a user message (with optional attachments and context metadata) to the AI engine. */
 export interface ChatRequest {
   type: 'chat'
-  data: { message: string; attachments?: ChatAttachment[] }
+  data: { message: string; attachments?: ChatAttachment[]; context?: Record<string, unknown> }
 }
 
 /** Requests cancellation of the current AI response. */
@@ -385,6 +385,7 @@ export interface SessionInfo {
  * @property costUsd - Cost of this response in USD.
  * @property attachments - Files the user attached to this message.
  * @property images - Images generated during the AI response.
+ * @property context - Optional opaque metadata (e.g. page context) sent to the AI but not displayed in the chat bubble.
  */
 export interface ChatMessage {
   id: string
@@ -398,6 +399,7 @@ export interface ChatMessage {
   costUsd?: number
   attachments?: UploadedFile[]
   images?: GeneratedImage[]
+  context?: Record<string, unknown>
 }
 
 /**

@@ -308,7 +308,8 @@ def create_app(
         message = body.get("message", "")
         if not message:
             return JSONResponse({"error": "Empty message"}, status_code=400)
-        response = await engine.chat(message)
+        context = body.get("context") or None
+        response = await engine.chat(message, context=context)
         return JSONResponse(response_to_dict(response)["data"])
 
     @app.post("/api/avatar/stop")
@@ -553,9 +554,12 @@ def create_app(
                                 ))
                         chat_attachments = valid or None
 
+                    # Parse optional context metadata (opaque JSON for AI)
+                    chat_context: dict | None = msg_data.get("context") or None
+
                     # Run chat in background — events auto-broadcast via bridge
                     # Use manager refs (not local vars) so chat works after switch
-                    async def _run_chat(msg: str, atts: list[Attachment] | None = chat_attachments, client_ws: WebSocket = ws) -> None:
+                    async def _run_chat(msg: str, atts: list[Attachment] | None = chat_attachments, ctx: dict | None = chat_context, client_ws: WebSocket = ws) -> None:
                         try:
                             eng = manager.engine
                             brg = manager.ws_bridge
@@ -581,7 +585,7 @@ def create_app(
 
                             logger.debug(f"Chat request: {msg[:80]}... (attachments: {len(atts) if atts else 0}, {total_att_mb:.1f} MB, timeout: {chat_timeout}s)")
                             chat_start = time.monotonic()
-                            response = await asyncio.wait_for(eng.chat(msg, attachments=atts), timeout=chat_timeout)
+                            response = await asyncio.wait_for(eng.chat(msg, attachments=atts, context=ctx), timeout=chat_timeout)
                             brg.broadcast_message(response_to_dict(response))
                         except asyncio.TimeoutError:
                             elapsed = time.monotonic() - chat_start

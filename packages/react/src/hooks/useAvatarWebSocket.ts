@@ -24,7 +24,7 @@ import type {
  */
 export interface UseAvatarWebSocketReturn {
   state: AvatarState
-  sendMessage: (message: string, attachments?: ChatAttachment[]) => void
+  sendMessage: (message: string, attachments?: ChatAttachment[], context?: Record<string, unknown>) => void
   stopResponse: () => void
   clearHistory: () => void
   switchProvider: (provider: string, model?: string, options?: Record<string, unknown>) => void
@@ -211,13 +211,14 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
     }
   }, [connect])
 
-  const sendMessage = useCallback((message: string, attachments?: ChatAttachment[]) => {
+  const sendMessage = useCallback((message: string, attachments?: ChatAttachment[], context?: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       errorFenceRef.current = false
       dispatch({ type: 'CLEAR_ERROR' })
       dispatch({ type: 'DIAGNOSTIC', message: '', level: '' })
       const data: Record<string, unknown> = { message }
       if (attachments?.length) data.attachments = attachments
+      if (context && Object.keys(context).length > 0) data.context = context
       wsRef.current.send(JSON.stringify({ type: 'chat', data }))
     }
   }, [])
