@@ -16,6 +16,9 @@ export type { UseAvatarBustReturn } from './hooks/useAvatarBust'
 export { useFileUpload } from './hooks/useFileUpload'
 export type { UseFileUploadReturn } from './hooks/useFileUpload'
 export { useAvailableProviders } from './hooks/useAvailableProviders'
+export { useDynamicModels } from './hooks/useDynamicModels'
+export { useModelDiscoveryErrors } from './hooks/useModelDiscoveryErrors'
+export type { ModelDiscoveryError } from './hooks/useModelDiscoveryErrors'
 export { useAvatarThumb } from './hooks/useAvatarThumb'
 
 // React components

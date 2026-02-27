@@ -62,6 +62,7 @@ class ClaudeBridge(BaseBridge):
         continue_session: bool = False,
         resume_session_id: str | None = None,
         fallback_model: str | None = None,
+        additional_dirs: list[str] | None = None,
         debug: bool = False,
         env: dict[str, str] | None = None,
         mcp_servers: dict[str, Any] | None = None,
@@ -80,6 +81,7 @@ class ClaudeBridge(BaseBridge):
         self.continue_session = continue_session
         self.resume_session_id = resume_session_id
         self.fallback_model = fallback_model
+        self.additional_dirs = additional_dirs or []
 
         # Track whether we're in persistent mode (can fall back to oneshot)
         self._persistent_mode = True
@@ -203,7 +205,15 @@ class ClaudeBridge(BaseBridge):
         # Settings → temp file for --settings flag
         settings: dict[str, Any] = {}
         if self.allowed_tools:
-            settings["permissions"] = {"allow": self.allowed_tools}
+            settings.setdefault("permissions", {})["allow"] = self.allowed_tools
+        if self.additional_dirs:
+            expanded = [
+                os.path.expanduser(d)
+                for d in self.additional_dirs
+                if os.path.isdir(os.path.expanduser(d))
+            ]
+            if expanded:
+                settings.setdefault("permissions", {})["additionalDirectories"] = expanded
         self._claude_settings_path = self._sandbox.write_claude_settings(settings)
 
         # MCP servers → temp file for --mcp-config flag
@@ -286,6 +296,12 @@ class ClaudeBridge(BaseBridge):
         # Fallback model (when primary model is overloaded)
         if self.fallback_model:
             cmd.extend(["--fallback-model", self.fallback_model])
+
+        # Additional directories (e.g., ~/.synapse for host app data)
+        for d in self.additional_dirs:
+            expanded = os.path.expanduser(d)
+            if os.path.isdir(expanded):
+                cmd.extend(["--add-dir", expanded])
 
         # Debug flag
         if self.debug:

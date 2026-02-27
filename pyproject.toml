@@ -75,6 +75,7 @@ markers = [
     "claude: marks tests as requiring Claude CLI",
     "pty: marks tests as requiring PTY support (/dev/pts)",
     "slow: marks tests as slow (API calls)",
+    "live: marks tests that scrape real documentation URLs (canary tests)",
 ]
 
 [tool.mypy]
