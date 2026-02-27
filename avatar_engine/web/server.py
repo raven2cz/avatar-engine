@@ -230,6 +230,20 @@ def create_app(
             return JSONResponse({})
         return JSONResponse(engine._bridge.get_usage())
 
+    @app.get("/api/avatar/models")
+    async def get_models(refresh: bool = False) -> JSONResponse:
+        """Dynamic model discovery — scrapes provider docs for current models.
+
+        Query params:
+            refresh: Force re-scrape (bypass 24h cache)
+        """
+        from .model_discovery import fetch_models as _fetch, invalidate_cache
+
+        if refresh:
+            invalidate_cache()
+        result = await _fetch()
+        return JSONResponse(result)
+
     @app.get("/api/avatar/sessions")
     async def list_sessions() -> JSONResponse:
         """List available sessions."""

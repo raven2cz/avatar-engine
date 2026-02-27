@@ -712,6 +712,7 @@ class AvatarEngine(EventEmitter):
                 continue_session=session_cfg.get("continue_last", False) or self._kwargs.get("continue_last", False),
                 resume_session_id=session_cfg.get("resume_id") or self._kwargs.get("resume_session_id"),
                 fallback_model=pcfg.get("fallback_model"),
+                additional_dirs=pcfg.get("additional_dirs", []),
                 debug=pcfg.get("debug", False),
                 **common,
             )
