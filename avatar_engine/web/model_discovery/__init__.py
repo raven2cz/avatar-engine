@@ -54,7 +54,7 @@ async def fetch_models(providers: list[str] | None = None) -> dict[str, Any]:
     if cached:
         return _serialize(cached.results, cached.errors, cached.fetched_at)
 
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
         results, errors = await _registry.fetch_all(client, providers)
 
     ts = datetime.now(timezone.utc).isoformat()

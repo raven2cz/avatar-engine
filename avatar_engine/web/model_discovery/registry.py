@@ -14,6 +14,7 @@ Usage::
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -44,7 +45,7 @@ class ParserRegistry:
         client: httpx.AsyncClient,
         providers: list[str] | None = None,
     ) -> tuple[dict[str, ParseResult], dict[str, str]]:
-        """Fetch models from all (or selected) parsers.
+        """Fetch models from all (or selected) parsers concurrently.
 
         Returns (results, errors) tuple.  Errors contain human-readable
         messages suitable for display in the avatar UI.
@@ -53,10 +54,10 @@ class ParserRegistry:
         errors: dict[str, str] = {}
         targets = providers or list(self._parsers.keys())
 
-        for pid in targets:
+        async def _fetch_one(pid: str) -> None:
             parser = self._parsers.get(pid)
             if parser is None:
-                continue
+                return
             try:
                 results[pid] = await parser.fetch_and_parse(client)
             except Exception as e:
@@ -64,6 +65,7 @@ class ParserRegistry:
                 logger.warning(msg)
                 errors[pid] = str(e)
 
+        await asyncio.gather(*[_fetch_one(pid) for pid in targets])
         return results, errors
 
 
