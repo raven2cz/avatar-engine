@@ -36,6 +36,9 @@ export interface CompactHeaderProps {
   onSwitchProvider?: (provider: string, model?: string, options?: Record<string, string | number>) => void
   /** Custom provider list — overrides built-in PROVIDERS (order = priority) */
   customProviders?: import('@avatar-engine/core').ProviderConfig[]
+  // New session shortcut
+  onNewSession?: () => void
+  isStreaming?: boolean
   // First-time hint on the fullscreen button
   showExpandHint?: boolean
 }
@@ -62,6 +65,8 @@ export function CompactHeader({
   availableProviders,
   onSwitchProvider,
   customProviders,
+  onNewSession,
+  isStreaming = false,
   showExpandHint,
 }: CompactHeaderProps) {
   const { t } = useTranslation()
@@ -128,6 +133,21 @@ export function CompactHeader({
 
       {/* Right: controls */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
+        {/* New session button */}
+        {onNewSession && (
+          <button
+            onClick={onNewSession}
+            disabled={!connected || isStreaming}
+            className="w-6 h-6 rounded-md flex items-center justify-center text-text-muted hover:text-synapse hover:bg-synapse/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-text-muted disabled:hover:bg-transparent"
+            title={t('fullscreen.sessions.newSession')}
+            aria-label={t('fullscreen.sessions.newSession')}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        )}
+
         {/* Provider/Model menu (⋯ button) */}
         {onSwitchProvider && (
           <button

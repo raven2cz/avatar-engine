@@ -43,6 +43,8 @@ export interface CompactChatProps {
   onSwitchProvider?: (provider: string, model?: string, options?: Record<string, string | number>) => void
   /** Custom provider list — overrides built-in PROVIDERS (order = priority) */
   customProviders?: import('@avatar-engine/core').ProviderConfig[]
+  // New session shortcut
+  onNewSession?: () => void
   // First-time hint on expand button
   showExpandHint?: boolean
 }
@@ -74,6 +76,7 @@ export function CompactChat({
   availableProviders,
   onSwitchProvider,
   customProviders,
+  onNewSession,
   showExpandHint,
 }: CompactChatProps) {
   const { t } = useTranslation()
@@ -97,6 +100,8 @@ export function CompactChat({
         availableProviders={availableProviders}
         onSwitchProvider={onSwitchProvider}
         customProviders={customProviders}
+        onNewSession={onNewSession}
+        isStreaming={isStreaming}
         showExpandHint={showExpandHint}
       />
 

@@ -115,9 +115,12 @@ export function SessionPanel({
     let cancelled = false
     setLoading(true)
     fetch(`${API_BASE}/sessions`)
-      .then((r) => r.json())
-      .then((data: SessionInfo[]) => {
-        if (!cancelled) setSessions(data)
+      .then((r) => {
+        if (!r.ok) return []
+        return r.json()
+      })
+      .then((data) => {
+        if (!cancelled) setSessions(Array.isArray(data) ? data : [])
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false) })

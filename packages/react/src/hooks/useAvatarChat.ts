@@ -408,9 +408,12 @@ export function useAvatarChat(wsUrl: string, optionsOrApiBase?: AvatarChatOption
     fetch(`${resolvedApiBase}/sessions/${encodeURIComponent(sessionId)}/messages`, {
       signal: controller.signal,
     })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) return []
+        return r.json()
+      })
       .then((data: Array<{ role: string; content: string }>) => {
-        if (!data || !data.length) {
+        if (!Array.isArray(data) || !data.length) {
           setMessages([])
           return
         }

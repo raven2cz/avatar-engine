@@ -107,6 +107,7 @@ export default function App() {
       activeOptions={activeOptions}
       availableProviders={availableProviders}
       switchProvider={switchProvider}
+      newSession={newSession}
       onCompactModeRef={compactModeRef}
       renderBackground={({ showFabHint, version: v, defaultMode, onDefaultModeChange }) => (
         <LandingPage
@@ -136,6 +137,7 @@ export default function App() {
           onSwitch={switchProvider}
           onResume={resumeSession}
           onNewSession={newSession}
+          isStreaming={isStreaming}
           onCompactMode={handleCompactMode}
         />
 

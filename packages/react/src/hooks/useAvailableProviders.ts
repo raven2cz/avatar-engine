@@ -28,9 +28,12 @@ export function useAvailableProviders(apiBase?: string): Set<string> | null {
   useEffect(() => {
     let cancelled = false
     fetch(`${resolvedApiBase}/providers`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) return []
+        return r.json()
+      })
       .then((data: Array<{ id: string; available: boolean }>) => {
-        if (!cancelled) {
+        if (!cancelled && Array.isArray(data)) {
           setAvailable(new Set(data.filter((p) => p.available).map((p) => p.id)))
         }
       })

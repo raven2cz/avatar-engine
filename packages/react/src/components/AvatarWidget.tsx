@@ -94,6 +94,8 @@ export interface AvatarWidgetProps {
   activeOptions?: Record<string, string | number>
   availableProviders?: Set<string> | null
   switchProvider?: (provider: string, model?: string, options?: Record<string, string | number>) => void
+  /** Start a new session (clears messages + resets server state) */
+  newSession?: () => void
   /** Custom provider list — overrides built-in PROVIDERS (order = priority) */
   customProviders?: import('@avatar-engine/core').ProviderConfig[]
   /** Ref to receive the openCompact callback — allows parent to wire it into StatusBar */
@@ -138,6 +140,7 @@ export function AvatarWidget({
   activeOptions,
   availableProviders,
   switchProvider,
+  newSession,
   avatars: customAvatars,
   avatarBasePath,
   initialMode,
@@ -505,6 +508,7 @@ export function AvatarWidget({
             availableProviders={availableProviders}
             onSwitchProvider={switchProvider}
             customProviders={customProviders}
+            onNewSession={newSession}
             showExpandHint={showExpandHint}
           />
         </div>

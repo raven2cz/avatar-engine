@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Activity, History, Info, Wifi, WifiOff, X, Zap } from 'lucide-react'
+import { Activity, History, Info, Plus, Wifi, WifiOff, X, Zap } from 'lucide-react'
 import type { CostInfo, EngineState, ProviderCapabilities } from '@avatar-engine/core'
 import { AvatarLogo } from './AvatarLogo'
 import { ProviderModelSelector } from './ProviderModelSelector'
@@ -33,6 +33,7 @@ export interface StatusBarProps {
   onResume?: (sessionId: string) => void
   onNewSession?: () => void
   onCompactMode?: () => void
+  isStreaming?: boolean
   /** REST API base URL (default: /api/avatar) */
   apiBase?: string
 }
@@ -98,6 +99,7 @@ export function StatusBar({
   onResume,
   onNewSession,
   onCompactMode,
+  isStreaming = false,
   apiBase,
 }: StatusBarProps) {
   const API_BASE = resolveApiBase(apiBase)
@@ -125,8 +127,11 @@ export function StatusBar({
     if (!showDetail || !connected) return
     let cancelled = false
     fetch(`${API_BASE}/usage`)
-      .then((r) => r.json())
-      .then((data) => { if (!cancelled) setUsage(data) })
+      .then((r) => {
+        if (!r.ok) return null
+        return r.json()
+      })
+      .then((data) => { if (!cancelled && data) setUsage(data) })
       .catch(() => {})
     return () => { cancelled = true }
   }, [showDetail, connected])
@@ -243,6 +248,19 @@ export function StatusBar({
             >
               <Info className="w-4 h-4" />
             </button>
+
+            {/* New session button */}
+            {onNewSession && (
+              <button
+                onClick={onNewSession}
+                disabled={!connected || isStreaming}
+                className="p-1.5 rounded-lg text-text-muted hover:text-synapse hover:bg-synapse/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-text-muted disabled:hover:bg-transparent"
+                title={t('fullscreen.sessions.newSession')}
+                aria-label={t('fullscreen.sessions.newSession')}
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Session management button — always visible */}
             {onResume && onNewSession && (
