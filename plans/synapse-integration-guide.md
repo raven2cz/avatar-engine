@@ -8,7 +8,7 @@ Avatar Engine je AI avatar runtime — Python backend + React frontend knihovna.
 Poskytuje kompletní chat UI s podporou tří AI providerů (Gemini CLI, Claude Code, Codex CLI),
 session management, MCP tool orchestration a three-mode safety system.
 
-**Publikované balíčky (v1.0.0):**
+**Publikované balíčky (v1.2.0):**
 
 | Balíček | Registry | Účel |
 |---------|----------|------|
@@ -103,8 +103,10 @@ gemini:
       args: ["synapse_mcp_server.py"]
 
 claude:
-  model: "claude-sonnet-4-5"
+  model: "claude-sonnet-4-6"
   permission_mode: "acceptEdits"
+  additional_dirs:
+    - "~/projects/shared-data"
   cost_control:
     max_turns: 10
     max_budget_usd: 5.0

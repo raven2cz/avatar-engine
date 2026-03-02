@@ -70,9 +70,9 @@ npx @zed-industries/codex-acp
 |----------|-------|----------|
 | Gemini | `gemini-3-pro-preview` | Best MCP support, latest reasoning |
 | Gemini | `gemini-2.5-pro` | Stable, may have MCP issues |
-| Claude | `claude-opus-4-5` | Best quality, slower |
-| Claude | `claude-sonnet-4-5` | Fast, good for most use cases |
-| Claude | `claude-haiku-3-5` | Fastest, lowest cost |
+| Claude | `claude-opus-4-6` | Best quality, slower |
+| Claude | `claude-sonnet-4-6` | Fast, good for most use cases |
+| Claude | `claude-haiku-4-5` | Fastest, lowest cost |
 | Codex | `gpt-5.3-codex` | Latest Codex model |
 | Codex | `o3` | Reasoning-focused |
 

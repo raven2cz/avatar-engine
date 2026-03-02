@@ -113,7 +113,7 @@ export const PROVIDERS: ProviderConfig[] = [
     defaultModel: 'claude-opus-4-6',
     models: [
       'claude-opus-4-6',
-      'claude-sonnet-4-5',
+      'claude-sonnet-4-6',
       'claude-haiku-4-5',
     ],
     gradient: 'from-amber-500/20 to-orange-500/20 border-amber-400/40',

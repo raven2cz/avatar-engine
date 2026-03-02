@@ -13,9 +13,9 @@
 <p align="center">
   <a href="https://github.com/raven2cz/avatar-engine/actions/workflows/test.yml"><img src="https://github.com/raven2cz/avatar-engine/actions/workflows/test.yml/badge.svg?branch=main" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/raven2cz/avatar-engine" alt="License"></a>
-  <a href="https://pypi.org/project/avatar-engine/"><img src="https://img.shields.io/pypi/v/avatar-engine?v=1.0.0" alt="PyPI"></a>
-  <a href="https://www.npmjs.com/package/@avatar-engine/core"><img src="https://img.shields.io/npm/v/@avatar-engine/core?label=%40avatar-engine%2Fcore&v=1.0.0" alt="npm core"></a>
-  <a href="https://www.npmjs.com/package/@avatar-engine/react"><img src="https://img.shields.io/npm/v/@avatar-engine/react?label=%40avatar-engine%2Freact&v=1.0.0" alt="npm react"></a>
+  <a href="https://pypi.org/project/avatar-engine/"><img src="https://img.shields.io/pypi/v/avatar-engine?v=1.2.0" alt="PyPI"></a>
+  <a href="https://www.npmjs.com/package/@avatar-engine/core"><img src="https://img.shields.io/npm/v/@avatar-engine/core?label=%40avatar-engine%2Fcore&v=1.2.0" alt="npm core"></a>
+  <a href="https://www.npmjs.com/package/@avatar-engine/react"><img src="https://img.shields.io/npm/v/@avatar-engine/react?label=%40avatar-engine%2Freact&v=1.2.0" alt="npm react"></a>
 </p>
 
 <p align="center">
@@ -56,6 +56,7 @@ Avatar Engine is a monorepo with a **Python backend** and **npm frontend package
 
 - **Three Providers** — Gemini CLI, Claude Code, Codex CLI — unified API
 - **Warm Sessions** — ACP / stream-json persistent subprocess for instant responses
+- **Dynamic Model Discovery** — Automatic model list updates via provider documentation scraping
 - **Session Management** — Resume, continue, and list sessions across all providers
 - **Event System** — Callbacks for text, tools, thinking, diagnostics, state changes
 - **MCP Orchestration** — Tool-based execution with configurable MCP servers
@@ -72,6 +73,8 @@ Avatar Engine is a monorepo with a **Python backend** and **npm frontend package
 - **`AvatarClient`** — Framework-agnostic WebSocket client with auto-reconnect
 - **State Machine** — Pure reducer for predictable state management
 - **`useAvatarChat`** — React hook for complete chat orchestration
+- **`useDynamicModels`** — Three-tier model fallback (static → cache → backend scraping)
+- **`createProviders()`** — Programmatic model overrides for provider configs
 - **23 Components** — Chat UI, provider selector, session panel, avatar bust, safety controls
 - **Tailwind Preset** — Dark glassmorphism theme with customizable accent colors
 - **CSS Custom Properties** — Runtime theming without rebuilds
@@ -185,6 +188,7 @@ avatar-engine/
 │   │   └── codex.py            # Codex CLI (ACP via codex-acp)
 │   ├── events.py               # Event system
 │   ├── web/                    # FastAPI + WebSocket server
+│   │   └── model_discovery/    # Dynamic model scraping (Strategy pattern)
 │   └── cli/                    # Rich CLI (click)
 ├── packages/
 │   ├── core/                   # @avatar-engine/core (npm)
@@ -201,7 +205,7 @@ avatar-engine/
 │           └── tailwind-preset.js
 ├── examples/
 │   └── web-demo/               # Demo app (imports from @avatar-engine/react)
-└── tests/                      # 1200+ tests (Python + TypeScript)
+└── tests/                      # 1360+ tests (Python + TypeScript)
 ```
 
 ### Communication Flow
@@ -271,8 +275,10 @@ gemini:
       args: ["mcp_server.py"]
 
 claude:
-  model: "claude-sonnet-4-5"
+  model: "claude-sonnet-4-6"
   permission_mode: "acceptEdits"
+  additional_dirs:              # Grant access to extra directories
+    - "~/projects/shared-data"
   cost_control:
     max_turns: 10
     max_budget_usd: 5.0
@@ -292,7 +298,7 @@ engine:
 ```python
 engine = AvatarEngine(
     provider="claude",
-    model="claude-sonnet-4-5",
+    model="claude-sonnet-4-6",
     timeout=120,
     system_prompt="You are a helpful assistant.",
     mcp_servers={"tools": {"command": "python", "args": ["server.py"]}},
@@ -358,6 +364,7 @@ Connect to `ws://localhost:8420/api/avatar/ws` for real-time streaming.
 | GET | `/api/avatar/capabilities` | Provider capabilities |
 | GET | `/api/avatar/sessions` | List sessions |
 | GET | `/api/avatar/providers` | Available providers |
+| GET | `/api/avatar/models` | Dynamic model discovery (`?refresh=true`) |
 | POST | `/api/avatar/chat` | Non-streaming chat |
 | POST | `/api/avatar/upload` | File upload |
 
@@ -423,8 +430,11 @@ const {
 ## Testing
 
 ```bash
-# Python tests (1036 tests)
+# Python tests (1160+ tests)
 uv run pytest tests/ -x -q --timeout=30
+
+# Live canary tests (model discovery — detect parser breakage)
+uv run pytest tests/test_model_discovery_live.py -m live -v
 
 # TypeScript tests (204 tests)
 npm test -w packages/core

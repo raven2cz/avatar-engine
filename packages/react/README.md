@@ -182,6 +182,19 @@ Avatar bust animation state derived from engine activity.
 
 File upload queue with progress tracking.
 
+### `useDynamicModels(apiBase)`
+
+Fetch dynamic model lists from the backend with three-tier fallback:
+1. Static provider config (instant)
+2. localStorage cache (24h TTL)
+3. Backend scraping (live documentation fetch)
+
+Returns provider configurations with up-to-date model lists.
+
+### `useModelDiscoveryErrors()`
+
+Listen for model discovery errors emitted during dynamic model fetching. Returns array of errors for UI display (toasts, banners).
+
 ### `useAvailableProviders(apiBase)`
 
 Fetch available providers from the REST API.

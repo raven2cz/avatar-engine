@@ -37,7 +37,7 @@ gemini:
 # === Claude Configuration ===
 claude:
   executable: "claude"
-  model: "claude-sonnet-4-5"
+  model: "claude-sonnet-4-6"
   timeout: 120
   permission_mode: "acceptEdits"
   strict_mcp_config: true

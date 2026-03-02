@@ -1,6 +1,6 @@
 # Plan: v1.2 — Claude working dirs, dynamické modely (web scraping)
 
-**Status:** Approved
+**Status:** DONE (2026-03-02)
 **Datum:** 2026-02-26
 **Branch:** `feature/v1.2-stability`
 

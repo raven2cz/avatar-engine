@@ -47,7 +47,7 @@
 | `--max-budget-usd` | Maximum dollar amount to spend | `claude -p --max-budget-usd 5.00 "query"` |
 | `--max-turns` | Limit agentic turns (print mode) | `claude -p --max-turns 3 "query"` |
 | `--mcp-config` | Load MCP servers from JSON | `claude --mcp-config ./mcp.json` |
-| `--model` | Set model (sonnet, opus, or full name) | `claude --model claude-sonnet-4-5-20250929` |
+| `--model` | Set model (sonnet, opus, or full name) | `claude --model claude-sonnet-4-6` |
 | `--no-chrome` | Disable Chrome integration | `claude --no-chrome` |
 | `--no-session-persistence` | Don't save sessions to disk | `claude -p --no-session-persistence "query"` |
 | `--output-format` | Output format (text, json, stream-json) | `claude -p "query" --output-format json` |
@@ -110,6 +110,6 @@ The `--agents` flag accepts JSON:
 
 | Alias | Full Name | Notes |
 |-------|-----------|-------|
-| `opus` | `claude-opus-4-5` | Best quality, slower |
-| `sonnet` | `claude-sonnet-4-5` | Fast, good for most use cases |
-| `haiku` | `claude-haiku-3-5` | Fastest, lowest cost |
+| `opus` | `claude-opus-4-6` | Best quality, slower |
+| `sonnet` | `claude-sonnet-4-6` | Fast, good for most use cases |
+| `haiku` | `claude-haiku-4-5` | Fastest, lowest cost |
