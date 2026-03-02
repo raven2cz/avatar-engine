@@ -55,6 +55,7 @@ def create_app(
     cors_origins: list[str] | None = None,
     serve_static: bool = True,
     static_dir: str | None = None,
+    api_prefix: str = "/api/avatar",
     **kwargs: Any,
 ) -> Any:
     """Create a FastAPI application for Avatar Engine web bridge.
@@ -67,6 +68,8 @@ def create_app(
         system_prompt: System prompt for the AI
         cors_origins: Allowed CORS origins (default: localhost dev servers)
         serve_static: Whether to serve the web-demo static build
+        api_prefix: URL prefix for all API routes (default "/api/avatar").
+            Use "" when embedding in a host app that mounts at /api/avatar.
         **kwargs: Additional engine parameters
 
     Returns:
@@ -147,6 +150,9 @@ def create_app(
     app.state.manager = manager
     app.state.upload_storage = None  # set after upload_storage is created below
 
+    # Normalize prefix: strip trailing slash for clean path joining
+    pfx = api_prefix.rstrip("/")
+
     # CORS for React dev server
     origins = cors_origins or [
         "http://localhost:5173",   # Vite default
@@ -164,7 +170,7 @@ def create_app(
 
     # === REST Endpoints ===
 
-    @app.get("/api/avatar/health")
+    @app.get(f"{pfx}/health")
     async def get_health() -> JSONResponse:
         """Health check."""
         engine = manager.engine
@@ -176,7 +182,7 @@ def create_app(
         health = engine.get_health()
         return JSONResponse(health_to_dict(health))
 
-    @app.get("/api/avatar/version")
+    @app.get(f"{pfx}/version")
     async def get_version() -> JSONResponse:
         """Engine version."""
         return JSONResponse({"version": __version__})
@@ -188,7 +194,7 @@ def create_app(
         "codex": "npx",
     }
 
-    @app.get("/api/avatar/providers")
+    @app.get(f"{pfx}/providers")
     async def get_providers() -> JSONResponse:
         """List all known providers with CLI availability on this machine."""
         providers = []
@@ -201,7 +207,7 @@ def create_app(
             })
         return JSONResponse(providers)
 
-    @app.get("/api/avatar/capabilities")
+    @app.get(f"{pfx}/capabilities")
     async def get_capabilities() -> JSONResponse:
         """Provider capabilities for UI adaptation."""
         engine = manager.engine
@@ -210,7 +216,7 @@ def create_app(
         caps = engine.capabilities
         return JSONResponse(capabilities_to_dict(caps))
 
-    @app.get("/api/avatar/history")
+    @app.get(f"{pfx}/history")
     async def get_history() -> JSONResponse:
         """Conversation history."""
         engine = manager.engine
@@ -222,7 +228,7 @@ def create_app(
             for m in messages
         ])
 
-    @app.get("/api/avatar/usage")
+    @app.get(f"{pfx}/usage")
     async def get_usage() -> JSONResponse:
         """Usage and cost stats."""
         engine = manager.engine
@@ -230,7 +236,7 @@ def create_app(
             return JSONResponse({})
         return JSONResponse(engine._bridge.get_usage())
 
-    @app.get("/api/avatar/models")
+    @app.get(f"{pfx}/models")
     async def get_models(refresh: bool = False) -> JSONResponse:
         """Dynamic model discovery — scrapes provider docs for current models.
 
@@ -244,7 +250,7 @@ def create_app(
         result = await _fetch()
         return JSONResponse(result)
 
-    @app.get("/api/avatar/sessions")
+    @app.get(f"{pfx}/sessions")
     async def list_sessions() -> JSONResponse:
         """List available sessions."""
         engine = manager.engine
@@ -266,7 +272,7 @@ def create_app(
             })
         return JSONResponse(result)
 
-    @app.put("/api/avatar/sessions/{session_id}/title")
+    @app.put(f"{pfx}/sessions/{{session_id}}/title")
     async def set_session_title(session_id: str, request: Request) -> JSONResponse:
         """Set or clear a custom session title."""
         try:
@@ -296,7 +302,7 @@ def create_app(
 
         return JSONResponse({"session_id": session_id, "title": new_title or None})
 
-    @app.get("/api/avatar/sessions/{session_id}/messages")
+    @app.get(f"{pfx}/sessions/{{session_id}}/messages")
     async def get_session_messages(session_id: str) -> JSONResponse:
         """Load messages from a specific session (for displaying history on resume)."""
         from ..sessions import get_session_store
@@ -315,7 +321,7 @@ def create_app(
             for m in messages
         ])
 
-    @app.post("/api/avatar/chat")
+    @app.post(f"{pfx}/chat")
     async def post_chat(body: dict[str, Any]) -> JSONResponse:
         """Non-streaming chat (for simple use cases)."""
         engine = await manager.ensure_started()
@@ -326,13 +332,13 @@ def create_app(
         response = await engine.chat(message, context=context)
         return JSONResponse(response_to_dict(response)["data"])
 
-    @app.post("/api/avatar/stop")
+    @app.post(f"{pfx}/stop")
     async def post_stop() -> JSONResponse:
         """Stop the engine."""
         await manager.shutdown()
         return JSONResponse({"status": "stopped"})
 
-    @app.post("/api/avatar/clear")
+    @app.post(f"{pfx}/clear")
     async def post_clear() -> JSONResponse:
         """Clear conversation history."""
         engine = manager.engine
@@ -345,7 +351,7 @@ def create_app(
     upload_storage = UploadStorage()
     app.state.upload_storage = upload_storage
 
-    @app.post("/api/avatar/upload")
+    @app.post(f"{pfx}/upload")
     async def upload_file(request: Request) -> JSONResponse:
         """Upload a file for attaching to a chat message (multipart/form-data)."""
         form = await request.form()
@@ -373,7 +379,7 @@ def create_app(
     # Serve uploaded files (for generated image display in frontend)
     try:
         from starlette.staticfiles import StaticFiles
-        app.mount("/api/avatar/files", StaticFiles(directory=str(upload_storage.base_dir)), name="uploads")
+        app.mount(f"{pfx}/files", StaticFiles(directory=str(upload_storage.base_dir)), name="uploads")
     except Exception:
         logger.warning("Could not mount static file serving for uploads")
 
@@ -477,7 +483,7 @@ def create_app(
 
     # === WebSocket ===
 
-    @app.websocket("/api/avatar/ws")
+    @app.websocket(f"{pfx}/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:
         """Bidirectional WebSocket for real-time streaming."""
         await ws.accept()
