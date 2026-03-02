@@ -3,7 +3,7 @@ CLI entry point for the Avatar Engine web server.
 
 Usage:
     python -m avatar_engine.web --provider gemini --port 8420
-    avatar-web --provider claude --model claude-sonnet-4-5 --port 8420
+    avatar-web --provider claude --model claude-sonnet-4-6 --port 8420
 """
 
 import argparse

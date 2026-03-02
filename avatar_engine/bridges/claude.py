@@ -49,7 +49,7 @@ class ClaudeBridge(BaseBridge):
     def __init__(
         self,
         executable: str = "claude",
-        model: str = "claude-sonnet-4-5",
+        model: str = "claude-sonnet-4-6",
         working_dir: str = "",
         timeout: int = 600,
         system_prompt: str = "",

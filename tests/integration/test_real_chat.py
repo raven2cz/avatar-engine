@@ -164,6 +164,14 @@ class TestGeminiRealChat:
 class TestClaudeRealChat:
     """Real chat tests with Claude CLI."""
 
+    def test_default_model_is_current(self):
+        """Default Claude model should be the latest sonnet."""
+        engine = AvatarEngine(provider="claude")
+        assert engine._model is None  # engine doesn't store default
+        from avatar_engine.bridges.claude import ClaudeBridge
+        bridge = ClaudeBridge()
+        assert bridge.model == "claude-sonnet-4-6"
+
     @pytest.mark.asyncio
     async def test_simple_chat(self, skip_if_no_claude):
         """Basic chat should work with real Claude."""

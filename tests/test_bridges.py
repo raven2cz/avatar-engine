@@ -84,7 +84,7 @@ class TestClaudeBridgeInit:
         """Should have sensible defaults."""
         bridge = ClaudeBridge()
         assert bridge.executable == "claude"
-        assert bridge.model == "claude-sonnet-4-5"
+        assert bridge.model == "claude-sonnet-4-6"
         assert bridge.timeout == 600
         assert bridge.state == BridgeState.DISCONNECTED
         assert bridge.debug is False

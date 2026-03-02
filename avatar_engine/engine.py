@@ -106,7 +106,7 @@ class AvatarEngine(EventEmitter):
 
         Args:
             provider: AI provider ("gemini", "claude", or "codex")
-            model: Model name (e.g., "gemini-3-pro-preview", "claude-sonnet-4-5", "gpt-5.3-codex")
+            model: Model name (e.g., "gemini-3-pro-preview", "claude-sonnet-4-6", "gpt-5.3-codex")
             working_dir: Working directory for the AI session
             timeout: Request timeout in seconds
             system_prompt: System prompt for the AI
@@ -702,7 +702,7 @@ class AvatarEngine(EventEmitter):
             struct_cfg = pcfg.get("structured_output", {})
             return ClaudeBridge(
                 executable=pcfg.get("executable", "claude"),
-                model=self._model or pcfg.get("model", "claude-sonnet-4-5"),
+                model=self._model or pcfg.get("model", "claude-sonnet-4-6"),
                 allowed_tools=pcfg.get("allowed_tools", []),
                 permission_mode=pcfg.get("permission_mode", "acceptEdits"),
                 strict_mcp_config=pcfg.get("strict_mcp_config", False),
