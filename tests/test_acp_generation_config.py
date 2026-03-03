@@ -638,6 +638,7 @@ class TestSettingsStructure:
                                 "thinkingConfig": {
                                     "thinkingLevel": "MEDIUM",
                                 },
+                                "thinkingSummaries": "auto",
                             },
                         },
                     }
@@ -675,6 +676,7 @@ class TestSettingsStructure:
                         "modelConfig": {
                             "generateContentConfig": {
                                 "temperature": 0.5,
+                                "thinkingSummaries": "auto",
                             },
                         },
                     }

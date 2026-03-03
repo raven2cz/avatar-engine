@@ -729,3 +729,40 @@ class TestACPSubprocessBufferLimit:
         assert captured_kwargs["limit"] == 50 * 1024 * 1024, (
             f"Buffer limit should be 50 MB, got {captured_kwargs['limit']}"
         )
+
+
+# =============================================================================
+# DBUS Workaround Tests
+# =============================================================================
+
+
+class TestDBUSWorkaround:
+    """Tests for DBUS_SESSION_BUS_ADDRESS workaround on headless systems."""
+
+    def test_dbus_workaround_in_subprocess_env(self):
+        """DBUS_SESSION_BUS_ADDRESS should be set to 'disabled:' when empty."""
+        bridge = GeminiBridge(acp_enabled=True)
+        # Ensure env doesn't have DBUS set
+        import os
+        old = os.environ.pop("DBUS_SESSION_BUS_ADDRESS", None)
+        try:
+            env = bridge._build_subprocess_env()
+            assert env.get("DBUS_SESSION_BUS_ADDRESS") == "disabled:"
+        finally:
+            if old is not None:
+                os.environ["DBUS_SESSION_BUS_ADDRESS"] = old
+
+    def test_dbus_workaround_preserves_existing(self):
+        """DBUS_SESSION_BUS_ADDRESS should be preserved if already set."""
+        bridge = GeminiBridge(acp_enabled=True)
+        import os
+        old = os.environ.get("DBUS_SESSION_BUS_ADDRESS")
+        os.environ["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=/run/user/1000/bus"
+        try:
+            env = bridge._build_subprocess_env()
+            assert env["DBUS_SESSION_BUS_ADDRESS"] == "unix:path=/run/user/1000/bus"
+        finally:
+            if old is not None:
+                os.environ["DBUS_SESSION_BUS_ADDRESS"] = old
+            else:
+                os.environ.pop("DBUS_SESSION_BUS_ADDRESS", None)

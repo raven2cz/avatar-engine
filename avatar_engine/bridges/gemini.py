@@ -1112,6 +1112,12 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
             if thinking_cfg:
                 gen_cfg["thinkingConfig"] = thinking_cfg
 
+            # Enable thought summaries via Interactions API (top-level field).
+            # The older ThinkingConfig.includeThoughts is silently ignored by
+            # Gemini 3 models in agentic/ACP sessions. The correct field is
+            # GenerateContentConfig.thinkingSummaries: "auto" | "none".
+            gen_cfg["thinkingSummaries"] = "auto"
+
         return gen_cfg
 
     def _build_subprocess_env(self) -> dict[str, str]:
@@ -1130,6 +1136,13 @@ class GeminiBridge(ACPSessionMixin, BaseBridge):
         # Safe because: (1) ACP mode already runs in our managed subprocess,
         # (2) the relaunch is for crash-restart which we handle ourselves.
         env["SANDBOX"] = "true"
+
+        # Prevent dbus lookup delays on headless/container systems.
+        # Gemini CLI uses file-based OAuth (google_accounts.json), not keyring,
+        # so dbus is not needed. When DBUS_SESSION_BUS_ADDRESS is unset, the
+        # CLI probes for a bus which adds ~1s to startup.
+        if not env.get("DBUS_SESSION_BUS_ADDRESS"):
+            env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
 
         # System settings = highest priority (level 5 in Gemini CLI hierarchy)
         if hasattr(self, "_gemini_settings_path") and self._gemini_settings_path:

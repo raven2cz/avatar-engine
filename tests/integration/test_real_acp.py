@@ -529,3 +529,23 @@ class TestACPGenerationConfig:
             await bridge.stop()
 
 
+# =============================================================================
+# DBUS Workaround (Real)
+# =============================================================================
+
+
+@pytest.mark.integration
+@pytest.mark.gemini
+class TestDBUSWorkaroundReal:
+    """Verify DBUS workaround is applied in subprocess environment."""
+
+    @pytest.mark.asyncio
+    async def test_dbus_workaround_applied(self, skip_if_no_gemini):
+        """DBUS_SESSION_BUS_ADDRESS should be set in subprocess env."""
+        bridge = GeminiBridge(acp_enabled=True)
+        env = bridge._build_subprocess_env()
+
+        # Should always have a value (either from system or our "disabled:")
+        assert "DBUS_SESSION_BUS_ADDRESS" in env
+        assert len(env["DBUS_SESSION_BUS_ADDRESS"]) > 0
+

@@ -55,7 +55,7 @@ Avatar Engine is a monorepo with a **Python backend** and **npm frontend package
 ### Backend (Python)
 
 - **Three Providers** — Gemini CLI, Claude Code, Codex CLI — unified API
-- **Warm Sessions** — ACP / stream-json persistent subprocess for instant responses
+- **Warm Sessions** — ACP / stream-json persistent subprocess for instant responses (DBUS-safe)
 - **Dynamic Model Discovery** — Automatic model list updates via provider documentation scraping
 - **Session Management** — Resume, continue, and list sessions across all providers
 - **Event System** — Callbacks for text, tools, thinking, diagnostics, state changes

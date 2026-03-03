@@ -1,12 +1,16 @@
 # Changelog
 
-## [1.3.0] - 2026-03-02
+## [1.3.0] - 2026-03-03
 
 ### Added
 - **`api_prefix` parameter** in `create_app()` / `create_api_app()` for configurable route prefix
   — enables clean embedding in host FastAPI apps without double-prefix or root-mount issues
 - **New Session button** in both fullscreen StatusBar and compact CompactHeader
   — one-click session start without opening the SessionPanel modal
+- **`thinkingSummaries: "auto"`** — automatically enabled in `generateContentConfig` for ACP
+  sessions (Interactions API thought summaries, pending [gemini-cli#20977](https://github.com/google-gemini/gemini-cli/issues/20977))
+- **DBUS workaround** — `DBUS_SESSION_BUS_ADDRESS=disabled:` in subprocess env prevents ~1s
+  dbus lookup delay on headless systems
 
 ### Fixed
 - **Response guards** — `SessionPanel`, `useAvailableProviders`, `useAvatarChat`, and `StatusBar`
