@@ -5,12 +5,14 @@ Creates and manages a single AvatarEngine instance (one engine per server).
 Exposes the engine and WebSocket bridge for use by FastAPI routes.
 """
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any
 
 from ..engine import AvatarEngine
 from .bridge import WebSocketBridge
+from .protocol import capabilities_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,11 @@ class EngineSessionManager:
         # Create engine from config file or parameters
         if self._config_path:
             self._engine = AvatarEngine.from_config(self._config_path)
+            # Config's working_dir may differ from the caller's CWD.
+            # Session listing hashes the working_dir to find session files,
+            # so it MUST match the directory where the provider CLI was run.
+            # The caller's working_dir (defaults to CWD) is always correct.
+            self._engine._working_dir = self._working_dir
         else:
             self._engine = AvatarEngine(
                 provider=self._provider,
@@ -100,6 +107,44 @@ class EngineSessionManager:
             f"Web session started: provider={self._engine.current_provider} "
             f"session_id={self._engine.session_id}"
         )
+
+    def broadcast_ready(self) -> None:
+        """Broadcast CONNECTED to all WebSocket clients.
+
+        Call this after start_engine() completes when running outside the
+        built-in lifespan (e.g. host apps that bypass sub-app lifespan).
+        Without this call, WS clients that connected during startup stay
+        stuck at INITIALIZING because they never receive capabilities.
+        """
+        if not self._ws_bridge or not self._engine:
+            logger.debug("broadcast_ready: no bridge or engine — skipping")
+            return
+        from .. import __version__
+        self._ws_bridge.set_loop(asyncio.get_running_loop())
+        eng = self._engine
+        sid = eng.session_id
+        model = self._model or getattr(eng, 'current_model', None) or getattr(eng._bridge, '_model', None)
+        caps = capabilities_to_dict(eng.capabilities)
+        n_clients = len(self._ws_bridge._clients)
+        logger.debug(
+            "broadcast_ready: sending CONNECTED to %d client(s), "
+            "can_list_sessions=%s, session_id=%s",
+            n_clients, caps.get("can_list_sessions"), sid,
+        )
+        self._ws_bridge.broadcast_message({
+            "type": "connected",
+            "data": {
+                "session_id": sid,
+                "provider": eng.current_provider,
+                "model": model,
+                "version": __version__,
+                "capabilities": caps,
+                "engine_state": self._ws_bridge.engine_state.value,
+                "cwd": self._working_dir,
+                "session_title": None,
+                "safety_mode": getattr(eng, '_safety_mode', 'safe'),
+            },
+        })
 
     async def start(self) -> None:
         """Create and start the engine + WebSocket bridge.
