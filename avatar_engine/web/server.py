@@ -37,8 +37,17 @@ title_registry = SessionTitleRegistry()
 def create_api_app(**kwargs: Any) -> Any:
     """Create avatar API without static serving. For embedding in host FastAPI.
 
+    When embedding, use ``api_prefix=""`` so that Starlette's mount path
+    becomes the only prefix and routes don't get doubled::
+
+        avatar_app = create_api_app(provider="gemini", api_prefix="")
+        host_app.mount("/api/avatar", avatar_app)
+        # Routes: /api/avatar/health, /api/avatar/ws, ...
+
     Args:
         **kwargs: Same as create_app() except serve_static is forced off.
+            Key parameter: ``api_prefix`` (default "/api/avatar") — set to
+            "" when mounting as a sub-application.
 
     Returns:
         FastAPI application instance (API-only, no static files)
@@ -504,6 +513,12 @@ def create_app(
             # Engine already running — send connected immediately
             model = _get_model(manager)
             sid = engine.session_id
+            caps = capabilities_to_dict(engine.capabilities)
+            logger.debug(
+                "WS client connected — engine ready, sending CONNECTED "
+                "(can_list_sessions=%s, session_id=%s)",
+                caps.get("can_list_sessions"), sid,
+            )
             await ws.send_json({
                 "type": "connected",
                 "data": {
@@ -511,7 +526,7 @@ def create_app(
                     "provider": engine.current_provider,
                     "model": model,
                     "version": __version__,
-                    "capabilities": capabilities_to_dict(engine.capabilities),
+                    "capabilities": caps,
                     "engine_state": bridge.engine_state.value,
                     "cwd": manager._working_dir,
                     "session_title": _get_session_title(manager, sid),
@@ -524,6 +539,9 @@ def create_app(
             detail = ""
             if engine and engine._bridge:
                 detail = engine._bridge._state_detail
+            logger.debug(
+                "WS client connected — engine NOT ready, sending INITIALIZING"
+            )
             await ws.send_json({
                 "type": "initializing",
                 "data": {

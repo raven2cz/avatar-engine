@@ -61,6 +61,7 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
   const reconnectTimeoutRef = useRef<number>()
   const unmountedRef = useRef(false)
   const errorFenceRef = useRef(false)
+  const connectingRef = useRef(false)
 
   const connect = useCallback(() => {
     if (unmountedRef.current) return
@@ -70,11 +71,31 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
       return
     }
 
+    // Guard against concurrent pre-flight fetches
+    if (connectingRef.current) return
+    connectingRef.current = true
+
     if (current && current.readyState !== WebSocket.CLOSED) {
       current.onclose = null
       current.close()
     }
 
+    // Pre-flight: verify backend is reachable before creating WebSocket.
+    // Avoids noisy browser-level errors (Firefox logs uncatchable WS failures).
+    const healthUrl = url.replace(/^ws(s)?:/, 'http$1:').replace(/\/ws$/, '/health')
+    fetch(healthUrl).then((resp) => {
+      if (unmountedRef.current) return
+      if (!resp.ok) throw new Error('not ready')
+      openWebSocket()
+    }).catch(() => {
+      if (!unmountedRef.current) {
+        reconnectTimeoutRef.current = window.setTimeout(connect, 2000)
+      }
+    }).finally(() => {
+      connectingRef.current = false
+    })
+
+    function openWebSocket() {
     const ws = new WebSocket(url)
     wsRef.current = ws
 
@@ -195,6 +216,7 @@ export function useAvatarWebSocket(url: string): UseAvatarWebSocketReturn {
 
     ws.onerror = () => {
       // Handled by onclose
+    }
     }
   }, [url])
 

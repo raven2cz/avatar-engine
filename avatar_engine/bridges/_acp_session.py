@@ -183,7 +183,7 @@ class ACPSessionMixin:
                 for s in resp.sessions
             ]
         except Exception as exc:
-            logger.warning(f"list_sessions failed: {exc}")
+            logger.debug(f"ACP list_sessions unavailable: {exc}")
             return []
 
     async def resume_session(self, session_id: str) -> bool:

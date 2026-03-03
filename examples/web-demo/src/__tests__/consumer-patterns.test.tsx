@@ -137,18 +137,22 @@ beforeEach(() => {
   wsInstance = null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   globalThis.WebSocket = MockWebSocket as any
+  // Pre-flight health check fetches /health before opening WebSocket
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
 })
 
 afterEach(() => {
   vi.useRealTimers()
   globalThis.WebSocket = OriginalWebSocket
   wsInstance = null
+  vi.restoreAllMocks()
 })
 
 // --------------- Helpers ---------------
 
 async function connectWs(overrides: Record<string, unknown> = {}) {
-  await act(async () => { vi.advanceTimersByTime(0) })
+  // Flush pre-flight health check + WebSocket creation
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
   expect(wsInstance).not.toBeNull()
   await act(async () => {
     wsInstance!.simulateOpen()

@@ -4,9 +4,13 @@
  * Centered modal dialog triggered by clicking session ID in StatusBar.
  * Fetches session list from GET /api/avatar/sessions.
  * Shows project name from cwd, table layout with clickable rows.
+ *
+ * Renders via createPortal(document.body) to escape overflow-hidden
+ * stacking contexts (e.g. AvatarWidget fullscreen overlay).
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Plus, Loader2, X, Pencil } from 'lucide-react'
 import type { SessionInfo, ProviderCapabilities } from '@avatar-engine/core'
@@ -109,7 +113,9 @@ export function SessionPanel({
     }
   }, [editValue, onTitleUpdated, API_BASE])
 
-  // Fetch sessions when modal opens (if provider supports it)
+  // Fetch sessions when modal opens or capabilities arrive.
+  // Use `capabilities` object reference (not just boolean) to catch
+  // the null → object transition reliably even if the panel is already open.
   useEffect(() => {
     if (!open || !capabilities?.can_list_sessions) return
     let cancelled = false
@@ -125,7 +131,7 @@ export function SessionPanel({
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [open, capabilities?.can_list_sessions])
+  }, [open, capabilities, API_BASE])
 
   // Close on Escape
   useEffect(() => {
@@ -151,16 +157,18 @@ export function SessionPanel({
 
   const projectName = basename(cwd)
 
-  return (
+  // Render via portal to escape overflow-hidden stacking contexts
+  // (e.g. AvatarWidget fullscreen overlay with transform: scale(1)).
+  const content = (
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
 
       {/* Modal */}
-      <div className="fixed inset-0 z-[70] flex items-start justify-center px-4 pt-20 pb-6 pointer-events-none overflow-y-auto">
+      <div className="fixed inset-0 z-[9999] flex items-start justify-center px-4 pt-20 pb-6 pointer-events-none overflow-y-auto">
         <div
           className="pointer-events-auto w-full max-w-3xl max-h-[75vh] glass-panel rounded-2xl border border-slate-mid/40 shadow-2xl shadow-black/60 animate-slide-up flex flex-col overflow-hidden"
           onClick={(e) => e.stopPropagation()}
@@ -200,7 +208,7 @@ export function SessionPanel({
           </div>
 
           {/* Session list */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
             {!capabilities?.can_list_sessions ? (
               <div className="flex items-center justify-center py-12 text-text-muted text-sm">
                 {t('fullscreen.sessions.notSupported', { provider })}
@@ -324,4 +332,6 @@ export function SessionPanel({
       </div>
     </>
   )
+
+  return createPortal(content, document.body)
 }

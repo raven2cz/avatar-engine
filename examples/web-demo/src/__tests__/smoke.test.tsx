@@ -133,12 +133,15 @@ beforeEach(() => {
   wsInstance = null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   globalThis.WebSocket = MockWebSocket as any
+  // Pre-flight health check fetches /health before opening WebSocket
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
 })
 
 afterEach(() => {
   vi.useRealTimers()
   globalThis.WebSocket = OriginalWebSocket
   wsInstance = null
+  vi.restoreAllMocks()
 })
 
 // --------------- Helper ---------------
@@ -147,9 +150,9 @@ afterEach(() => {
 async function renderAndConnect(overrides: Record<string, unknown> = {}) {
   const result = render(<TestChatApp />)
 
-  // useEffect runs → creates WebSocket
+  // useEffect runs → connect() → fetch(/health) → openWebSocket()
   await act(async () => {
-    vi.advanceTimersByTime(0)
+    await vi.advanceTimersByTimeAsync(0)
   })
   expect(wsInstance).not.toBeNull()
 
@@ -393,7 +396,7 @@ describe('Smoke test — full chat lifecycle', () => {
     }
 
     render(<PermTestApp />)
-    await act(async () => { vi.advanceTimersByTime(0) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     await act(async () => {
       wsInstance!.simulateOpen()
       wsInstance!.simulateMessage({
@@ -469,7 +472,7 @@ describe('Smoke test — full chat lifecycle', () => {
     }
 
     render(<CostTestApp />)
-    await act(async () => { vi.advanceTimersByTime(0) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     await act(async () => {
       wsInstance!.simulateOpen()
       wsInstance!.simulateMessage({
