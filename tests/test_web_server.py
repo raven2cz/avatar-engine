@@ -41,6 +41,7 @@ def _make_mock_manager():
         session_id="test-session-123",
     )
     engine.get_history.return_value = []
+    engine.list_sessions = AsyncMock(return_value=[])
     engine._bridge = MagicMock()
     engine._bridge.get_usage.return_value = {"total_cost_usd": 0.05}
     engine._started = True
@@ -387,6 +388,102 @@ class TestSessionTitle:
                 data = resp.json()
                 assert data[0]["title"] == "Provider title from first message"
                 assert data[0]["is_current"] is False
+
+
+class TestApiPrefix:
+    """Tests for configurable api_prefix parameter."""
+
+    def _make_prefixed_app(self, api_prefix, manager=None):
+        """Create a test app with custom api_prefix."""
+        mgr = manager or _make_mock_manager()
+        with patch(
+            "avatar_engine.web.server.EngineSessionManager",
+            return_value=mgr,
+        ):
+            from avatar_engine.web.server import create_app
+            return create_app(provider="gemini", serve_static=False, api_prefix=api_prefix), mgr
+
+    def test_empty_prefix_routes(self):
+        """api_prefix='' registers routes at root (e.g. /health, /version)."""
+        app, _ = self._make_prefixed_app("")
+        with TestClient(app, raise_server_exceptions=False) as client:
+            assert client.get("/health").status_code == 200
+            assert client.get("/version").status_code == 200
+            assert client.get("/capabilities").status_code == 200
+            assert client.get("/history").status_code == 200
+            assert client.get("/usage").status_code == 200
+            assert client.get("/providers").status_code == 200
+            assert client.get("/sessions").status_code == 200
+
+    def test_empty_prefix_default_routes_404(self):
+        """With api_prefix='', the default /api/avatar/* routes should not exist."""
+        app, _ = self._make_prefixed_app("")
+        with TestClient(app, raise_server_exceptions=False) as client:
+            assert client.get("/api/avatar/health").status_code == 404
+
+    def test_custom_prefix(self):
+        """api_prefix='/custom/path' registers routes at /custom/path/*."""
+        app, _ = self._make_prefixed_app("/custom/path")
+        with TestClient(app, raise_server_exceptions=False) as client:
+            assert client.get("/custom/path/health").status_code == 200
+            assert client.get("/custom/path/version").status_code == 200
+            assert client.get("/custom/path/providers").status_code == 200
+            assert client.get("/custom/path/sessions").status_code == 200
+
+    def test_custom_prefix_default_routes_404(self):
+        """With custom prefix, default /api/avatar/* routes should not exist."""
+        app, _ = self._make_prefixed_app("/custom/path")
+        with TestClient(app, raise_server_exceptions=False) as client:
+            assert client.get("/api/avatar/health").status_code == 404
+
+    def test_trailing_slash_normalized(self):
+        """api_prefix='/api/avatar/' (trailing slash) works like '/api/avatar'."""
+        app, _ = self._make_prefixed_app("/api/avatar/")
+        with TestClient(app, raise_server_exceptions=False) as client:
+            assert client.get("/api/avatar/health").status_code == 200
+            assert client.get("/api/avatar/version").status_code == 200
+            assert client.get("/api/avatar/providers").status_code == 200
+
+    def test_embedding_pattern_with_host_mount(self):
+        """Embedding: host mounts sub-app at /api/avatar, engine uses api_prefix=''."""
+        from fastapi import FastAPI
+        host = FastAPI()
+        avatar_app, _ = self._make_prefixed_app("")
+        host.mount("/api/avatar", avatar_app)
+        with TestClient(host, raise_server_exceptions=False) as client:
+            assert client.get("/api/avatar/health").status_code == 200
+            assert client.get("/api/avatar/version").status_code == 200
+            assert client.get("/api/avatar/providers").status_code == 200
+            assert client.get("/api/avatar/sessions").status_code == 200
+
+    def test_embedding_no_double_prefix(self):
+        """Embedding with api_prefix='' avoids double-prefix /api/avatar/api/avatar/*."""
+        from fastapi import FastAPI
+        host = FastAPI()
+        avatar_app, _ = self._make_prefixed_app("")
+        host.mount("/api/avatar", avatar_app)
+        with TestClient(host, raise_server_exceptions=False) as client:
+            resp = client.get("/api/avatar/api/avatar/health")
+            assert resp.status_code == 404
+
+    def test_chat_endpoint_with_empty_prefix(self):
+        """POST /chat works with api_prefix=''."""
+        app, mgr = self._make_prefixed_app("")
+        mgr.engine.chat = AsyncMock(
+            return_value=BridgeResponse(content="Hi!", success=True, duration_ms=100)
+        )
+        with TestClient(app, raise_server_exceptions=False) as client:
+            resp = client.post("/chat", json={"message": "Hello"})
+            assert resp.status_code == 200
+            assert resp.json()["content"] == "Hi!"
+
+    def test_default_prefix_unchanged(self):
+        """Default api_prefix='/api/avatar' still works (backward compat)."""
+        manager = _make_mock_manager()
+        app = _make_test_app(manager)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            assert client.get("/api/avatar/health").status_code == 200
+            assert client.get("/api/avatar/version").status_code == 200
 
 
 class TestCORS:

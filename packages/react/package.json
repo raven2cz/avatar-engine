@@ -1,6 +1,6 @@
 {
   "name": "@avatar-engine/react",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "React components and hooks for Avatar Engine — chat UI, avatar bust, provider selector",
   "type": "module",
   "main": "dist/index.cjs.js",

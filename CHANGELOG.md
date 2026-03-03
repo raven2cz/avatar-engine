@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0] - 2026-03-02
+
+### Added
+- **`api_prefix` parameter** in `create_app()` / `create_api_app()` for configurable route prefix
+  — enables clean embedding in host FastAPI apps without double-prefix or root-mount issues
+- **New Session button** in both fullscreen StatusBar and compact CompactHeader
+  — one-click session start without opening the SessionPanel modal
+
+### Fixed
+- **Response guards** — `SessionPanel`, `useAvailableProviders`, `useAvatarChat`, and `StatusBar`
+  now gracefully handle non-OK HTTP responses (404, 500) instead of crashing on `.map()` / `.json()`
+
 ## [1.2.0] - 2026-03-02
 
 ### Added

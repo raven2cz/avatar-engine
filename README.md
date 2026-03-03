@@ -234,8 +234,10 @@ Browser (React)                    Python Backend (FastAPI)
 ```python
 from avatar_engine.web.server import create_api_app
 
-# Mount avatar API into your existing FastAPI app
-avatar_app = create_api_app(provider="gemini")
+# Mount avatar API into your existing FastAPI app.
+# Use api_prefix="" because Starlette prepends the mount path automatically.
+# Without it, routes would be at /api/avatar/api/avatar/* (double prefix).
+avatar_app = create_api_app(provider="gemini", api_prefix="")
 app.mount("/api/avatar", avatar_app)
 ```
 
